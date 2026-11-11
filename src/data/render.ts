@@ -33,6 +33,7 @@ export function renderCond(c: Cond): string {
   if ('diaspora' in c) return c.diaspora ? 'диаспора без своих' : 'своя культура есть в стране'
   if ('meaning' in c) return c.meaning === 'найден' ? 'смысл жизни найден' : 'у игрока Серость'
   if ('visited' in c) return `в этом отрезке был: ${c.visited}`
+  if ('emigrant' in c) return c.emigrant ? 'эмигрант' : 'живёт в стране рождения'
   if ('hasKind' in c) return `есть хотя бы один предмет вида «${c.hasKind}»`
   if ('powerChanged' in c) return c.powerChanged ? 'в стране уже была смена власти' : 'смены власти не было'
   if ('mode' in c) return `режим «${c.mode === 'род' ? 'Род' : 'Поколение'}»`
@@ -51,6 +52,7 @@ export function renderCheck(ch: Check): string {
       m.adv && 'преимущество',
       m.dis && 'помеха',
       m.auto && 'автоуспех',
+      m.spend && 'если потратить',
     ].filter(Boolean).join(', ')
     return `${renderCond(m.if)} — ${what}`
   })
@@ -79,7 +81,11 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('lose' in n) {
       out.push(pad + `потерять «${n.lose}»${n.price ? ' (с обычной ценой сброса)' : ''}`)
     } else if ('income' in n) {
-      out.push(pad + `доход ${sign(n.income)} за ход до конца ${n.until === 'жизнь' ? 'жизни' : 'отрезка'}`)
+      out.push(pad + `доход ${sign(n.income)} за ход до конца отрезка`)
+    } else if ('pension' in n) {
+      out.push(pad + `надбавка к пенсии ${sign(n.pension)} за ход до конца жизни (по правилам пенсии)`)
+    } else if ('noAging' in n) {
+      out.push(pad + `${n.noAging} хода без потери физ. от Древности`)
     } else if ('reshuffle' in n) {
       out.push(pad + 'карта замешивается обратно в колоду')
     } else if ('charStep' in n) {

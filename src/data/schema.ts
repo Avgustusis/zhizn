@@ -67,6 +67,8 @@ export const RULES = [
   'летопись',       // отметка в Летописи мира (arg — какому виду и сколько)
   'потерять вещь',
   'оставить одну вещь', // из Имущества оставить одну вещь, остальные продать по скупке
+  'раздать вещи',   // сбросить все вещи из Имущества: +1 псих. за каждую (до +3), Пожертвования +1
+  'отдать всё',     // отдать все возм. выше 0 (arg — на что)
   'итог воспитания', // поправка к «Итогу воспитания» ребёнка (arg — сколько), важно в «Роде»  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
 ] as const
 
@@ -105,6 +107,7 @@ export type Cond =
   | { meaning: 'найден' | 'серость' }
   | { hasKind: (typeof ITEM_KINDS)[number] }
   | { visited: string }
+  | { emigrant: boolean }
   | { powerChanged: boolean }
 
 export const Cond: z.ZodType<Cond> = z.lazy(() =>
@@ -137,6 +140,8 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ hasKind: z.enum(ITEM_KINDS) }),
     /** В этом отрезке игрок был в этом месте рынка («Салон в этом отрезке»). */
     z.strictObject({ visited: z.string().min(1) }),
+    /** Игрок живёт не в стране рождения. */
+    z.strictObject({ emigrant: z.boolean() }),
     /** В стране проживания за партию уже была смена власти. */
     z.strictObject({ powerChanged: z.boolean() }),
   ]),
@@ -152,6 +157,8 @@ const CheckMod = z.strictObject({
   adv: z.literal(true).optional(),
   dis: z.literal(true).optional(),
   auto: z.literal(true).optional(),
+  /** Поправка от козыря: игрок решает, тратить ли его («Знакомый врач» +5). */
+  spend: z.literal(true).optional(),
 })
 
 export const Check = z.strictObject({
@@ -179,8 +186,10 @@ export type Node =
   | { miracle: (typeof STATS)[number][] | 'любая' }
   | { gain: string; blind?: boolean }
   | { lose: string; price?: true }
-  | { income: number; until: 'отрезок' | 'жизнь' }
+  | { income: number; until: 'отрезок' }
+  | { pension: number }
   | { reshuffle: true }
+  | { noAging: number }
   | { charStep: (typeof CHAR_POLES)[number]; n?: number }
   | { cls: (typeof CLASSES)[number] }
   | { check: Check; success: Node[]; failure: Node[] }
@@ -214,10 +223,14 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({ gain: ItemName, blind: z.boolean().optional() }),
     /** Потерять предмет. price — со своей ценой сброса («расставание по обычной цене»). */
     z.strictObject({ lose: ItemName, price: z.literal(true).optional() }),
-    /** Прибавка к доходу (в Старости — к пенсии) за ход: до конца отрезка или до конца жизни. */
-    z.strictObject({ income: z.number().int(), until: z.enum(['отрезок', 'жизнь']) }),
+    /** Прибавка к доходу за ход до конца отрезка. */
+    z.strictObject({ income: z.number().int(), until: z.literal('отрезок') }),
+    /** Надбавка к пенсии каждый ход до конца жизни — по правилам пенсии: нет пенсии (Стаж 0–4) — нет и надбавки; потолок «не больше обычного дохода» — вместе с надбавкой. */
+    z.strictObject({ pension: z.number().int() }),
     /** Карта замешивается обратно в колоду, а не уходит в сброс («он вернётся»). */
     z.strictObject({ reshuffle: z.literal(true) }),
+    /** Древность: n ходов без ежеходной потери физ. («2 хода без потери физ.»). */
+    z.strictObject({ noAging: z.number().int().positive() }),
     /** «Характер на шаг к Вспыльчивости». */
     z.strictObject({ charStep: CharPole, n: z.number().int().optional() }),
     /** Смена класса. */
