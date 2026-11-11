@@ -2,7 +2,7 @@
  * Пересказ разобранного эффекта обычными словами.
  * Нужен, чтобы человек сверил разбор с оригиналом карты, не читая JSON.
  */
-import type { Check, Cond, Node } from './schema.ts'
+import { CULTURE_AXES, type Check, type Cond, type Node } from './schema.ts'
 
 const sign = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0')
 
@@ -21,7 +21,10 @@ export function renderCond(c: Cond): string {
   if ('pos' in c) return `страна: ${c.pos.join(' или ')}`
   if ('ideo' in c) return `идеология: ${c.ideo.join(' или ')}`
   if ('culture' in c) return `культура ${c.strong ? 'сильно ' : ''}за полюс «${c.culture}»`
-  if ('neutral' in c) return `культура нейтральна на оси «${c.neutral}»`
+  if ('neutral' in c) {
+    const axis = CULTURE_AXES.find((ax) => (ax as readonly string[]).includes(c.neutral))!
+    return `культура: нейтрально (0) на оси ${axis[0]} ↔ ${axis[1]}`
+  }
   if ('char' in c) return `характер ${c.strong ? 'сильно ' : ''}за полюс «${c.char}»`
   if ('cls' in c) return `класс: ${c.cls.join(' или ')}`
   if ('sexFavored' in c) return c.sexFavored ? 'пол в преимуществе' : 'пол в помехе'
@@ -69,6 +72,7 @@ export function renderCheck(ch: Check): string {
       m.dis && 'помеха',
       m.auto && 'автоуспех',
       m.spend && 'если потратить',
+      m.fixed && 'при любой силе',
     ].filter(Boolean).join(', ')
     return `${renderCond(m.if)} — ${what}`
   })

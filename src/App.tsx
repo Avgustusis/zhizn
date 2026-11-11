@@ -83,7 +83,7 @@ export default function App() {
       {shown.map(({ deck, cards }) => (
         <section key={deck.deck} className="deck">
           <h2>{DECKS[deck.deck]}</h2>
-          {deck.polar && <p className="legend">Колода по полюсам: числа в ветках культуры — для «умеренно», при «сильно» на 1 крупнее; поправки к броску по полюсу — для «сильно», при «умеренно» ±1. Бонус тега культуры не добавляется.</p>}
+          {deck.polar && <p className="legend">Колода по полюсам: псих., физ. и возм. в ветках культуры — для «умеренно», при «сильно» на 1 крупнее (смягчение тоже). Поправки к броску по полюсу — для «сильно», при «умеренно» ±1, кроме помеченных «при любой силе». Бонус тега культуры не добавляется.</p>}
           {deck.sub && <p className="legend">{Object.entries(deck.sub).map(([k, v]) => `${k} — ${v}`).join(' · ')}</p>}
           <div className="grid">
             {cards.map((c) => <CardView key={c.id} card={c} legend={deck.sub} color={DECK_COLOR[deck.deck.split('.')[0]] ?? '#1E1E24'} />)}

@@ -55,10 +55,13 @@ const keys = rows.map((r) => {
   return k === 0 ? r['№'] : r['№'] + 'бвгд'[k - 1]
 })
 const POLAR: DeckId[] = ['культура']
+/** Номера, которые автор назначил иначе, чем стоит в снимке документа (до обновления документа). */
+const RENUMBER: Partial<Record<DeckId, Record<string, string>>> = { 'культура': { '17б': '61' } }
+for (let i = 0; i < keys.length; i++) keys[i] = RENUMBER[deck]?.[keys[i]] ?? keys[i]
 
 const cards = rows.map((r, i) => {
-  const n = Number(r['№'])
   const key = keys[i]
+  const n = Number(key.replace(/[^0-9]/g, ''))
   const e = effects[key]
   if (!e) throw new Error(`нет разбора для карты ${key} «${r['Карта']}»`)
   const miracle = r['Карта'].includes('✨')
