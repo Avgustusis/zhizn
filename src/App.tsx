@@ -14,7 +14,7 @@ function CardView({ card, legend, color }: { card: Card; legend?: Record<string,
   return (
     <article className={'card' + (card.doubts ? ' doubtful' : '')} style={{ borderTopColor: color }}>
       <header>
-        <span className="num">№ {card.n}</span>
+        <span className="num">{card.cls ? `${card.cls} · ` : ''}№ {card.n}</span>
         <h3>{card.title}{card.miracle && ' ✨'}</h3>
         <span className="kind">{KIND[card.kind]}</span>
       </header>

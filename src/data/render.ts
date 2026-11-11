@@ -27,6 +27,8 @@ export function renderCond(c: Cond): string {
   }
   if ('char' in c) return `характер ${c.strong ? 'сильно ' : ''}за полюс «${c.char}»`
   if ('cls' in c) return `класс: ${c.cls.join(' или ')}`
+  if ('familyCls' in c) return `класс семьи: ${c.familyCls.join(' или ')}`
+  if ('war' in c) return c.war ? 'страна воюет' : 'страна не воюет'
   if ('sexFavored' in c) return c.sexFavored ? 'пол в преимуществе' : 'пол в помехе'
   if ('partnerMinority' in c) return 'Партнёр или Супруг(а) не из большинства'
   if ('sex' in c) return c.sex === 'ж' ? 'женщина' : 'мужчина'
@@ -112,6 +114,10 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
       out.push(pad + `характер на ${n.n ?? 1} шаг к «${n.charStep}»`)
     } else if ('cls' in n) {
       out.push(pad + `класс → ${n.cls}`)
+    } else if ('allowCls' in n) {
+      out.push(pad + `разрешено перейти в класс ${n.allowCls}`)
+    } else if ('prison' in n) {
+      out.push(pad + `тюрьма (${n.prison === 'лёгкое' ? 'лёгкое, d3 хода' : 'тяжёлое, d6 + 2 хода'})`)
     } else if ('check' in n) {
       out.push(pad + renderCheck(n.check))
       out.push(pad + '  успех:', ...renderNodes(n.success, depth + 2))

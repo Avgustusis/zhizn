@@ -104,6 +104,8 @@ export type Cond =
   | { cls: (typeof CLASSES)[number][] }
   | { sex: 'м' | 'ж' }
   | { sexFavored: boolean }
+  | { familyCls: (typeof CLASSES)[number][] }
+  | { war: boolean }
   | { partnerMinority: boolean }
   | { minority: boolean }
   | { has: string }
@@ -148,6 +150,10 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ sex: z.enum(['м', 'ж']) }),
     /** Пол игрока в преимуществе (true) или в помехе (false) по оси Патриархат ↔ Матриархат; при 0 — ни то ни другое. */
     z.strictObject({ sexFavored: z.boolean() }),
+    /** Класс семьи игрока (класс при рождении): «семья не армейская». */
+    z.strictObject({ familyCls: z.array(Class).min(1) }),
+    /** Страна проживания сейчас воюет. */
+    z.strictObject({ war: z.boolean() }),
     /** Партнёр или Супруг(а) не из большинства страны. */
     z.strictObject({ partnerMinority: z.boolean() }),
     z.strictObject({ minority: z.boolean() }),
@@ -247,6 +253,8 @@ export type Node =
   | { noAging: number }
   | { charStep: (typeof CHAR_POLES)[number]; n?: number }
   | { cls: (typeof CLASSES)[number] }
+  | { allowCls: (typeof CLASSES)[number] }
+  | { prison: 'лёгкое' | 'тяжёлое' }
   | { check: Check; success: Node[]; failure: Node[] }
   | { choose: { label: string; if?: Cond; then: Node[] }[] }
   | { d6: Record<string, Node[]> }
@@ -288,8 +296,12 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({ noAging: z.number().int().positive() }),
     /** «Характер на шаг к Вспыльчивости». */
     z.strictObject({ charStep: CharPole, n: z.number().int().optional() }),
-    /** Смена класса. */
+    /** Смена класса. Ключи старого класса («Присяга», «Значок») гаснут, «Диплом» остаётся. */
     z.strictObject({ cls: Class }),
+    /** «Разрешено перейти в класс …»: игрок может сменить класс по своему решению. */
+    z.strictObject({ allowCls: Class }),
+    /** Тюрьма: лёгкое — d3 хода, тяжёлое — d6 + 2 (концепция, «Тотальные институты»). */
+    z.strictObject({ prison: z.enum(['лёгкое', 'тяжёлое']) }),
     /** Проверка 3d6 + характеристика ≥ сложность. Теги карты сами дают поправки культуры, характера, предметов. */
     z.strictObject({ check: Check, success: z.array(Node), failure: z.array(Node) }),
     /** Решение игрока. if — вариант доступен только при условии. */

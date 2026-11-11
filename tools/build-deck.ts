@@ -11,7 +11,8 @@
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { Card, DECK_FILES, DeckFile, SEGMENTS, type DeckId } from '../src/data/schema.ts'
+import { existsSync } from 'node:fs'
+import { CLASSES, Card, DECK_FILES, DeckFile, SEGMENTS, type DeckId } from '../src/data/schema.ts'
 import { readTable, sectionRows } from './events-md.ts'
 import { compactJson } from './json-compact.ts'
 
@@ -21,12 +22,31 @@ if (!deck || !header) {
   process.exit(1)
 }
 const md = readFileSync(resolve('reference/docs/events.md'), 'utf8')
-const rows = sectionRows(md, header)
+/** Колода «Класс»: шесть стопок под заголовками «#### Народ (21)» и т. д., нумерация в каждой своя. */
+const CLASS_DECK = deck === 'класс'
+const rows: Record<string, string>[] = CLASS_DECK
+  ? CLASSES.flatMap((cl) => {
+      try {
+        return sectionRows(md, `#### ${cl}`).map((r) => ({ ...r, _cls: cl }))
+      } catch {
+        return []
+      }
+    })
+  : sectionRows(md, header)
 const miracles = new Map(readTable(md, '## Чудеса').map((r) => [r['Карта'], r['Текст']]))
 const outPath = resolve(`src/data/decks/${DECK_FILES[deck]}.json`)
-const effects: Record<string, { effect: unknown; doubts?: string[]; requires?: unknown; cancelBy?: string[] }> = effectsPath
-  ? JSON.parse(readFileSync(effectsPath, 'utf8'))
-  : Object.fromEntries(DeckFile.parse(JSON.parse(readFileSync(outPath, 'utf8'))).cards.map((c) => [c.id.split('.').pop()!.replace(/^0+(?=\d)/, ''), { effect: c.effect, doubts: c.doubts, requires: c.requires, cancelBy: c.cancelBy }]))
+type Effects = Record<string, { effect: unknown; doubts?: string[]; requires?: unknown; cancelBy?: string[] }>
+/** Ключ карты по id: «возраст.детство.04» → «4», «класс.народ.01» → «Народ.1». */
+function keyOf(c: Card): string {
+  const parts = c.id.split('.')
+  const num = parts.pop()!.replace(/^0+(?=\d)/, '')
+  return c.cls ? `${c.cls}.${num}` : num
+}
+// Разбор берётся из уже собранного файла колоды, поверх — из effects.json (если дан).
+const existing: Effects = existsSync(outPath)
+  ? Object.fromEntries(DeckFile.parse(JSON.parse(readFileSync(outPath, 'utf8'))).cards.map((c) => [keyOf(c), { effect: c.effect, doubts: c.doubts, requires: c.requires, cancelBy: c.cancelBy }]))
+  : {}
+const effects: Effects = { ...existing, ...(effectsPath ? JSON.parse(readFileSync(effectsPath, 'utf8')) : {}) }
 
 const SUB_LEGENDS: Partial<Record<DeckId, Record<string, string>>> = {
   'возраст.детство': { 'М': 'Младенчество (клетки 1–10)', 'Ш': 'Ранняя школа (клетки 11–30)' },
@@ -39,7 +59,7 @@ const SUB_LEGENDS: Partial<Record<DeckId, Record<string, string>>> = {
 
 const SEG_CODES: Record<string, (typeof SEGMENTS)[number]> = { 'Д': 'Детство', 'Ю': 'Юность', 'М': 'Молодость', 'З': 'Зрелость', 'С': 'Старость', 'Др': 'Древность' }
 function parseSegs(s: string): (typeof SEGMENTS)[number][] {
-  if (s.trim() === 'все') return [...SEGMENTS]
+  if (s.trim() === 'все') return CLASS_DECK ? ['Юность', 'Молодость', 'Зрелость', 'Старость'] : [...SEGMENTS]
   return s.trim().split(/\s+/).map((c) => {
     const seg = SEG_CODES[c]
     if (!seg) throw new Error(`неизвестный отрезок «${c}» в «${s}»`)
@@ -54,20 +74,26 @@ const keys = rows.map((r) => {
   seenN.set(r['№'], k + 1)
   return k === 0 ? r['№'] : r['№'] + 'бвгд'[k - 1]
 })
+if (CLASS_DECK) rows.forEach((r, i) => (keys[i] = `${r._cls}.${r['№']}`))
 const POLAR: DeckId[] = ['культура']
 /** Номера, которые автор назначил иначе, чем стоит в снимке документа (до обновления документа). */
 const RENUMBER: Partial<Record<DeckId, Record<string, string>>> = { 'культура': { '17б': '61' } }
 for (let i = 0; i < keys.length; i++) keys[i] = RENUMBER[deck]?.[keys[i]] ?? keys[i]
 
-const cards = rows.map((r, i) => {
+// В «Классе» стопки переводятся по очереди: стопка без разбора пока пропускается.
+const cards = rows.flatMap((r, i) => {
   const key = keys[i]
-  const n = Number(key.replace(/[^0-9]/g, ''))
+  const n = Number(key.replace(/^.*\./, '').replace(/[^0-9]/g, ''))
   const e = effects[key]
+  if (!e && CLASS_DECK && !Object.keys(effects).some((k) => k.startsWith(r._cls + '.'))) return []
   if (!e) throw new Error(`нет разбора для карты ${key} «${r['Карта']}»`)
   const miracle = r['Карта'].includes('✨')
   const title = r['Карта'].replace('✨', '').trim()
   const card = {
-    id: `${deck}.${key.padStart(key.length + 2 - String(n).length, '0')}`,
+    id: CLASS_DECK
+      ? `${deck}.${r._cls.toLowerCase()}.${String(n).padStart(2, '0')}`
+      : `${deck}.${key.padStart(key.length + 2 - String(n).length, '0')}`,
+    ...(CLASS_DECK ? { cls: r._cls } : {}),
     n,
     title,
     text: miracle ? (miracles.get(title) ?? r['Текст']) : r['Текст'],
@@ -84,7 +110,7 @@ const cards = rows.map((r, i) => {
   }
   const parsed = Card.safeParse(card)
   if (!parsed.success) throw new Error(`карта ${n} «${title}»:\n${JSON.stringify(parsed.error.issues, null, 2)}`)
-  return parsed.data
+  return [parsed.data]
 })
 
 const extra = Object.keys(effects).filter((k) => !keys.includes(k))
