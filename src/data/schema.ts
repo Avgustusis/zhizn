@@ -72,11 +72,14 @@ export const RULES = [
   'смута',          // влияние в ближайшей Смуте (arg — сколько)
   'дело прогорело', // своё дело прогорает, как на входе в отрезок: карта в сброс, −2 псих. (мафиозные — стигма; социал-демократия — пособие)
   'дело в сброс',   // карта своего дела уходит в сброс без других потерь («разорён»)
+  'выручка',        // касса взаимопомощи: один раз до конца отрезка +2 возм. в беде (arg)
+  'катастрофа мягче', // следующая катастрофа в этом отрезке на 1 мягче
+  'свадьба',        // Партнёр становится Супругом(ой), как на развилке «Партнёрство» (с проверкой мезальянса)
   'итог воспитания', // поправка к «Итогу воспитания» ребёнка (arg — сколько), важно в «Роде»  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
 ] as const
 
 /** События, которых может ждать отложенный эффект (`later`). */
-export const LATER_EVENTS = ['вход в Зрелость', 'смена власти'] as const
+export const LATER_EVENTS = ['вход в Зрелость', 'вход в следующий отрезок', 'смена власти'] as const
 
 // ── Условия ─────────────────────────────────────────────────────────────
 
@@ -100,6 +103,8 @@ export type Cond =
   | { char: (typeof CHAR_POLES)[number]; strong?: boolean }
   | { cls: (typeof CLASSES)[number][] }
   | { sex: 'м' | 'ж' }
+  | { sexFavored: boolean }
+  | { partnerMinority: boolean }
   | { minority: boolean }
   | { has: string }
   | { seg: (typeof SEGMENTS)[number][] }
@@ -141,6 +146,10 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ char: CharPole, strong: z.boolean().optional() }),
     z.strictObject({ cls: z.array(Class).min(1) }),
     z.strictObject({ sex: z.enum(['м', 'ж']) }),
+    /** Пол игрока в преимуществе (true) или в помехе (false) по оси Патриархат ↔ Матриархат; при 0 — ни то ни другое. */
+    z.strictObject({ sexFavored: z.boolean() }),
+    /** Партнёр или Супруг(а) не из большинства страны. */
+    z.strictObject({ partnerMinority: z.boolean() }),
     z.strictObject({ minority: z.boolean() }),
     z.strictObject({ has: ItemName }),
     z.strictObject({ seg: z.array(Segment).min(1) }),
@@ -344,7 +353,7 @@ export const DECK_FILES: Record<DeckId, string> = {
 
 export const Card = z.strictObject({
   /** Уникальный id: колода и номер, «возраст.детство.04». */
-  id: z.string().regex(/^[а-яё.-]+\.\d{2,3}$/),
+  id: z.string().regex(/^[а-яё.-]+\.\d{2,3}[а-я]?$/),
   n: z.number().int().positive(),
   title: z.string().min(1),
   /** Художественный текст карты. */
@@ -372,6 +381,12 @@ export type Card = z.infer<typeof Card>
 
 export const DeckFile = z.strictObject({
   deck: z.enum(Object.keys(DECKS) as [DeckId, ...DeckId[]]),
+  /**
+   * Колода «по полюсам» (Культура): числа в ветках с условием `culture` написаны для «умеренно»,
+   * при «сильно» эффект полюса на 1 крупнее (+1 → +2, −2 → −3); поправки к броску по полюсу
+   * в `mods` написаны для «сильно», при «умеренно» они ±1. Бонус тега культуры не добавляется.
+   */
+  polar: z.literal(true).optional(),
   /** Расшифровка кодов подсекторов колоды. */
   sub: z.record(z.string(), z.string()).optional(),
   cards: z.array(Card),

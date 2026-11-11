@@ -24,6 +24,8 @@ export function renderCond(c: Cond): string {
   if ('neutral' in c) return `культура нейтральна на оси «${c.neutral}»`
   if ('char' in c) return `характер ${c.strong ? 'сильно ' : ''}за полюс «${c.char}»`
   if ('cls' in c) return `класс: ${c.cls.join(' или ')}`
+  if ('sexFavored' in c) return c.sexFavored ? 'пол в преимуществе' : 'пол в помехе'
+  if ('partnerMinority' in c) return 'Партнёр или Супруг(а) не из большинства'
   if ('sex' in c) return c.sex === 'ж' ? 'женщина' : 'мужчина'
   if ('minority' in c) return c.minority ? 'чужак (меньшинство)' : 'из большинства'
   if ('has' in c) return `есть «${c.has}»`

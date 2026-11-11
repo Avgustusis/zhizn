@@ -18,7 +18,21 @@ export function readTable(md: string, header: string): Record<string, string>[] 
   return out
 }
 
-/** Таблица раздела по началу заголовка: «### Детство» найдёт «### Детство (42)». */
+/**
+ * Все таблицы раздела по началу заголовка («### Детство» найдёт «### Детство (42)»)
+ * до следующего заголовка того же или более высокого уровня. Подразделы («#### …») входят.
+ */
 export function sectionRows(md: string, header: string): Record<string, string>[] {
-  return readTable(md, header)
+  const lines = md.split('\n')
+  const start = lines.findIndex((l) => l.startsWith(header))
+  if (start < 0) throw new Error(`нет раздела «${header}»`)
+  const level = header.match(/^#+/)![0].length
+  let end = lines.findIndex((l, i) => i > start && /^#+ /.test(l) && l.match(/^#+/)![0].length <= level)
+  if (end < 0) end = lines.length
+  const rows: Record<string, string>[] = []
+  for (let i = start + 1; i < end; i++) {
+    if (!lines[i].startsWith('|') || lines[i - 1].startsWith('|')) continue
+    rows.push(...readTable(lines.slice(i - 1, end).join('\n'), lines[i - 1]))
+  }
+  return rows
 }

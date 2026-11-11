@@ -26,7 +26,7 @@ const miracles = new Map(readTable(md, '## Чудеса').map((r) => [r['Кар�
 const outPath = resolve(`src/data/decks/${DECK_FILES[deck]}.json`)
 const effects: Record<string, { effect: unknown; doubts?: string[]; requires?: unknown; cancelBy?: string[] }> = effectsPath
   ? JSON.parse(readFileSync(effectsPath, 'utf8'))
-  : Object.fromEntries(DeckFile.parse(JSON.parse(readFileSync(outPath, 'utf8'))).cards.map((c) => [String(c.n), { effect: c.effect, doubts: c.doubts, requires: c.requires, cancelBy: c.cancelBy }]))
+  : Object.fromEntries(DeckFile.parse(JSON.parse(readFileSync(outPath, 'utf8'))).cards.map((c) => [c.id.split('.').pop()!.replace(/^0+(?=\d)/, ''), { effect: c.effect, doubts: c.doubts, requires: c.requires, cancelBy: c.cancelBy }]))
 
 const SUB_LEGENDS: Partial<Record<DeckId, Record<string, string>>> = {
   'возраст.детство': { 'М': 'Младенчество (клетки 1–10)', 'Ш': 'Ранняя школа (клетки 11–30)' },
@@ -47,14 +47,24 @@ function parseSegs(s: string): (typeof SEGMENTS)[number][] {
   })
 }
 
-const cards = rows.map((r) => {
+// Повтор номера в документе (ошибка нумерации) получает букву: «17», «17б».
+const seenN = new Map<string, number>()
+const keys = rows.map((r) => {
+  const k = seenN.get(r['№']) ?? 0
+  seenN.set(r['№'], k + 1)
+  return k === 0 ? r['№'] : r['№'] + 'бвгд'[k - 1]
+})
+const POLAR: DeckId[] = ['культура']
+
+const cards = rows.map((r, i) => {
   const n = Number(r['№'])
-  const e = effects[String(n)]
-  if (!e) throw new Error(`нет разбора для карты ${n} «${r['Карта']}»`)
+  const key = keys[i]
+  const e = effects[key]
+  if (!e) throw new Error(`нет разбора для карты ${key} «${r['Карта']}»`)
   const miracle = r['Карта'].includes('✨')
   const title = r['Карта'].replace('✨', '').trim()
   const card = {
-    id: `${deck}.${String(n).padStart(2, '0')}`,
+    id: `${deck}.${key.padStart(key.length + 2 - String(n).length, '0')}`,
     n,
     title,
     text: miracle ? (miracles.get(title) ?? r['Текст']) : r['Текст'],
@@ -74,10 +84,10 @@ const cards = rows.map((r) => {
   return parsed.data
 })
 
-const extra = Object.keys(effects).filter((k) => !rows.some((r) => r['№'] === k))
+const extra = Object.keys(effects).filter((k) => !keys.includes(k))
 if (extra.length) throw new Error(`в разборе лишние номера: ${extra.join(', ')}`)
 
-const file = DeckFile.parse({ deck, sub: SUB_LEGENDS[deck], cards })
+const file = DeckFile.parse({ deck, ...(POLAR.includes(deck) ? { polar: true } : {}), sub: SUB_LEGENDS[deck], cards })
 mkdirSync(resolve('src/data/decks'), { recursive: true })
 writeFileSync(outPath, compactJson(file) + '\n')
 console.log(`${deck}: ${cards.length} карт, спорных ${cards.filter((c) => c.doubts).length}`)
