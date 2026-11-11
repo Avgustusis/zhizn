@@ -11,7 +11,7 @@
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { Card, DECK_FILES, DeckFile, type DeckId } from '../src/data/schema.ts'
+import { Card, DECK_FILES, DeckFile, SEGMENTS, type DeckId } from '../src/data/schema.ts'
 import { readTable, sectionRows } from './events-md.ts'
 import { compactJson } from './json-compact.ts'
 
@@ -37,6 +37,16 @@ const SUB_LEGENDS: Partial<Record<DeckId, Record<string, string>>> = {
   'возраст.древность': { 'С': 'Свидетель (клетки 1–15)', 'Э': 'Эпилог (клетки 16–30)' },
 }
 
+const SEG_CODES: Record<string, (typeof SEGMENTS)[number]> = { 'Д': 'Детство', 'Ю': 'Юность', 'М': 'Молодость', 'З': 'Зрелость', 'С': 'Старость', 'Др': 'Древность' }
+function parseSegs(s: string): (typeof SEGMENTS)[number][] {
+  if (s.trim() === 'все') return [...SEGMENTS]
+  return s.trim().split(/\s+/).map((c) => {
+    const seg = SEG_CODES[c]
+    if (!seg) throw new Error(`неизвестный отрезок «${c}» в «${s}»`)
+    return seg
+  })
+}
+
 const cards = rows.map((r) => {
   const n = Number(r['№'])
   const e = effects[String(n)]
@@ -51,6 +61,7 @@ const cards = rows.map((r) => {
     src: r['Эффект'],
     kind: r['Тип'],
     sub: r['Когда'] ? [...r['Когда']] : undefined,
+    segs: r['Отрезки'] ? parseSegs(r['Отрезки']) : undefined,
     tags: r['Теги'] === '—' ? [] : r['Теги'].split(/\s+/).filter(Boolean),
     ...(e.requires ? { requires: e.requires } : {}),
     ...(e.cancelBy ? { cancelBy: e.cancelBy } : {}),

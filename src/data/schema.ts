@@ -108,6 +108,9 @@ export type Cond =
   | { hasKind: (typeof ITEM_KINDS)[number] }
   | { visited: string }
   | { emigrant: boolean }
+  | { notAlone: boolean }
+  | { partnerDiff: 'культура' | 'класс' }
+  | { count: string; gte: number }
   | { powerChanged: boolean }
 
 export const Cond: z.ZodType<Cond> = z.lazy(() =>
@@ -142,6 +145,12 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ visited: z.string().min(1) }),
     /** Игрок живёт не в стране рождения. */
     z.strictObject({ emigrant: z.boolean() }),
+    /** «Живёшь не один»: Супруг(а) или Партнёр; или отметка «Не один» в журнале (до конца жизни); или сиделка за 2 возм., оплаченная в этот ход в Древности. */
+    z.strictObject({ notAlone: z.boolean() }),
+    /** Партнёр или Супруг(а) другой культуры или другого класса, чем игрок. */
+    z.strictObject({ partnerDiff: z.enum(['культура', 'класс']) }),
+    /** Предметов с этим именем не меньше gte («при двух детях и больше»). */
+    z.strictObject({ count: ItemName, gte: z.number().int().positive() }),
     /** В стране проживания за партию уже была смена власти. */
     z.strictObject({ powerChanged: z.boolean() }),
   ]),
@@ -184,7 +193,7 @@ export type Node =
   | { addUsed: number }
   | { later: { when: (typeof LATER_EVENTS)[number]; until?: 'отрезок'; then: Node[] } }
   | { miracle: (typeof STATS)[number][] | 'любая' }
-  | { gain: string; blind?: boolean }
+  | { gain: string; blind?: boolean; adopted?: true }
   | { lose: string; price?: true }
   | { income: number; until: 'отрезок' }
   | { pension: number }
@@ -220,7 +229,7 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     /** Чудо: +2 к характеристике, гриф вскрыт (потолок 12). */
     z.strictObject({ miracle: z.union([z.array(Stat).min(1), z.literal('любая')]) }),
     /** Получить предмет по имени из каталога. blind — «вслепую» из стопки людей. */
-    z.strictObject({ gain: ItemName, blind: z.boolean().optional() }),
+    z.strictObject({ gain: ItemName, blind: z.boolean().optional(), adopted: z.literal(true).optional() }),
     /** Потерять предмет. price — со своей ценой сброса («расставание по обычной цене»). */
     z.strictObject({ lose: ItemName, price: z.literal(true).optional() }),
     /** Прибавка к доходу за ход до конца отрезка. */

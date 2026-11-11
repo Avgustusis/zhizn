@@ -37,6 +37,7 @@ function CardView({ card, legend, color }: { card: Card; legend?: Record<string,
       )}
       <footer>
         <span className="tags">{card.tags.join(' ') || '—'}</span>
+        {card.segs && <span className="sub">{card.segs.length === 6 ? 'все отрезки' : card.segs.map((x) => x.slice(0, 2)).join(' ')}</span>}
         {card.sub && <span className="sub" title={card.sub.map((s) => legend?.[s] ?? s).join(', ')}>{card.sub.join('')}</span>}
         <span className="id">{card.id}</span>
       </footer>

@@ -33,6 +33,9 @@ export function renderCond(c: Cond): string {
   if ('diaspora' in c) return c.diaspora ? 'диаспора без своих' : 'своя культура есть в стране'
   if ('meaning' in c) return c.meaning === 'найден' ? 'смысл жизни найден' : 'у игрока Серость'
   if ('visited' in c) return `в этом отрезке был: ${c.visited}`
+  if ('partnerDiff' in c) return `Партнёр или Супруг(а) другого ${c.partnerDiff === 'культура' ? 'культуры' : 'класса'}`
+  if ('count' in c) return `«${c.count}» не меньше ${c.gte}`
+  if ('notAlone' in c) return c.notAlone ? 'живёт не один' : 'живёт один'
   if ('emigrant' in c) return c.emigrant ? 'эмигрант' : 'живёт в стране рождения'
   if ('hasKind' in c) return `есть хотя бы один предмет вида «${c.hasKind}»`
   if ('powerChanged' in c) return c.powerChanged ? 'в стране уже была смена власти' : 'смены власти не было'
@@ -77,7 +80,7 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('miracle' in n) {
       out.push(pad + `чудо: +2 ${n.miracle === 'любая' ? 'к любой характеристике' : n.miracle.join(' или ')}, гриф вскрыт`)
     } else if ('gain' in n) {
-      out.push(pad + `получить «${n.gain}»${n.blind ? ' (вслепую)' : ''}`)
+      out.push(pad + `получить «${n.gain}»${n.adopted ? ' (воспитанник)' : ''}${n.blind ? ' (вслепую)' : ''}`)
     } else if ('lose' in n) {
       out.push(pad + `потерять «${n.lose}»${n.price ? ' (с обычной ценой сброса)' : ''}`)
     } else if ('income' in n) {

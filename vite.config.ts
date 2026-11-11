@@ -5,4 +5,6 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: './',
   plugins: [react()],
+  // Все карты лежат в одном файле: это нормально, предупреждение о размере выключено до ~2 МБ.
+  build: { chunkSizeWarningLimit: 2000 },
 })
