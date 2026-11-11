@@ -28,6 +28,7 @@ function* walk(nodes: Node[]): Generator<Node> {
     if ('cancelable' in n) yield* walk(n.then)
     if ('useTrump' in n) { yield* walk(n.then); yield* walk(n.else) }
     if ('installments' in n) yield* walk(n.each)
+    if ('everySeg' in n) yield* walk(n.everySeg)
   }
 }
 

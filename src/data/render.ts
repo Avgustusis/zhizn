@@ -45,6 +45,7 @@ export function renderCond(c: Cond): string {
   if ('notAlone' in c) return c.notAlone ? 'живёт не один' : 'живёт один'
   if ('emigrant' in c) return c.emigrant ? 'эмигрант' : 'живёт в стране рождения'
   if ('draft' in c) return c.draft ? 'в стране призыв, и он касается игрока' : 'призыва нет'
+  if ('sentenceTag' in c) return `срок за ${c.sentenceTag}`
   if ('hasKind' in c) return `есть хотя бы один предмет вида «${c.hasKind}»`
   if ('powerChanged' in c) return `${c.powerChanged ? 'была' : 'не было'} смена власти ${c.inSeg ? 'в этом отрезке' : 'в стране'}`
   if ('stability' in c) return `стабильность ${c.stability.gte !== undefined ? `${c.stability.gte}+` : `${c.stability.lte} и ниже`}`
@@ -101,6 +102,16 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
       out.push(pad + `${sign(n.addClassStat)} ${n.both ? 'к обеим характеристикам' : 'к одной характеристике'} пригодности своего класса`)
     } else if ('installments' in n) {
       out.push(pad + `${n.installments} платежа: на входе в каждый следующий подсектор`, ...renderNodes(n.each, depth + 1))
+    } else if ('everySeg' in n) {
+      out.push(pad + 'до конца жизни, в начале каждого отрезка:', ...renderNodes(n.everySeg, depth + 1))
+    } else if ('set' in n) {
+      out.push(pad + Object.entries(n.set).map(([k, v]) => `${PARAM_LABEL[k] ?? k} становится ${v! < 0 ? '−' + -v! : v}`).join(', '))
+    } else if ('term' in n) {
+      out.push(pad + `срок ${sign(n.term)} ход${Math.abs(n.term) === 1 ? '' : 'а'}`)
+    } else if ('release' in n) {
+      out.push(pad + `выйти сейчас${n.noStigma ? ', без стигмы' : ''}`)
+    } else if ('workoff' in n) {
+      out.push(pad + `до конца срока отработка даёт +${n.workoff} вместо +2`)
     } else if ('halve' in n) {
       out.push(pad + 'потерять половину возм. (округление вниз)')
     } else if ('later' in n) {

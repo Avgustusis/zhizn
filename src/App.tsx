@@ -18,8 +18,9 @@ function CardView({ card, legend, color }: { card: Card; legend?: Record<string,
         <h3>{card.title}{card.miracle && ' ✨'}</h3>
         <span className="kind">{KIND[card.kind]}</span>
       </header>
-      <p className="text">{card.text}</p>
+      {card.text && <p className="text">{card.text}</p>}
       {card.cell && <p className="req">На поле: {card.cell}</p>}
+      {card.filter && <p className="req">Фильтр: {card.filter}</p>}
       {card.requires && <p className="req">Только если: {renderCond(card.requires)}</p>}
       {card.cancelBy && <p className="req">Отменяет козырь: {card.cancelBy.map((x) => `«${x}»`).join(', ')}</p>}
       <section>

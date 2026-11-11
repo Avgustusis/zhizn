@@ -48,6 +48,13 @@ const existing: Effects = existsSync(outPath)
   : {}
 const effects: Effects = { ...existing, ...(effectsPath ? JSON.parse(readFileSync(effectsPath, 'utf8')) : {}) }
 
+/** Тип карты, если в документе его нет: развилка — решение; иначе по разбору (выбор → Р, проверка → П, иначе Б). */
+function kindOf(effect: unknown, fork: boolean): 'Б' | 'П' | 'Р' {
+  if (fork) return 'Р'
+  const s = JSON.stringify(effect)
+  return s.includes('"choose"') ? 'Р' : s.includes('"check"') ? 'П' : 'Б'
+}
+
 const SUB_LEGENDS: Partial<Record<DeckId, Record<string, string>>> = {
   'возраст.детство': { 'М': 'Младенчество (клетки 1–10)', 'Ш': 'Ранняя школа (клетки 11–30)' },
   'возраст.юность': { 'С': 'Средняя школа (клетки 1–15)', 'В': 'Выпуск (клетки 16–30)' },
@@ -67,6 +74,8 @@ function parseSegs(s: string): (typeof SEGMENTS)[number][] {
   })
 }
 
+// У карт институтов нет номеров: нумеруем по порядку в документе.
+rows.forEach((r, i) => { if (r['№'] === undefined) r['№'] = String(i + 1) })
 // Повтор номера в документе (ошибка нумерации) получает букву: «17», «17б».
 const seenN = new Map<string, number>()
 const keys = rows.map((r) => {
@@ -98,9 +107,10 @@ const cards = rows.flatMap((r, i) => {
     ...(CLASS_DECK ? { cls: r._cls } : {}),
     n,
     title,
-    text: miracle ? (miracles.get(title) ?? r['Текст']) : r['Текст'],
+    text: miracle ? (miracles.get(title) ?? r['Текст'] ?? '') : (r['Текст'] ?? ''),
     src: r['Эффект'] ?? r['Пути'],
-    kind: r['Тип'] ?? 'Р',
+    kind: r['Тип'] ?? kindOf(e.effect, r['Развилка'] !== undefined),
+    ...(r['Фильтр'] ? { filter: r['Фильтр'] } : {}),
     ...(r['Клетка'] && r['Клетка'] !== 'колода' ? { cell: r['Клетка'] } : {}),
     sub: r['Когда'] ? [...r['Когда']] : undefined,
     segs: r['Отрезки'] ? parseSegs(r['Отрезки']) : undefined,

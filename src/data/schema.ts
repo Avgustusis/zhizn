@@ -86,11 +86,16 @@ export const RULES = [
   'пенсия',         // уйти на пенсию: пенсия по Стажу найма
   'работа на пенсии', // Работа остаётся, но каждая отметка Стажа стоит ещё −1 физ.
   'учить молодых',  // пенсия по Стажу, доход как Подработка
+  'изъять козырь',  // обыск: один козырь (если есть) изъят
+  'отдать предмет', // отдать статус или козырь (arg — что получаешь)
+  'сбросить козыри', // все козыри сброшены
+  'срок стигмы',    // особый срок стигмы (arg: «Судимость гаснет через один ход», «Учёт вдвое дольше»)
+  'только работа',  // после выхода весь следующий отрезок только Работа, без Подработки
   'итог воспитания', // поправка к «Итогу воспитания» ребёнка (arg — сколько), важно в «Роде»  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
 ] as const
 
 /** События, которых может ждать отложенный эффект (`later`). */
-export const LATER_EVENTS = ['вход в Зрелость', 'вход в следующий отрезок', 'смена власти', 'выход из тюрьмы', 'конец учёбы'] as const
+export const LATER_EVENTS = ['вход в Зрелость', 'вход в следующий отрезок', 'смена власти', 'выход из тюрьмы', 'конец учёбы', 'переход в Мафию'] as const
 
 // ── Условия ─────────────────────────────────────────────────────────────
 
@@ -129,6 +134,7 @@ export type Cond =
   | { hasKind: (typeof ITEM_KINDS)[number] }
   | { visited: string }
   | { draft: boolean }
+  | { sentenceTag: (typeof TAGS)[number] }
   | { emigrant: boolean }
   | { notAlone: boolean }
   | { partnerDiff: 'культура' | 'класс' }
@@ -186,6 +192,8 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ visited: z.string().min(1) }),
     /** В стране призыв и он касается игрока: военная диктатура, госсоциализм, национализм — всегда, остальные — d6 1–3 (бросок при розыгрыше); зовут пол в преимуществе, при 0 — всех. */
     z.strictObject({ draft: z.boolean() }),
+    /** Игрок в институте за событие с этим тегом («только если срок за #политика»). */
+    z.strictObject({ sentenceTag: Tag }),
     /** Игрок живёт не в стране рождения. */
     z.strictObject({ emigrant: z.boolean() }),
     /** «Живёшь не один»: Супруг(а) или Партнёр; или отметка «Не один» в журнале (до конца жизни); или сиделка за 2 возм., оплаченная в этот ход в Древности. */
@@ -261,6 +269,11 @@ export type Node =
   | { addPredisp: number }
   | { addClassStat: number; both?: true }
   | { installments: number; each: Node[] }
+  | { everySeg: Node[] }
+  | { term: number }
+  | { set: Partial<Record<(typeof PARAMS)[number], number>> }
+  | { release: true; noStigma?: true }
+  | { workoff: number }
   | { halve: 'возм' }
   | { later: { when: (typeof LATER_EVENTS)[number]; until?: 'отрезок'; then: Node[] } }
   | { miracle: (typeof STATS)[number][] | 'любая' }
@@ -301,6 +314,16 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({ addClassStat: z.number().int(), both: z.literal(true).optional() }),
     /** Платежи: по одному на входе в каждый следующий подсектор (половину отрезка), всего n («4 жетона на карте»). */
     z.strictObject({ installments: z.number().int().positive(), each: z.array(Node) }),
+    /** До конца жизни, в начале каждого отрезка («десятина»). */
+    z.strictObject({ everySeg: z.array(Node) }),
+    /** Установить значение («долг списан до −10»). */
+    z.strictObject({ set: z.partialRecord(Param, z.number().int()) }),
+    /** Институт: срок ±n ходов. */
+    z.strictObject({ term: z.number().int() }),
+    /** Институт: выйти сейчас; noStigma — без стигмы выхода («Судимость», «Учёт», «Долг»). */
+    z.strictObject({ release: z.literal(true), noStigma: z.literal(true).optional() }),
+    /** Кабала: до конца срока ход отработки даёт n возм. вместо +2. */
+    z.strictObject({ workoff: z.number().int() }),
     /** Потерять половину (округление вниз): «Возможности 4+: потеряна половина». */
     z.strictObject({ halve: z.literal('возм') }),
     /** Отложенный эффект: сработает при событии; until — только если событие случится до конца отрезка. */
@@ -414,6 +437,8 @@ export const Card = z.strictObject({
   /** Козыри, которые отменяют карту целиком («Козырь «Справка» отменяет карту»). Козырь тратится. */
   cancelBy: z.array(ItemName).optional(),
   miracle: z.literal(true).optional(),
+  /** Институты: фильтр карты из документа («Либеральная демократия», «Ядро»); условие — в `requires`. */
+  filter: z.string().optional(),
   /** Развилка, напечатанная на поле: где стоит («на поле, клетка 8»). */
   cell: z.string().optional(),
   effect: z.array(Node),
