@@ -46,3 +46,4 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; }
   main { padding: 10px; }
   .grid { grid-template-columns: 1fr; }
 }
+.req { margin: 0; font-size: 0.85rem; font-family: ui-monospace, 'Courier New', monospace; color: var(--red); }

@@ -13,7 +13,7 @@ import { z } from 'zod'
 export const STATS = ['Сила', 'Выносливость', 'Ловкость', 'Интеллект', 'Мудрость', 'Харизма', 'Смекалка', 'Красота'] as const
 export const HEALTH = ['физ', 'псих'] as const
 /** Всё, что меняется числом. Финансы, Положение и Сплочённость — шкалы семьи (−3…+3). */
-export const PARAMS = [...STATS, ...HEALTH, 'возм', 'Стаж', 'Сплочённость', 'Финансы', 'Положение'] as const
+export const PARAMS = [...STATS, ...HEALTH, 'возм', 'Стаж', 'Пожертвования', 'Сплочённость', 'Финансы', 'Положение'] as const
 
 export const SEGMENTS = ['Детство', 'Юность', 'Молодость', 'Зрелость', 'Старость', 'Древность'] as const
 export const CLASSES = ['Народ', 'Армия', 'Полиция', 'Интеллигенция', 'Мафия', 'Олигархи'] as const
@@ -25,6 +25,7 @@ export const IDEOLOGY_GROUPS = {
   'демократии': ['Либеральная демократия', 'Социал-демократия'],
   'диктатуры': ['Военная диктатура', 'Госсоциализм', 'Теократия'],
 } as const satisfies Record<string, readonly (typeof IDEOLOGIES)[number][]>
+export const ITEM_KINDS = ['связь', 'статус', 'козырь', 'антикозырь', 'стигма', 'вещь'] as const
 export const COUNTRY_POS = ['ядро', 'полупериферия', 'периферия'] as const
 
 /** 11 осей культуры: [первый полюс, второй полюс]. */
@@ -63,7 +64,8 @@ export const TAGS = [
  */
 export const RULES = [
   'обряд',          // бесплатно срабатывает обряд культуры игрока (как точка обмена во взрослом рынке)
-  'летопись',       // отметка в Летописи мира
+  'летопись',       // отметка в Летописи мира (arg — какому виду и сколько)
+  'потерять вещь',  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
 ] as const
 
 /** События, которых может ждать отложенный эффект (`later`). */
@@ -99,6 +101,7 @@ export type Cond =
   | { diaspora: boolean }
   | { mode: 'поколение' | 'род' }
   | { meaning: 'найден' | 'серость' }
+  | { hasKind: (typeof ITEM_KINDS)[number] }
   | { powerChanged: boolean }
 
 export const Cond: z.ZodType<Cond> = z.lazy(() =>
@@ -127,6 +130,8 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ mode: z.enum(['поколение', 'род']) }),
     /** Смысл жизни найден (карта Случайных или Династии) или у игрока Серость. */
     z.strictObject({ meaning: z.enum(['найден', 'серость']) }),
+    /** Есть хотя бы один предмет этого вида. */
+    z.strictObject({ hasKind: z.enum(ITEM_KINDS) }),
     /** В стране проживания за партию уже была смена власти. */
     z.strictObject({ powerChanged: z.boolean() }),
   ]),
@@ -168,7 +173,8 @@ export type Node =
   | { later: { when: (typeof LATER_EVENTS)[number]; until?: 'отрезок'; then: Node[] } }
   | { miracle: (typeof STATS)[number][] | 'любая' }
   | { gain: string; blind?: boolean }
-  | { lose: string }
+  | { lose: string; price?: true }
+  | { income: number; until: 'отрезок' }
   | { charStep: (typeof CHAR_POLES)[number]; n?: number }
   | { cls: (typeof CLASSES)[number] }
   | { check: Check; success: Node[]; failure: Node[] }
@@ -178,7 +184,7 @@ export type Node =
   | { cases: { if: Cond; then: Node[] }[]; else?: Node[] }
   | { mod: { tag?: (typeof TAGS)[number]; fork?: string; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка' } }
   | { flag: string }
-  | { rule: (typeof RULES)[number] }
+  | { rule: (typeof RULES)[number]; arg?: string }
   | { bottom: true }
   | { say: string }
 
@@ -198,7 +204,10 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({ miracle: z.union([z.array(Stat).min(1), z.literal('любая')]) }),
     /** Получить предмет по имени из каталога. blind — «вслепую» из стопки людей. */
     z.strictObject({ gain: ItemName, blind: z.boolean().optional() }),
-    z.strictObject({ lose: ItemName }),
+    /** Потерять предмет. price — со своей ценой сброса («расставание по обычной цене»). */
+    z.strictObject({ lose: ItemName, price: z.literal(true).optional() }),
+    /** Прибавка к доходу за ход до конца отрезка. */
+    z.strictObject({ income: z.number().int(), until: z.literal('отрезок') }),
     /** «Характер на шаг к Вспыльчивости». */
     z.strictObject({ charStep: CharPole, n: z.number().int().optional() }),
     /** Смена класса. */
@@ -221,7 +230,7 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     }),
     /** Отметка в журнале жизни: прошлые события для условий смысла и карт. */
     z.strictObject({ flag: z.string().min(1) }),
-    z.strictObject({ rule: z.enum(RULES) }),
+    z.strictObject({ rule: z.enum(RULES), arg: z.string().optional() }),
     /** Карта уходит под низ колоды, а не в сброс. */
     z.strictObject({ bottom: z.literal(true) }),
     /** Текст без механики, который игрок видит в журнале. */
@@ -277,6 +286,10 @@ export const Card = z.strictObject({
   /** Для колоды «Класс» — чья стопка. */
   cls: Class.optional(),
   tags: z.array(Tag).max(2),
+  /** Карта играется только при условии, иначе уходит в сброс и тянут следующую («Только со статусом «Диплом»…»). */
+  requires: Cond.optional(),
+  /** Козыри, которые отменяют карту целиком («Козырь «Справка» отменяет карту»). */
+  cancelBy: z.array(ItemName).optional(),
   miracle: z.literal(true).optional(),
   effect: z.array(Node),
   /** Вопросы к автору правил. Пока вопрос открыт, карта помечена спорной. */

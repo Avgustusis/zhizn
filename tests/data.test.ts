@@ -45,6 +45,17 @@ describe('карты', () => {
     expect(unknown).toEqual([])
   })
 
+  it('предметы в условиях и отменах тоже есть в каталоге', () => {
+    const names = catalogNames()
+    const conds = (x: unknown): string[] =>
+      x && typeof x === 'object'
+        ? Object.entries(x).flatMap(([k, v]) => (k === 'has' && typeof v === 'string' ? [v] : conds(v)))
+        : []
+    const unknown = allCards.flatMap((c) =>
+      [...conds(c.effect), ...conds(c.requires), ...(c.cancelBy ?? [])].filter((x) => !names.has(x)).map((x) => `${c.id}: ${x}`))
+    expect(unknown).toEqual([])
+  })
+
   it('исходы d6 в пределах 1–6 и не пересекаются', () => {
     const bad: string[] = []
     for (const c of allCards) for (const n of walk(c.effect)) {

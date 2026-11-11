@@ -32,6 +32,7 @@ export function renderCond(c: Cond): string {
   if ('mainCulture' in c) return `основная культура страны: ${c.mainCulture.join(' или ')}`
   if ('diaspora' in c) return c.diaspora ? 'диаспора без своих' : 'своя культура есть в стране'
   if ('meaning' in c) return c.meaning === 'найден' ? 'смысл жизни найден' : 'у игрока Серость'
+  if ('hasKind' in c) return `есть хотя бы один предмет вида «${c.hasKind}»`
   if ('powerChanged' in c) return c.powerChanged ? 'в стране уже была смена власти' : 'смены власти не было'
   if ('mode' in c) return `режим «${c.mode === 'род' ? 'Род' : 'Поколение'}»`
   return JSON.stringify(c)
@@ -75,7 +76,9 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('gain' in n) {
       out.push(pad + `получить «${n.gain}»${n.blind ? ' (вслепую)' : ''}`)
     } else if ('lose' in n) {
-      out.push(pad + `потерять «${n.lose}»`)
+      out.push(pad + `потерять «${n.lose}»${n.price ? ' (с обычной ценой сброса)' : ''}`)
+    } else if ('income' in n) {
+      out.push(pad + `доход ${sign(n.income)} за ход до конца отрезка`)
     } else if ('charStep' in n) {
       out.push(pad + `характер на ${n.n ?? 1} шаг к «${n.charStep}»`)
     } else if ('cls' in n) {
@@ -108,7 +111,7 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('flag' in n) {
       out.push(pad + `в журнал: «${n.flag}»`)
     } else if ('rule' in n) {
-      out.push(pad + `правило: ${n.rule}`)
+      out.push(pad + `правило: ${n.rule}${n.arg ? ` (${n.arg})` : ''}`)
     } else if ('bottom' in n) {
       out.push(pad + 'карта уходит под низ колоды')
     } else if ('say' in n) {

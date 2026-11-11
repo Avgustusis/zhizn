@@ -24,13 +24,14 @@ const md = readFileSync(resolve('reference/docs/events.md'), 'utf8')
 const rows = sectionRows(md, header)
 const miracles = new Map(readTable(md, '## Чудеса').map((r) => [r['Карта'], r['Текст']]))
 const outPath = resolve(`src/data/decks/${DECK_FILES[deck]}.json`)
-const effects: Record<string, { effect: unknown; doubts?: string[] }> = effectsPath
+const effects: Record<string, { effect: unknown; doubts?: string[]; requires?: unknown; cancelBy?: string[] }> = effectsPath
   ? JSON.parse(readFileSync(effectsPath, 'utf8'))
-  : Object.fromEntries(DeckFile.parse(JSON.parse(readFileSync(outPath, 'utf8'))).cards.map((c) => [String(c.n), { effect: c.effect, doubts: c.doubts }]))
+  : Object.fromEntries(DeckFile.parse(JSON.parse(readFileSync(outPath, 'utf8'))).cards.map((c) => [String(c.n), { effect: c.effect, doubts: c.doubts, requires: c.requires, cancelBy: c.cancelBy }]))
 
 const SUB_LEGENDS: Partial<Record<DeckId, Record<string, string>>> = {
   'возраст.детство': { 'М': 'Младенчество (клетки 1–10)', 'Ш': 'Ранняя школа (клетки 11–30)' },
   'возраст.юность': { 'С': 'Средняя школа (клетки 1–15)', 'В': 'Выпуск (клетки 16–30)' },
+  'возраст.молодость': { 'У': 'Учёба или первая работа (клетки 1–15)', 'С': 'Самостоятельность (клетки 16–30)' },
 }
 
 const cards = rows.map((r) => {
@@ -48,6 +49,8 @@ const cards = rows.map((r) => {
     kind: r['Тип'],
     sub: r['Когда'] ? [...r['Когда']] : undefined,
     tags: r['Теги'] === '—' ? [] : r['Теги'].split(/\s+/).filter(Boolean),
+    ...(e.requires ? { requires: e.requires } : {}),
+    ...(e.cancelBy ? { cancelBy: e.cancelBy } : {}),
     ...(miracle ? { miracle: true } : {}),
     effect: e.effect,
     ...(e.doubts?.length ? { doubts: e.doubts } : {}),

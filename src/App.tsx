@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { decks } from './data/index.ts'
 import { DECKS, type Card, type DeckId } from './data/schema.ts'
-import { renderNodes } from './data/render.ts'
+import { renderCond, renderNodes } from './data/render.ts'
 
 const DECK_COLOR: Partial<Record<string, string>> = {
   'возраст': '#B8862F', 'отношения': '#A8322B', 'культура': '#4E6B4A', 'страна': '#2F4A6B', 'развилка': '#5E5470',
@@ -19,6 +19,8 @@ function CardView({ card, legend, color }: { card: Card; legend?: Record<string,
         <span className="kind">{KIND[card.kind]}</span>
       </header>
       <p className="text">{card.text}</p>
+      {card.requires && <p className="req">Только если: {renderCond(card.requires)}</p>}
+      {card.cancelBy && <p className="req">Отменяет козырь: {card.cancelBy.map((x) => `«${x}»`).join(', ')}</p>}
       <section>
         <h4>Оригинал</h4>
         <p className="src">{card.src}</p>
