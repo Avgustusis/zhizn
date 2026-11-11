@@ -92,7 +92,9 @@ export type Cond =
   | { has: string }
   | { seg: (typeof SEGMENTS)[number][] }
   | { flag: string }
-  | { geo: string }
+  | { mainCulture: (typeof CULTURES)[number][] }
+  | { diaspora: boolean }
+  | { mode: 'поколение' | 'род' }
 
 export const Cond: z.ZodType<Cond> = z.lazy(() =>
   z.union([
@@ -112,7 +114,12 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ has: ItemName }),
     z.strictObject({ seg: z.array(Segment).min(1) }),
     z.strictObject({ flag: z.string().min(1) }),
-    z.strictObject({ geo: z.string().min(1) }),
+    /** Основная культура страны проживания. По ней же география: Большое озеро — Карвенцы, Олейцы; болота — Эшвины; ледник — Сарды. */
+    z.strictObject({ mainCulture: z.array(z.enum(CULTURES)).min(1) }),
+    /** Диаспора без своих: культуры игрока нет в стране ни как основной, ни как меньшинства. */
+    z.strictObject({ diaspora: z.boolean() }),
+    /** Режим партии. Отметки в Летописи — только «Род». */
+    z.strictObject({ mode: z.enum(['поколение', 'род']) }),
   ]),
 )
 

@@ -29,7 +29,9 @@ export function renderCond(c: Cond): string {
   if ('has' in c) return `есть «${c.has}»`
   if ('seg' in c) return `отрезок: ${c.seg.join(' или ')}`
   if ('flag' in c) return `в журнале: «${c.flag}»`
-  if ('geo' in c) return `в стране есть: ${c.geo}`
+  if ('mainCulture' in c) return `основная культура страны: ${c.mainCulture.join(' или ')}`
+  if ('diaspora' in c) return c.diaspora ? 'диаспора без своих' : 'своя культура есть в стране'
+  if ('mode' in c) return `режим «${c.mode === 'род' ? 'Род' : 'Поколение'}»`
   return JSON.stringify(c)
 }
 
