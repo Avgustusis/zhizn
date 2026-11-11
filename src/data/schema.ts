@@ -69,6 +69,7 @@ export const RULES = [
   'оставить одну вещь', // из Имущества оставить одну вещь, остальные продать по скупке
   'раздать вещи',   // сбросить все вещи из Имущества: +1 псих. за каждую (до +3), Пожертвования +1
   'отдать всё',     // отдать все возм. выше 0 (arg — на что)
+  'смута',          // влияние в ближайшей Смуте (arg — сколько)
   'итог воспитания', // поправка к «Итогу воспитания» ребёнка (arg — сколько), важно в «Роде»  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
 ] as const
 
@@ -111,7 +112,18 @@ export type Cond =
   | { notAlone: boolean }
   | { partnerDiff: 'культура' | 'класс' }
   | { count: string; gte: number }
-  | { powerChanged: boolean }
+  | { powerChanged: boolean; inSeg?: true }
+  | { stability: { gte?: number; lte?: number } }
+  | { clsRole: 'доминирующий' | 'отчуждённый' }
+  | { dominant: (typeof CLASSES)[number][] }
+  | { alienated: (typeof CLASSES)[number][] }
+  | { multicultural: boolean }
+  | { relation: 'вражда' | 'союз' }
+  | { fromHostile: boolean }
+  | { inFashion: boolean }
+  | { cultureIs: (typeof CULTURES)[number][] }
+  | { ownBusiness: boolean }
+  | { working: boolean }
 
 export const Cond: z.ZodType<Cond> = z.lazy(() =>
   z.union([
@@ -151,8 +163,29 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ partnerDiff: z.enum(['культура', 'класс']) }),
     /** Предметов с этим именем не меньше gte («при двух детях и больше»). */
     z.strictObject({ count: ItemName, gte: z.number().int().positive() }),
-    /** В стране проживания за партию уже была смена власти. */
-    z.strictObject({ powerChanged: z.boolean() }),
+    /** В стране проживания за партию (inSeg — в этом отрезке) была смена власти. */
+    z.strictObject({ powerChanged: z.boolean(), inSeg: z.literal(true).optional() }),
+    /** Стабильность страны проживания. */
+    z.strictObject({ stability: z.strictObject({ gte: z.number().int().optional(), lte: z.number().int().optional() }) }),
+    /** Класс игрока — доминирующий или отчуждённый в его стране. */
+    z.strictObject({ clsRole: z.enum(['доминирующий', 'отчуждённый']) }),
+    /** Доминирующий или отчуждённый класс страны (независимо от класса игрока): «при отчуждённом Народе». */
+    z.strictObject({ dominant: z.array(Class).min(1) }),
+    z.strictObject({ alienated: z.array(Class).min(1) }),
+    /** Страна мультикультурная. */
+    z.strictObject({ multicultural: z.boolean() }),
+    /** У страны проживания есть страна, с которой она во вражде или в союзе. */
+    z.strictObject({ relation: z.enum(['вражда', 'союз']) }),
+    /** Игрок — эмигрант из страны, с которой страна проживания во вражде. */
+    z.strictObject({ fromHostile: z.boolean() }),
+    /** Раса игрока в моде в стране (канон красоты). */
+    z.strictObject({ inFashion: z.boolean() }),
+    /** Культура игрока — одна из названных (для бикультурных — родная или приёмная). */
+    z.strictObject({ cultureIs: z.array(z.enum(CULTURES)).min(1) }),
+    /** У игрока своё дело. */
+    z.strictObject({ ownBusiness: z.boolean() }),
+    /** Работает (в этом отрезке ставил Стаж; подработка не в счёт) или учится (высшее, идёт Молодость). */
+    z.strictObject({ working: z.boolean() }),
   ]),
 )
 

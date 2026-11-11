@@ -38,7 +38,18 @@ export function renderCond(c: Cond): string {
   if ('notAlone' in c) return c.notAlone ? 'живёт не один' : 'живёт один'
   if ('emigrant' in c) return c.emigrant ? 'эмигрант' : 'живёт в стране рождения'
   if ('hasKind' in c) return `есть хотя бы один предмет вида «${c.hasKind}»`
-  if ('powerChanged' in c) return c.powerChanged ? 'в стране уже была смена власти' : 'смены власти не было'
+  if ('powerChanged' in c) return `${c.powerChanged ? 'была' : 'не было'} смена власти ${c.inSeg ? 'в этом отрезке' : 'в стране'}`
+  if ('stability' in c) return `стабильность ${c.stability.gte !== undefined ? `${c.stability.gte}+` : `${c.stability.lte} и ниже`}`
+  if ('clsRole' in c) return `класс игрока ${c.clsRole}`
+  if ('dominant' in c) return `доминирующий класс страны: ${c.dominant.join(' или ')}`
+  if ('alienated' in c) return `отчуждённый класс страны: ${c.alienated.join(' или ')}`
+  if ('multicultural' in c) return c.multicultural ? 'страна мультикультурная' : 'страна гомогенная'
+  if ('relation' in c) return `у страны есть ${c.relation === 'вражда' ? 'враг' : 'союзник'}`
+  if ('fromHostile' in c) return 'эмигрант из враждебной страны'
+  if ('inFashion' in c) return c.inFashion ? 'раса в моде' : 'раса не в моде'
+  if ('cultureIs' in c) return `культура: ${c.cultureIs.join(' или ')}`
+  if ('ownBusiness' in c) return c.ownBusiness ? 'своё дело' : 'нет своего дела'
+  if ('working' in c) return c.working ? 'работает или учится' : 'не работает и не учится'
   if ('mode' in c) return `режим «${c.mode === 'род' ? 'Род' : 'Поколение'}»`
   return JSON.stringify(c)
 }
