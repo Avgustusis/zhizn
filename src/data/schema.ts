@@ -66,6 +66,9 @@ export const RULES = [
   'летопись',       // отметка в Летописи мира
 ] as const
 
+/** События, которых может ждать отложенный эффект (`later`). */
+export const LATER_EVENTS = ['вход в Зрелость', 'смена власти'] as const
+
 // ── Условия ─────────────────────────────────────────────────────────────
 
 const Stat = z.enum(STATS)
@@ -95,6 +98,8 @@ export type Cond =
   | { mainCulture: (typeof CULTURES)[number][] }
   | { diaspora: boolean }
   | { mode: 'поколение' | 'род' }
+  | { meaning: 'найден' | 'серость' }
+  | { powerChanged: boolean }
 
 export const Cond: z.ZodType<Cond> = z.lazy(() =>
   z.union([
@@ -120,6 +125,10 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ diaspora: z.boolean() }),
     /** Режим партии. Отметки в Летописи — только «Род». */
     z.strictObject({ mode: z.enum(['поколение', 'род']) }),
+    /** Смысл жизни найден (карта Случайных или Династии) или у игрока Серость. */
+    z.strictObject({ meaning: z.enum(['найден', 'серость']) }),
+    /** В стране проживания за партию уже была смена власти. */
+    z.strictObject({ powerChanged: z.boolean() }),
   ]),
 )
 
@@ -155,6 +164,8 @@ const Range = z.string().regex(/^\d+(-\d+)?$/, 'диапазон вида «1-2�
 export type Node =
   | { add: Partial<Record<(typeof PARAMS)[number], number>> }
   | { addOneOf: (typeof STATS)[number][]; n: number }
+  | { addUsed: number }
+  | { later: { when: (typeof LATER_EVENTS)[number]; until?: 'отрезок'; then: Node[] } }
   | { miracle: (typeof STATS)[number][] | 'любая' }
   | { gain: string; blind?: boolean }
   | { lose: string }
@@ -165,7 +176,7 @@ export type Node =
   | { d6: Record<string, Node[]> }
   | { if: Cond; then: Node[]; else?: Node[] }
   | { cases: { if: Cond; then: Node[] }[]; else?: Node[] }
-  | { mod: { tag?: (typeof TAGS)[number]; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка' } }
+  | { mod: { tag?: (typeof TAGS)[number]; fork?: string; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка' } }
   | { flag: string }
   | { rule: (typeof RULES)[number] }
   | { bottom: true }
@@ -177,6 +188,12 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({ add: z.partialRecord(Param, z.number().int()) }),
     /** +n к одной характеристике на выбор игрока. */
     z.strictObject({ addOneOf: z.array(Stat).min(2), n: z.number().int() }),
+    /** +n к характеристике, которой игрок бросал последнюю проверку («успех — +1 к ней»). */
+    z.strictObject({ addUsed: z.number().int() }),
+    /** Отложенный эффект: сработает при событии; until — только если событие случится до конца отрезка. */
+    z.strictObject({
+      later: z.strictObject({ when: z.enum(LATER_EVENTS), until: z.literal('отрезок').optional(), then: z.array(Node) }),
+    }),
     /** Чудо: +2 к характеристике, гриф вскрыт (потолок 12). */
     z.strictObject({ miracle: z.union([z.array(Stat).min(1), z.literal('любая')]) }),
     /** Получить предмет по имени из каталога. blind — «вслепую» из стопки людей. */
@@ -198,7 +215,7 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     /** Временная поправка к будущим проверкам. */
     z.strictObject({
       mod: z.strictObject({
-        tag: Tag.optional(), add: z.number().int().optional(), adv: z.literal(true).optional(), dis: z.literal(true).optional(),
+        tag: Tag.optional(), fork: z.string().optional(), add: z.number().int().optional(), adv: z.literal(true).optional(), dis: z.literal(true).optional(),
         until: z.enum(['отрезок', 'проверка']),
       }),
     }),

@@ -31,6 +31,8 @@ export function renderCond(c: Cond): string {
   if ('flag' in c) return `в журнале: «${c.flag}»`
   if ('mainCulture' in c) return `основная культура страны: ${c.mainCulture.join(' или ')}`
   if ('diaspora' in c) return c.diaspora ? 'диаспора без своих' : 'своя культура есть в стране'
+  if ('meaning' in c) return c.meaning === 'найден' ? 'смысл жизни найден' : 'у игрока Серость'
+  if ('powerChanged' in c) return c.powerChanged ? 'в стране уже была смена власти' : 'смены власти не было'
   if ('mode' in c) return `режим «${c.mode === 'род' ? 'Род' : 'Поколение'}»`
   return JSON.stringify(c)
 }
@@ -64,6 +66,10 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
       out.push(pad + Object.entries(n.add).map(([k, v]) => `${sign(v!)} ${PARAM_LABEL[k] ?? k}`).join(', '))
     } else if ('addOneOf' in n) {
       out.push(pad + `${sign(n.n)} к одной на выбор: ${n.addOneOf.join(', ')}`)
+    } else if ('addUsed' in n) {
+      out.push(pad + `${sign(n.addUsed)} к характеристике, которой бросал`)
+    } else if ('later' in n) {
+      out.push(pad + `потом — ${n.later.when}${n.later.until ? ' (если до конца отрезка)' : ''}:`, ...renderNodes(n.later.then, depth + 1))
     } else if ('miracle' in n) {
       out.push(pad + `чудо: +2 ${n.miracle === 'любая' ? 'к любой характеристике' : n.miracle.join(' или ')}, гриф вскрыт`)
     } else if ('gain' in n) {
@@ -98,7 +104,7 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('mod' in n) {
       const m = n.mod
       const what = [m.add !== undefined && sign(m.add), m.adv && 'преимущество', m.dis && 'помеха'].filter(Boolean).join(', ')
-      out.push(pad + `${what} к ${m.tag ?? 'проверкам'} до конца ${m.until === 'отрезок' ? 'отрезка' : 'следующей проверки'}`)
+      out.push(pad + `${what} к ${m.fork ? `развилке «${m.fork}»` : m.tag ?? 'проверкам'} до конца ${m.until === 'отрезок' ? 'отрезка' : 'следующей проверки'}`)
     } else if ('flag' in n) {
       out.push(pad + `в журнал: «${n.flag}»`)
     } else if ('rule' in n) {

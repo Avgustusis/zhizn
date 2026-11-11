@@ -30,6 +30,7 @@ const effects: Record<string, { effect: unknown; doubts?: string[] }> = effectsP
 
 const SUB_LEGENDS: Partial<Record<DeckId, Record<string, string>>> = {
   'возраст.детство': { 'М': 'Младенчество (клетки 1–10)', 'Ш': 'Ранняя школа (клетки 11–30)' },
+  'возраст.юность': { 'С': 'Средняя школа (клетки 1–15)', 'В': 'Выпуск (клетки 16–30)' },
 }
 
 const cards = rows.map((r) => {
