@@ -115,7 +115,7 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('cls' in n) {
       out.push(pad + `класс → ${n.cls}`)
     } else if ('allowCls' in n) {
-      out.push(pad + `разрешено перейти в класс ${n.allowCls}`)
+      out.push(pad + `можно сразу перейти в класс ${n.allowCls} (решение сейчас, позже нельзя)`)
     } else if ('prison' in n) {
       out.push(pad + `тюрьма (${n.prison === 'лёгкое' ? 'лёгкое, d3 хода' : 'тяжёлое, d6 + 2 хода'})`)
     } else if ('check' in n) {
