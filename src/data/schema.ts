@@ -66,6 +66,7 @@ export const RULES = [
   'обряд',          // бесплатно срабатывает обряд культуры игрока (как точка обмена во взрослом рынке)
   'летопись',       // отметка в Летописи мира (arg — какому виду и сколько)
   'потерять вещь',
+  'оставить одну вещь', // из Имущества оставить одну вещь, остальные продать по скупке
   'итог воспитания', // поправка к «Итогу воспитания» ребёнка (arg — сколько), важно в «Роде»  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
 ] as const
 
@@ -178,7 +179,8 @@ export type Node =
   | { miracle: (typeof STATS)[number][] | 'любая' }
   | { gain: string; blind?: boolean }
   | { lose: string; price?: true }
-  | { income: number; until: 'отрезок' }
+  | { income: number; until: 'отрезок' | 'жизнь' }
+  | { reshuffle: true }
   | { charStep: (typeof CHAR_POLES)[number]; n?: number }
   | { cls: (typeof CLASSES)[number] }
   | { check: Check; success: Node[]; failure: Node[] }
@@ -188,6 +190,7 @@ export type Node =
   | { cases: { if: Cond; then: Node[] }[]; else?: Node[] }
   | { mod: { tag?: (typeof TAGS)[number]; fork?: string; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка'; max?: 'отрезок' } }
   | { cancelable: string[]; then: Node[] }
+  | { useTrump: string[]; then: Node[]; else: Node[] }
   | { flag: string }
   | { rule: (typeof RULES)[number]; arg?: string }
   | { bottom: true }
@@ -211,8 +214,10 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({ gain: ItemName, blind: z.boolean().optional() }),
     /** Потерять предмет. price — со своей ценой сброса («расставание по обычной цене»). */
     z.strictObject({ lose: ItemName, price: z.literal(true).optional() }),
-    /** Прибавка к доходу за ход до конца отрезка. */
-    z.strictObject({ income: z.number().int(), until: z.literal('отрезок') }),
+    /** Прибавка к доходу (в Старости — к пенсии) за ход: до конца отрезка или до конца жизни. */
+    z.strictObject({ income: z.number().int(), until: z.enum(['отрезок', 'жизнь']) }),
+    /** Карта замешивается обратно в колоду, а не уходит в сброс («он вернётся»). */
+    z.strictObject({ reshuffle: z.literal(true) }),
     /** «Характер на шаг к Вспыльчивости». */
     z.strictObject({ charStep: CharPole, n: z.number().int().optional() }),
     /** Смена класса. */
@@ -235,8 +240,10 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
         max: z.literal('отрезок').optional(),
       }),
     }),
-    /** Шаги, которые игрок может отменить козырем («Знакомый врач» отменяет осложнение). */
+    /** Шаги, которые игрок может отменить козырем («Знакомый врач» отменяет осложнение). Козырь тратится. */
     z.strictObject({ cancelable: z.array(ItemName).min(1), then: z.array(Node) }),
+    /** Игрок решает, тратить ли козырь: потратил — then, не стал или нет козыря — else. */
+    z.strictObject({ useTrump: z.array(ItemName).min(1), then: z.array(Node), else: z.array(Node) }),
     /** Отметка в журнале жизни: прошлые события для условий смысла и карт. */
     z.strictObject({ flag: z.string().min(1) }),
     z.strictObject({ rule: z.enum(RULES), arg: z.string().optional() }),
@@ -297,7 +304,7 @@ export const Card = z.strictObject({
   tags: z.array(Tag).max(2),
   /** Карта играется только при условии, иначе уходит в сброс и тянут следующую («Только со статусом «Диплом»…»). */
   requires: Cond.optional(),
-  /** Козыри, которые отменяют карту целиком («Козырь «Справка» отменяет карту»). */
+  /** Козыри, которые отменяют карту целиком («Козырь «Справка» отменяет карту»). Козырь тратится. */
   cancelBy: z.array(ItemName).optional(),
   miracle: z.literal(true).optional(),
   effect: z.array(Node),

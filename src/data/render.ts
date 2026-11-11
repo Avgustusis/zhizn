@@ -79,7 +79,9 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('lose' in n) {
       out.push(pad + `потерять «${n.lose}»${n.price ? ' (с обычной ценой сброса)' : ''}`)
     } else if ('income' in n) {
-      out.push(pad + `доход ${sign(n.income)} за ход до конца отрезка`)
+      out.push(pad + `доход ${sign(n.income)} за ход до конца ${n.until === 'жизнь' ? 'жизни' : 'отрезка'}`)
+    } else if ('reshuffle' in n) {
+      out.push(pad + 'карта замешивается обратно в колоду')
     } else if ('charStep' in n) {
       out.push(pad + `характер на ${n.n ?? 1} шаг к «${n.charStep}»`)
     } else if ('cls' in n) {
@@ -109,8 +111,11 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
       const m = n.mod
       const what = [m.add !== undefined && sign(m.add), m.adv && 'преимущество', m.dis && 'помеха'].filter(Boolean).join(', ')
       out.push(pad + `${what} к ${m.fork ? `развилке «${m.fork}»` : m.tag ?? 'проверкам'} до ${m.until === 'отрезок' ? 'конца отрезка' : 'следующей такой проверки'}${m.max ? ', но не дольше конца отрезка' : ''}`)
+    } else if ('useTrump' in n) {
+      out.push(pad + `потратить козырь ${n.useTrump.map((x) => `«${x}»`).join(' или ')}:`, ...renderNodes(n.then, depth + 1))
+      out.push(pad + 'не тратить или нет козыря:', ...renderNodes(n.else, depth + 1))
     } else if ('cancelable' in n) {
-      out.push(pad + `можно отменить козырем ${n.cancelable.map((x) => `«${x}»`).join(', ')}:`, ...renderNodes(n.then, depth + 1))
+      out.push(pad + `можно отменить, потратив козырь ${n.cancelable.map((x) => `«${x}»`).join(', ')}:`, ...renderNodes(n.then, depth + 1))
     } else if ('flag' in n) {
       out.push(pad + `в журнал: «${n.flag}»`)
     } else if ('rule' in n) {
