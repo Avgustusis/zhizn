@@ -32,6 +32,7 @@ export function renderCond(c: Cond): string {
   if ('mainCulture' in c) return `основная культура страны: ${c.mainCulture.join(' или ')}`
   if ('diaspora' in c) return c.diaspora ? 'диаспора без своих' : 'своя культура есть в стране'
   if ('meaning' in c) return c.meaning === 'найден' ? 'смысл жизни найден' : 'у игрока Серость'
+  if ('visited' in c) return `в этом отрезке был: ${c.visited}`
   if ('hasKind' in c) return `есть хотя бы один предмет вида «${c.hasKind}»`
   if ('powerChanged' in c) return c.powerChanged ? 'в стране уже была смена власти' : 'смены власти не было'
   if ('mode' in c) return `режим «${c.mode === 'род' ? 'Род' : 'Поколение'}»`
@@ -107,7 +108,9 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('mod' in n) {
       const m = n.mod
       const what = [m.add !== undefined && sign(m.add), m.adv && 'преимущество', m.dis && 'помеха'].filter(Boolean).join(', ')
-      out.push(pad + `${what} к ${m.fork ? `развилке «${m.fork}»` : m.tag ?? 'проверкам'} до конца ${m.until === 'отрезок' ? 'отрезка' : 'следующей проверки'}`)
+      out.push(pad + `${what} к ${m.fork ? `развилке «${m.fork}»` : m.tag ?? 'проверкам'} до ${m.until === 'отрезок' ? 'конца отрезка' : 'следующей такой проверки'}${m.max ? ', но не дольше конца отрезка' : ''}`)
+    } else if ('cancelable' in n) {
+      out.push(pad + `можно отменить козырем ${n.cancelable.map((x) => `«${x}»`).join(', ')}:`, ...renderNodes(n.then, depth + 1))
     } else if ('flag' in n) {
       out.push(pad + `в журнал: «${n.flag}»`)
     } else if ('rule' in n) {

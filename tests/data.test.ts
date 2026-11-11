@@ -25,6 +25,7 @@ function* walk(nodes: Node[]): Generator<Node> {
     if ('if' in n) { yield* walk(n.then); if (n.else) yield* walk(n.else) }
     if ('cases' in n) { for (const c of n.cases) yield* walk(c.then); if (n.else) yield* walk(n.else) }
     if ('later' in n) yield* walk(n.later.then)
+    if ('cancelable' in n) yield* walk(n.then)
   }
 }
 

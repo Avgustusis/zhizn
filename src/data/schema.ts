@@ -65,7 +65,8 @@ export const TAGS = [
 export const RULES = [
   'обряд',          // бесплатно срабатывает обряд культуры игрока (как точка обмена во взрослом рынке)
   'летопись',       // отметка в Летописи мира (arg — какому виду и сколько)
-  'потерять вещь',  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
+  'потерять вещь',
+  'итог воспитания', // поправка к «Итогу воспитания» ребёнка (arg — сколько), важно в «Роде»  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
 ] as const
 
 /** События, которых может ждать отложенный эффект (`later`). */
@@ -102,6 +103,7 @@ export type Cond =
   | { mode: 'поколение' | 'род' }
   | { meaning: 'найден' | 'серость' }
   | { hasKind: (typeof ITEM_KINDS)[number] }
+  | { visited: string }
   | { powerChanged: boolean }
 
 export const Cond: z.ZodType<Cond> = z.lazy(() =>
@@ -132,6 +134,8 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ meaning: z.enum(['найден', 'серость']) }),
     /** Есть хотя бы один предмет этого вида. */
     z.strictObject({ hasKind: z.enum(ITEM_KINDS) }),
+    /** В этом отрезке игрок был в этом месте рынка («Салон в этом отрезке»). */
+    z.strictObject({ visited: z.string().min(1) }),
     /** В стране проживания за партию уже была смена власти. */
     z.strictObject({ powerChanged: z.boolean() }),
   ]),
@@ -182,7 +186,8 @@ export type Node =
   | { d6: Record<string, Node[]> }
   | { if: Cond; then: Node[]; else?: Node[] }
   | { cases: { if: Cond; then: Node[] }[]; else?: Node[] }
-  | { mod: { tag?: (typeof TAGS)[number]; fork?: string; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка' } }
+  | { mod: { tag?: (typeof TAGS)[number]; fork?: string; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка'; max?: 'отрезок' } }
+  | { cancelable: string[]; then: Node[] }
   | { flag: string }
   | { rule: (typeof RULES)[number]; arg?: string }
   | { bottom: true }
@@ -226,8 +231,12 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
       mod: z.strictObject({
         tag: Tag.optional(), fork: z.string().optional(), add: z.number().int().optional(), adv: z.literal(true).optional(), dis: z.literal(true).optional(),
         until: z.enum(['отрезок', 'проверка']),
+        /** Для until «проверка»: сгорает в конце отрезка, даже если проверки так и не было. */
+        max: z.literal('отрезок').optional(),
       }),
     }),
+    /** Шаги, которые игрок может отменить козырем («Знакомый врач» отменяет осложнение). */
+    z.strictObject({ cancelable: z.array(ItemName).min(1), then: z.array(Node) }),
     /** Отметка в журнале жизни: прошлые события для условий смысла и карт. */
     z.strictObject({ flag: z.string().min(1) }),
     z.strictObject({ rule: z.enum(RULES), arg: z.string().optional() }),
