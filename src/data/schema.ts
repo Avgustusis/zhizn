@@ -260,7 +260,7 @@ export type Node =
   | { addUsed: number }
   | { addPredisp: number }
   | { addClassStat: number; both?: true }
-  | { perSeg: Node[]; until: 'конец Зрелости' }
+  | { installments: number; each: Node[] }
   | { halve: 'возм' }
   | { later: { when: (typeof LATER_EVENTS)[number]; until?: 'отрезок'; then: Node[] } }
   | { miracle: (typeof STATS)[number][] | 'любая' }
@@ -299,8 +299,8 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({ addPredisp: z.number().int() }),
     /** +n к характеристике пригодности своего класса (на выбор из двух; both — к обеим). */
     z.strictObject({ addClassStat: z.number().int(), both: z.literal(true).optional() }),
-    /** Повторять в начале каждого следующего отрезка до указанного срока. */
-    z.strictObject({ perSeg: z.array(Node), until: z.literal('конец Зрелости') }),
+    /** Платежи: по одному на входе в каждый следующий подсектор (половину отрезка), всего n («4 жетона на карте»). */
+    z.strictObject({ installments: z.number().int().positive(), each: z.array(Node) }),
     /** Потерять половину (округление вниз): «Возможности 4+: потеряна половина». */
     z.strictObject({ halve: z.literal('возм') }),
     /** Отложенный эффект: сработает при событии; until — только если событие случится до конца отрезка. */

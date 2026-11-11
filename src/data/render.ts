@@ -99,8 +99,8 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
       out.push(pad + `${sign(n.addPredisp)} к характеристике предрасположенности`)
     } else if ('addClassStat' in n) {
       out.push(pad + `${sign(n.addClassStat)} ${n.both ? 'к обеим характеристикам' : 'к одной характеристике'} пригодности своего класса`)
-    } else if ('perSeg' in n) {
-      out.push(pad + 'в начале каждого отрезка до конца Зрелости:', ...renderNodes(n.perSeg, depth + 1))
+    } else if ('installments' in n) {
+      out.push(pad + `${n.installments} платежа: на входе в каждый следующий подсектор`, ...renderNodes(n.each, depth + 1))
     } else if ('halve' in n) {
       out.push(pad + 'потерять половину возм. (округление вниз)')
     } else if ('later' in n) {
