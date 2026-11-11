@@ -27,10 +27,23 @@ function CardView({ card, legend, color }: { card: Card; legend?: Record<string,
         <h4>Оригинал</h4>
         <p className="src">{card.src}</p>
       </section>
+      {card.target && <p className="req">Целевая страна: {card.target}{card.scope ? ` · охват: ${card.scope}` : ''}</p>}
+      {card.country && (
+        <section>
+          <h4>Разбор: страна</h4>
+          <pre className="parsed">{renderNodes(card.country).join('\n')}</pre>
+        </section>
+      )}
       <section>
-        <h4>Разбор</h4>
+        <h4>{card.country || card.target ? 'Разбор: игроки' : card.sides ? 'Разбор: для всех' : 'Разбор'}</h4>
         <pre className="parsed">{renderNodes(card.effect).join('\n')}</pre>
       </section>
+      {card.sides && (['win', 'lose', 'neutral'] as const).map((k) => (
+        <section key={k}>
+          <h4>Разбор: {{ win: 'победители', lose: 'проигравшие', neutral: 'нейтралы' }[k]}</h4>
+          <pre className="parsed">{renderNodes(card.sides![k]).join('\n')}</pre>
+        </section>
+      ))}
       {card.doubts && (
         <section className="doubts">
           <h4>Вопрос к автору</h4>
@@ -72,7 +85,7 @@ export default function App() {
     <main>
       <header className="top">
         <h1>Жизнь</h1>
-        <p className="subtitle">Колоды в цифровом формате — проверка перевода. Переведено карт: {total} из ~709, спорных: {doubts}.</p>
+        <p className="subtitle">Колоды в цифровом формате — проверка перевода. Карт событий: {total}, спорных: {doubts}.</p>
         <div className="controls">
           <select value={deckId} onChange={(e) => setDeckId(e.target.value as DeckId | 'все')}>
             <option value="все">Все колоды</option>

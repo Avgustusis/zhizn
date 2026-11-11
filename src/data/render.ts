@@ -46,6 +46,11 @@ export function renderCond(c: Cond): string {
   if ('emigrant' in c) return c.emigrant ? 'эмигрант' : 'живёт в стране рождения'
   if ('draft' in c) return c.draft ? 'в стране призыв, и он касается игрока' : 'призыва нет'
   if ('sentenceTag' in c) return `срок за ${c.sentenceTag}`
+  if ('inTarget' in c) return c.inTarget ? 'живёт в целевой стране' : 'живёт не в целевой стране'
+  if ('draftable' in c) return 'подлежит призыву (Молодость или Зрелость, пол как в «Повестке»)'
+  if ('formerDominant' in c) return 'класс был доминирующим до смены власти'
+  if ('side' in c) return `сторона: ${c.side}`
+  if ('chose' in c) return `выбрано «${c.chose}»`
   if ('hasKind' in c) return `есть хотя бы один предмет вида «${c.hasKind}»`
   if ('powerChanged' in c) return `${c.powerChanged ? 'была' : 'не было'} смена власти ${c.inSeg ? 'в этом отрезке' : 'в стране'}`
   if ('stability' in c) return `стабильность ${c.stability.gte !== undefined ? `${c.stability.gte}+` : `${c.stability.lte} и ниже`}`
@@ -91,7 +96,9 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
   if (nodes.length === 0) out.push(pad + 'ничего')
   for (const n of nodes) {
     if ('add' in n) {
-      out.push(pad + Object.entries(n.add).map(([k, v]) => `${sign(v!)} ${PARAM_LABEL[k] ?? k}`).join(', '))
+      out.push(pad + Object.entries(n.add).map(([k, v]) => `${sign(v!)} ${PARAM_LABEL[k] ?? k}`).join(', ') + (n.cap !== undefined ? ` (до ${n.cap})` : ''))
+    } else if ('stab' in n) {
+      out.push(pad + `стабильность страны ${sign(n.stab)}`)
     } else if ('addOneOf' in n) {
       out.push(pad + `${sign(n.n)} к одной на выбор: ${n.addOneOf.join(', ')}`)
     } else if ('addUsed' in n) {

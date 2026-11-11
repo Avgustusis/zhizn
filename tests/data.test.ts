@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { allCards, decks } from '../src/data/index.ts'
-import type { Node } from '../src/data/schema.ts'
+import type { Card, Node } from '../src/data/schema.ts'
 
 /** Имена предметов из каталога: первая колонка таблиц документа предметов. */
 function catalogNames(): Set<string> {
@@ -14,6 +14,13 @@ function catalogNames(): Set<string> {
   }
   for (const generic of ['Партнёр', 'Супруг(а)', 'Ребёнок', 'Друг', 'Наставник', 'Покровитель']) names.add(generic)
   return names
+}
+
+/** Все шаги карты: эффект, часть страны (Мир), строки сторон (Смута). */
+function* walkCard(c: Card): Generator<Node> {
+  yield* walk(c.effect)
+  if (c.country) yield* walk(c.country)
+  if (c.sides) { yield* walk(c.sides.win); yield* walk(c.sides.lose); yield* walk(c.sides.neutral) }
 }
 
 function* walk(nodes: Node[]): Generator<Node> {
@@ -45,7 +52,7 @@ describe('карты', () => {
   it('предметы есть в каталоге', () => {
     const names = catalogNames()
     const unknown = allCards.flatMap((c) =>
-      [...walk(c.effect)].flatMap((n) => ('gain' in n ? [n.gain] : 'lose' in n ? [n.lose] : [])).filter((x) => !names.has(x)).map((x) => `${c.id}: ${x}`))
+      [...walkCard(c)].flatMap((n) => ('gain' in n ? [n.gain] : 'lose' in n ? [n.lose] : [])).filter((x) => !names.has(x)).map((x) => `${c.id}: ${x}`))
     expect(unknown).toEqual([])
   })
 
@@ -56,13 +63,13 @@ describe('карты', () => {
         ? Object.entries(x).flatMap(([k, v]) => (k === 'has' && typeof v === 'string' ? [v] : conds(v)))
         : []
     const unknown = allCards.flatMap((c) =>
-      [...conds(c.effect), ...conds(c.requires), ...(c.cancelBy ?? [])].filter((x) => !names.has(x)).map((x) => `${c.id}: ${x}`))
+      [...conds(c.effect), ...conds(c.country), ...conds(c.sides), ...conds(c.requires), ...(c.cancelBy ?? [])].filter((x) => !names.has(x)).map((x) => `${c.id}: ${x}`))
     expect(unknown).toEqual([])
   })
 
   it('исходы d6 в пределах 1–6 и не пересекаются', () => {
     const bad: string[] = []
-    for (const c of allCards) for (const n of walk(c.effect)) {
+    for (const c of allCards) for (const n of walkCard(c)) {
       if (!('d6' in n)) continue
       const seen = new Set<number>()
       for (const r of Object.keys(n.d6)) {
@@ -77,13 +84,13 @@ describe('карты', () => {
   it('сложность проверок — 12, 15 или 18 (вступительные — 16)', () => {
     // Исключение: вступительные на «Образовании» — 16.
     const ok = (c: { id: string }, dc: number) => [12, 15, 18].includes(dc) || (c.id === 'развилка.01' && dc === 16)
-    const bad = allCards.flatMap((c) => [...walk(c.effect)].flatMap((n) => ('check' in n && !ok(c, n.check.dc) ? [`${c.id}: ${n.check.dc}`] : [])))
+    const bad = allCards.flatMap((c) => [...walkCard(c)].flatMap((n) => ('check' in n && !ok(c, n.check.dc) ? [`${c.id}: ${n.check.dc}`] : [])))
     expect(bad).toEqual([])
   })
 
   it('тип карты совпадает с разбором: П — есть проверка, Р — есть выбор', () => {
     const bad = allCards.filter((c) => {
-      const nodes = [...walk(c.effect)]
+      const nodes = [...walkCard(c)]
       if (c.kind === 'П') return !nodes.some((n) => 'check' in n)
       if (c.kind === 'Р') return !nodes.some((n) => 'choose' in n)
       return false

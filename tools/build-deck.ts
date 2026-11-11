@@ -35,18 +35,25 @@ const rows: Record<string, string>[] = CLASS_DECK
   : sectionRows(md, header)
 const miracles = new Map(readTable(md, '## Чудеса').map((r) => [r['Карта'], r['Текст']]))
 const outPath = resolve(`src/data/decks/${DECK_FILES[deck]}.json`)
-type Effects = Record<string, { effect: unknown; doubts?: string[]; requires?: unknown; cancelBy?: string[] }>
+type Effects = Record<string, { effect: unknown; doubts?: string[]; requires?: unknown; cancelBy?: string[]; target?: unknown; country?: unknown; sides?: unknown }>
 /** Ключ карты по id: «возраст.детство.04» → «4», «класс.народ.01» → «Народ.1». */
 function keyOf(c: Card): string {
   const parts = c.id.split('.')
-  const num = parts.pop()!.replace(/^0+(?=\d)/, '')
+  const last = parts.pop()!
+  const num = /^\d/.test(last) ? last.replace(/^0+(?=\d)/, '') : last.toUpperCase()
   return c.cls ? `${c.cls}.${num}` : num
 }
 // Разбор берётся из уже собранного файла колоды, поверх — из effects.json (если дан).
 const existing: Effects = existsSync(outPath)
-  ? Object.fromEntries(DeckFile.parse(JSON.parse(readFileSync(outPath, 'utf8'))).cards.map((c) => [keyOf(c), { effect: c.effect, doubts: c.doubts, requires: c.requires, cancelBy: c.cancelBy }]))
+  ? Object.fromEntries(DeckFile.parse(JSON.parse(readFileSync(outPath, 'utf8'))).cards.map((c) => [keyOf(c), { effect: c.effect, doubts: c.doubts, requires: c.requires, cancelBy: c.cancelBy, target: c.target, country: c.country, sides: c.sides }]))
   : {}
 const effects: Effects = { ...existing, ...(effectsPath ? JSON.parse(readFileSync(effectsPath, 'utf8')) : {}) }
+
+/** Мир и Смута: эффект в нескольких колонках — собираем оригинал из них. */
+function composeSrc(r: Record<string, string>): string {
+  const cols = r['Игроки'] !== undefined ? ['Страна', 'Игроки'] : ['Для всех', 'Победители', 'Проигравшие', 'Нейтралы']
+  return cols.map((c) => `${c}: ${r[c]}`).join(' · ')
+}
 
 /** Тип карты, если в документе его нет: развилка — решение; иначе по разбору (выбор → Р, проверка → П, иначе Б). */
 function kindOf(effect: unknown, fork: boolean): 'Б' | 'П' | 'Р' {
@@ -103,12 +110,12 @@ const cards = rows.flatMap((r, i) => {
   const card = {
     id: CLASS_DECK
       ? `${deck}.${r._cls.toLowerCase()}.${String(n).padStart(2, '0')}`
-      : `${deck}.${key.padStart(key.length + 2 - String(n).length, '0')}`,
+      : /^\d/.test(key) ? `${deck}.${key.padStart(key.length + 2 - String(n).length, '0')}` : `${deck}.${key.toLowerCase()}`,
     ...(CLASS_DECK ? { cls: r._cls } : {}),
     n,
     title,
     text: miracle ? (miracles.get(title) ?? r['Текст'] ?? '') : (r['Текст'] ?? ''),
-    src: r['Эффект'] ?? r['Пути'],
+    src: r['Эффект'] ?? r['Пути'] ?? composeSrc(r),
     kind: r['Тип'] ?? kindOf(e.effect, r['Развилка'] !== undefined),
     ...(r['Фильтр'] ? { filter: r['Фильтр'] } : {}),
     ...(r['Клетка'] && r['Клетка'] !== 'колода' ? { cell: r['Клетка'] } : {}),
@@ -116,6 +123,10 @@ const cards = rows.flatMap((r, i) => {
     segs: r['Отрезки'] ? parseSegs(r['Отрезки']) : undefined,
     tags: r['Теги'] === '—' ? [] : r['Теги'].split(/\s+/).filter(Boolean),
     ...(e.requires ? { requires: e.requires } : {}),
+    ...(r['Охват'] ? { scope: r['Охват'] } : {}),
+    ...(e.target ? { target: e.target } : {}),
+    ...(e.country ? { country: e.country } : {}),
+    ...(e.sides ? { sides: e.sides } : {}),
     ...(e.cancelBy ? { cancelBy: e.cancelBy } : {}),
     ...(miracle ? { miracle: true } : {}),
     effect: e.effect,
