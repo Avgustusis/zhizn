@@ -81,11 +81,16 @@ export const RULES = [
   'только подработка', // до конца отрезка из работ доступна только Подработка
   'катастрофа мимо', // первая катастрофа до конца отрезка игрока минует
   'утрата близкого', // бросок среди людей игрока (Партнёр или Супруг(а), Друг, Наставник, Покровитель): кто ушёл — связь теряется
+  'студент',        // первые 15 клеток Молодости — студент: из работ только Подработка, Стаж не идёт
+  'казённое место', // до конца отрезка карты #работа с потерей возм. бьют на 1 слабее
+  'пенсия',         // уйти на пенсию: пенсия по Стажу найма
+  'работа на пенсии', // Работа остаётся, но каждая отметка Стажа стоит ещё −1 физ.
+  'учить молодых',  // пенсия по Стажу, доход как Подработка
   'итог воспитания', // поправка к «Итогу воспитания» ребёнка (arg — сколько), важно в «Роде»  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
 ] as const
 
 /** События, которых может ждать отложенный эффект (`later`). */
-export const LATER_EVENTS = ['вход в Зрелость', 'вход в следующий отрезок', 'смена власти', 'выход из тюрьмы'] as const
+export const LATER_EVENTS = ['вход в Зрелость', 'вход в следующий отрезок', 'смена власти', 'выход из тюрьмы', 'конец учёбы'] as const
 
 // ── Условия ─────────────────────────────────────────────────────────────
 
@@ -123,6 +128,7 @@ export type Cond =
   | { meaning: 'найден' | 'серость' }
   | { hasKind: (typeof ITEM_KINDS)[number] }
   | { visited: string }
+  | { draft: boolean }
   | { emigrant: boolean }
   | { notAlone: boolean }
   | { partnerDiff: 'культура' | 'класс' }
@@ -178,6 +184,8 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ hasKind: z.enum(ITEM_KINDS) }),
     /** В этом отрезке игрок был в этом месте рынка («Салон в этом отрезке»). */
     z.strictObject({ visited: z.string().min(1) }),
+    /** В стране призыв и он касается игрока: военная диктатура, госсоциализм, национализм — всегда, остальные — d6 1–3 (бросок при розыгрыше); зовут пол в преимуществе, при 0 — всех. */
+    z.strictObject({ draft: z.boolean() }),
     /** Игрок живёт не в стране рождения. */
     z.strictObject({ emigrant: z.boolean() }),
     /** «Живёшь не один»: Супруг(а) или Партнёр; или отметка «Не один» в журнале (до конца жизни); или сиделка за 2 возм., оплаченная в этот ход в Древности. */
@@ -251,12 +259,14 @@ export type Node =
   | { addOneOf: (typeof STATS)[number][]; n: number }
   | { addUsed: number }
   | { addPredisp: number }
+  | { addClassStat: number; both?: true }
+  | { perSeg: Node[]; until: 'конец Зрелости' }
   | { halve: 'возм' }
   | { later: { when: (typeof LATER_EVENTS)[number]; until?: 'отрезок'; then: Node[] } }
   | { miracle: (typeof STATS)[number][] | 'любая' }
   | { gain: string; blind?: boolean; adopted?: true }
   | { lose: string; price?: true }
-  | { income: number; until: 'отрезок' }
+  | { income: number; until: 'отрезок' | 'конец Молодости' | 'жизнь' }
   | { pension: number }
   | { reshuffle: true }
   | { noAging: number }
@@ -269,7 +279,7 @@ export type Node =
   | { d6: Record<string, Node[]> }
   | { if: Cond; then: Node[]; else?: Node[] }
   | { cases: { if: Cond; then: Node[] }[]; else?: Node[] }
-  | { mod: { tag?: (typeof TAGS)[number]; fork?: string; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка' | 'вражда'; max?: 'отрезок' } }
+  | { mod: { tag?: (typeof TAGS)[number]; fork?: string; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка' | 'вражда' | 'конец Молодости'; max?: 'отрезок' } }
   | { cancelable: string[]; then: Node[] }
   | { useTrump: string[]; then: Node[]; else: Node[] }
   | { flag: string }
@@ -287,6 +297,10 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({ addUsed: z.number().int() }),
     /** +n к характеристике предрасположенности. */
     z.strictObject({ addPredisp: z.number().int() }),
+    /** +n к характеристике пригодности своего класса (на выбор из двух; both — к обеим). */
+    z.strictObject({ addClassStat: z.number().int(), both: z.literal(true).optional() }),
+    /** Повторять в начале каждого следующего отрезка до указанного срока. */
+    z.strictObject({ perSeg: z.array(Node), until: z.literal('конец Зрелости') }),
     /** Потерять половину (округление вниз): «Возможности 4+: потеряна половина». */
     z.strictObject({ halve: z.literal('возм') }),
     /** Отложенный эффект: сработает при событии; until — только если событие случится до конца отрезка. */
@@ -300,7 +314,7 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     /** Потерять предмет. price — со своей ценой сброса («расставание по обычной цене»). */
     z.strictObject({ lose: ItemName, price: z.literal(true).optional() }),
     /** Прибавка к доходу за ход до конца отрезка. */
-    z.strictObject({ income: z.number().int(), until: z.literal('отрезок') }),
+    z.strictObject({ income: z.number().int(), until: z.enum(['отрезок', 'конец Молодости', 'жизнь']) }),
     /** Надбавка к пенсии каждый ход до конца жизни — по правилам пенсии: нет пенсии (Стаж 0–4) — нет и надбавки; потолок «не больше обычного дохода» — вместе с надбавкой. */
     z.strictObject({ pension: z.number().int() }),
     /** Карта замешивается обратно в колоду, а не уходит в сброс («он вернётся»). */
@@ -328,7 +342,7 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({
       mod: z.strictObject({
         tag: Tag.optional(), fork: z.string().optional(), add: z.number().int().optional(), adv: z.literal(true).optional(), dis: z.literal(true).optional(),
-        until: z.enum(['отрезок', 'проверка', 'вражда']),
+        until: z.enum(['отрезок', 'проверка', 'вражда', 'конец Молодости']),
         /** Для until «проверка»: сгорает в конце отрезка, даже если проверки так и не было. */
         max: z.literal('отрезок').optional(),
       }),
@@ -400,6 +414,8 @@ export const Card = z.strictObject({
   /** Козыри, которые отменяют карту целиком («Козырь «Справка» отменяет карту»). Козырь тратится. */
   cancelBy: z.array(ItemName).optional(),
   miracle: z.literal(true).optional(),
+  /** Развилка, напечатанная на поле: где стоит («на поле, клетка 8»). */
+  cell: z.string().optional(),
   effect: z.array(Node),
   /** Вопросы к автору правил. Пока вопрос открыт, карта помечена спорной. */
   doubts: z.array(z.string()).optional(),

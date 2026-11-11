@@ -86,9 +86,11 @@ const cards = rows.flatMap((r, i) => {
   const n = Number(key.replace(/^.*\./, '').replace(/[^0-9]/g, ''))
   const e = effects[key]
   if (!e && CLASS_DECK && !Object.keys(effects).some((k) => k.startsWith(r._cls + '.'))) return []
-  if (!e) throw new Error(`нет разбора для карты ${key} «${r['Карта']}»`)
-  const miracle = r['Карта'].includes('✨')
-  const title = r['Карта'].replace('✨', '').trim()
+  if (!e) throw new Error(`нет разбора для карты ${key} «${r['Карта'] ?? r['Развилка']}»`)
+  // У развилок название — в колонке «Развилка», пути — в «Пути», место на поле — в «Клетка».
+  const name = r['Карта'] ?? r['Развилка']
+  const miracle = name.includes('✨')
+  const title = name.replace('✨', '').trim()
   const card = {
     id: CLASS_DECK
       ? `${deck}.${r._cls.toLowerCase()}.${String(n).padStart(2, '0')}`
@@ -97,8 +99,9 @@ const cards = rows.flatMap((r, i) => {
     n,
     title,
     text: miracle ? (miracles.get(title) ?? r['Текст']) : r['Текст'],
-    src: r['Эффект'],
-    kind: r['Тип'],
+    src: r['Эффект'] ?? r['Пути'],
+    kind: r['Тип'] ?? 'Р',
+    ...(r['Клетка'] && r['Клетка'] !== 'колода' ? { cell: r['Клетка'] } : {}),
     sub: r['Когда'] ? [...r['Когда']] : undefined,
     segs: r['Отрезки'] ? parseSegs(r['Отрезки']) : undefined,
     tags: r['Теги'] === '—' ? [] : r['Теги'].split(/\s+/).filter(Boolean),

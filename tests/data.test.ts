@@ -27,6 +27,7 @@ function* walk(nodes: Node[]): Generator<Node> {
     if ('later' in n) yield* walk(n.later.then)
     if ('cancelable' in n) yield* walk(n.then)
     if ('useTrump' in n) { yield* walk(n.then); yield* walk(n.else) }
+    if ('perSeg' in n) yield* walk(n.perSeg)
   }
 }
 
@@ -72,8 +73,10 @@ describe('карты', () => {
     expect(bad).toEqual([])
   })
 
-  it('сложность проверок — 12, 15 или 18', () => {
-    const bad = allCards.flatMap((c) => [...walk(c.effect)].flatMap((n) => ('check' in n && ![12, 15, 18].includes(n.check.dc) ? [`${c.id}: ${n.check.dc}`] : [])))
+  it('сложность проверок — 12, 15 или 18 (вступительные — 16)', () => {
+    // Исключение: вступительные на «Образовании» — 16.
+    const ok = (c: { id: string }, dc: number) => [12, 15, 18].includes(dc) || (c.id === 'развилка.01' && dc === 16)
+    const bad = allCards.flatMap((c) => [...walk(c.effect)].flatMap((n) => ('check' in n && !ok(c, n.check.dc) ? [`${c.id}: ${n.check.dc}`] : [])))
     expect(bad).toEqual([])
   })
 

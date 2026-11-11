@@ -44,6 +44,7 @@ export function renderCond(c: Cond): string {
   if ('count' in c) return `«${c.count}» не меньше ${c.gte}`
   if ('notAlone' in c) return c.notAlone ? 'живёт не один' : 'живёт один'
   if ('emigrant' in c) return c.emigrant ? 'эмигрант' : 'живёт в стране рождения'
+  if ('draft' in c) return c.draft ? 'в стране призыв, и он касается игрока' : 'призыва нет'
   if ('hasKind' in c) return `есть хотя бы один предмет вида «${c.hasKind}»`
   if ('powerChanged' in c) return `${c.powerChanged ? 'была' : 'не было'} смена власти ${c.inSeg ? 'в этом отрезке' : 'в стране'}`
   if ('stability' in c) return `стабильность ${c.stability.gte !== undefined ? `${c.stability.gte}+` : `${c.stability.lte} и ниже`}`
@@ -96,6 +97,10 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
       out.push(pad + `${sign(n.addUsed)} к характеристике, которой бросал`)
     } else if ('addPredisp' in n) {
       out.push(pad + `${sign(n.addPredisp)} к характеристике предрасположенности`)
+    } else if ('addClassStat' in n) {
+      out.push(pad + `${sign(n.addClassStat)} ${n.both ? 'к обеим характеристикам' : 'к одной характеристике'} пригодности своего класса`)
+    } else if ('perSeg' in n) {
+      out.push(pad + 'в начале каждого отрезка до конца Зрелости:', ...renderNodes(n.perSeg, depth + 1))
     } else if ('halve' in n) {
       out.push(pad + 'потерять половину возм. (округление вниз)')
     } else if ('later' in n) {
@@ -107,7 +112,7 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('lose' in n) {
       out.push(pad + `потерять «${n.lose}»${n.price ? ' (с обычной ценой сброса)' : ''}`)
     } else if ('income' in n) {
-      out.push(pad + `доход ${sign(n.income)} за ход до конца отрезка`)
+      out.push(pad + `доход ${sign(n.income)} за ход до ${n.until === 'жизнь' ? 'конца жизни' : n.until === 'конец Молодости' ? 'конца Молодости' : 'конца отрезка'}`)
     } else if ('pension' in n) {
       out.push(pad + `надбавка к пенсии ${sign(n.pension)} за ход до конца жизни (по правилам пенсии)`)
     } else if ('noAging' in n) {
@@ -146,7 +151,7 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('mod' in n) {
       const m = n.mod
       const what = [m.add !== undefined && sign(m.add), m.adv && 'преимущество', m.dis && 'помеха'].filter(Boolean).join(', ')
-      out.push(pad + `${what} к ${m.fork ? `развилке «${m.fork}»` : m.tag ?? 'проверкам'} до ${m.until === 'отрезок' ? 'конца отрезка' : m.until === 'вражда' ? 'конца вражды стран' : 'следующей такой проверки'}${m.max ? ', но не дольше конца отрезка' : ''}`)
+      out.push(pad + `${what} к ${m.fork ? `развилке «${m.fork}»` : m.tag ?? 'проверкам'} до ${m.until === 'отрезок' ? 'конца отрезка' : m.until === 'вражда' ? 'конца вражды стран' : m.until === 'конец Молодости' ? 'конца Молодости' : 'следующей такой проверки'}${m.max ? ', но не дольше конца отрезка' : ''}`)
     } else if ('useTrump' in n) {
       out.push(pad + `потратить козырь ${n.useTrump.map((x) => `«${x}»`).join(' или ')}:`, ...renderNodes(n.then, depth + 1))
       out.push(pad + 'не тратить или нет козыря:', ...renderNodes(n.else, depth + 1))
