@@ -77,6 +77,10 @@ export const RULES = [
   'свадьба',        // Партнёр становится Супругом(ой), как на развилке «Партнёрство» (с проверкой мезальянса)
   'эмиграция',      // эмиграция по правилам (arg — особые условия: без проверки, класс сохраняется)
   'стабильность',   // сдвиг стабильности страны проживания (arg — на сколько)
+  'гражданство',    // гражданство другой страны (arg — какой): туда без проверки границы
+  'только подработка', // до конца отрезка из работ доступна только Подработка
+  'катастрофа мимо', // первая катастрофа до конца отрезка игрока минует
+  'утрата близкого', // бросок среди людей игрока (Партнёр или Супруг(а), Друг, Наставник, Покровитель): кто ушёл — связь теряется
   'итог воспитания', // поправка к «Итогу воспитания» ребёнка (arg — сколько), важно в «Роде»  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
 ] as const
 
@@ -212,7 +216,8 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
 
 /** Поправка к проверке при условии: новая сложность, ±к броску, преимущество, помеха, автоуспех. */
 const CheckMod = z.strictObject({
-  if: Cond,
+  /** Без условия — поправка действует всегда (например, после оплаченного лечения). */
+  if: Cond.optional(),
   dc: z.number().int().optional(),
   add: z.number().int().optional(),
   adv: z.literal(true).optional(),
@@ -245,6 +250,8 @@ export type Node =
   | { add: Partial<Record<(typeof PARAMS)[number], number>> }
   | { addOneOf: (typeof STATS)[number][]; n: number }
   | { addUsed: number }
+  | { addPredisp: number }
+  | { halve: 'возм' }
   | { later: { when: (typeof LATER_EVENTS)[number]; until?: 'отрезок'; then: Node[] } }
   | { miracle: (typeof STATS)[number][] | 'любая' }
   | { gain: string; blind?: boolean; adopted?: true }
@@ -278,6 +285,10 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({ addOneOf: z.array(Stat).min(2), n: z.number().int() }),
     /** +n к характеристике, которой игрок бросал последнюю проверку («успех — +1 к ней»). */
     z.strictObject({ addUsed: z.number().int() }),
+    /** +n к характеристике предрасположенности. */
+    z.strictObject({ addPredisp: z.number().int() }),
+    /** Потерять половину (округление вниз): «Возможности 4+: потеряна половина». */
+    z.strictObject({ halve: z.literal('возм') }),
     /** Отложенный эффект: сработает при событии; until — только если событие случится до конца отрезка. */
     z.strictObject({
       later: z.strictObject({ when: z.enum(LATER_EVENTS), until: z.literal('отрезок').optional(), then: z.array(Node) }),

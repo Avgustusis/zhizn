@@ -76,7 +76,7 @@ export function renderCheck(ch: Check): string {
       m.spend && 'если потратить',
       m.fixed && 'при любой силе',
     ].filter(Boolean).join(', ')
-    return `${renderCond(m.if)} — ${what}`
+    return m.if ? `${renderCond(m.if)} — ${what}` : what
   })
   if (mods.length) s += ` [${mods.join('; ')}]`
   return s
@@ -94,6 +94,10 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
       out.push(pad + `${sign(n.n)} к одной на выбор: ${n.addOneOf.join(', ')}`)
     } else if ('addUsed' in n) {
       out.push(pad + `${sign(n.addUsed)} к характеристике, которой бросал`)
+    } else if ('addPredisp' in n) {
+      out.push(pad + `${sign(n.addPredisp)} к характеристике предрасположенности`)
+    } else if ('halve' in n) {
+      out.push(pad + 'потерять половину возм. (округление вниз)')
     } else if ('later' in n) {
       out.push(pad + `потом — ${n.later.when}${n.later.until ? ' (если до конца отрезка)' : ''}:`, ...renderNodes(n.later.then, depth + 1))
     } else if ('miracle' in n) {
