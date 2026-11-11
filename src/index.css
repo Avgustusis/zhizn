@@ -1,0 +1,48 @@
+:root {
+  --paper: #F3EFE6;
+  --ink: #1E1E24;
+  --red: #A8322B;
+  --muted: #6b6760;
+  --line: #d8d1c2;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: Georgia, 'PT Serif', 'Times New Roman', serif;
+  line-height: 1.45;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+.top h1 { margin: 0; font-size: 2rem; letter-spacing: 0.04em; }
+.subtitle { margin: 4px 0 12px; color: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.controls select, .controls input[type=search] {
+  font: inherit; padding: 6px 8px; border: 1px solid var(--line); background: #fffdf8; color: var(--ink); border-radius: 4px;
+}
+.controls input[type=search] { flex: 1 1 160px; }
+.deck h2 { margin: 24px 0 4px; font-size: 1.3rem; }
+.legend { margin: 0 0 10px; color: var(--muted); font-size: 0.9rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.card {
+  background: #fffdf8; border: 1px solid var(--line); border-top: 6px solid var(--ink); border-radius: 4px;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+}
+.card.doubtful { box-shadow: 0 0 0 2px var(--red) inset; }
+.card header { display: flex; align-items: baseline; gap: 8px; }
+.card h3 { margin: 0; font-size: 1.05rem; flex: 1; }
+.num, .kind, .id, .sub { font-family: ui-monospace, 'Courier New', monospace; font-size: 0.75rem; color: var(--muted); }
+.text { margin: 0; font-style: italic; }
+.card h4 { margin: 0; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.src { margin: 0; }
+.parsed {
+  margin: 0; white-space: pre-wrap; font-family: ui-monospace, 'Courier New', monospace; font-size: 0.8rem;
+  background: #f6f2e8; padding: 6px 8px; border-radius: 3px;
+}
+.doubts { border-left: 3px solid var(--red); padding-left: 8px; }
+.doubts p { margin: 2px 0; font-size: 0.9rem; }
+.card footer { display: flex; gap: 8px; align-items: baseline; margin-top: auto; padding-top: 4px; border-top: 1px dashed var(--line); }
+.tags { flex: 1; font-family: ui-monospace, 'Courier New', monospace; font-size: 0.75rem; }
+.empty { color: var(--muted); }
+@media (max-width: 480px) {
+  main { padding: 10px; }
+  .grid { grid-template-columns: 1fr; }
+}

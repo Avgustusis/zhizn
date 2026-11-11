@@ -1,0 +1,269 @@
+/**
+ * Формат карт «Жизни».
+ *
+ * Карта хранит оригинальный текст (поле `src`) и его разбор в явные эффекты (`effect`).
+ * Ключи структуры — английские (op, if, then), значения игровых сущностей — русские,
+ * как в документах: «Харизма», «Сплочённость», «Друг детства», «#семья».
+ * Описание формата для людей — docs/CARDS.md.
+ */
+import { z } from 'zod'
+
+// ── Словари ─────────────────────────────────────────────────────────────
+
+export const STATS = ['Сила', 'Выносливость', 'Ловкость', 'Интеллект', 'Мудрость', 'Харизма', 'Смекалка', 'Красота'] as const
+export const HEALTH = ['физ', 'псих'] as const
+/** Всё, что меняется числом. Финансы, Положение и Сплочённость — шкалы семьи (−3…+3). */
+export const PARAMS = [...STATS, ...HEALTH, 'возм', 'Стаж', 'Сплочённость', 'Финансы', 'Положение'] as const
+
+export const SEGMENTS = ['Детство', 'Юность', 'Молодость', 'Зрелость', 'Старость', 'Древность'] as const
+export const CLASSES = ['Народ', 'Армия', 'Полиция', 'Интеллигенция', 'Мафия', 'Олигархи'] as const
+export const IDEOLOGIES = [
+  'Либеральная демократия', 'Социал-демократия', 'Теократия', 'Национализм', 'Госсоциализм', 'Военная диктатура', 'Клептократия',
+] as const
+/** Группы идеологий, которыми говорят карты. */
+export const IDEOLOGY_GROUPS = {
+  'демократии': ['Либеральная демократия', 'Социал-демократия'],
+  'диктатуры': ['Военная диктатура', 'Госсоциализм', 'Теократия'],
+} as const satisfies Record<string, readonly (typeof IDEOLOGIES)[number][]>
+export const COUNTRY_POS = ['ядро', 'полупериферия', 'периферия'] as const
+
+/** 11 осей культуры: [первый полюс, второй полюс]. */
+export const CULTURE_AXES = [
+  ['Коллективизм', 'Индивидуализм'], ['Иерархия', 'Равенство'], ['Патриархат', 'Матриархат'], ['Порядок', 'Риск'],
+  ['Теизм', 'Секуляризм'], ['Традиция', 'Самовыражение'], ['Фамилизм', 'Институции'], ['Доверие', 'Цинизм'],
+  ['Честь', 'Достоинство'], ['Материализм', 'Гуманизм'], ['Этноцентризм', 'Открытость'],
+] as const
+export const CULTURE_POLES = CULTURE_AXES.flat()
+
+/** 7 осей характера. */
+export const CHAR_AXES = [
+  ['Самолюбие', 'Скромность'], ['Хватка', 'Щедрость'], ['Влюбчивость', 'Верность'], ['Соперничество', 'Участие'],
+  ['Аппетит', 'Мера'], ['Вспыльчивость', 'Выдержка'], ['Беспечность', 'Усердие'],
+] as const
+export const CHAR_POLES = CHAR_AXES.flat()
+
+export const CULTURES = ['Карвенцы', 'Олейцы', 'Сарды', 'Веллийцы', 'Тамирцы', 'Хаддры', 'Эшвины'] as const
+export const RACES = ['Лирены', 'Тальвы', 'Сэйны', 'Ванэи', 'Кессы', 'Ориды', 'Аэлы'] as const
+
+/** Каталог тегов (концепция, «Каталог тегов»). */
+export const TAGS = [
+  '#семья', '#любовь', '#дружба', '#община', '#вера', '#культура', '#раскрытие', '#утрата',
+  '#работа', '#карьера', '#своёдело', '#сделка', '#собственность', '#бедность',
+  '#бюрократия', '#закон', '#политика', '#война', '#власть',
+  '#образование', '#традиция', '#девиация',
+  '#статус', '#связи', '#заслуги', '#гендер', '#чужак', '#эмиграция',
+  '#доверие', '#мошенничество', '#помощь',
+  '#здоровье', '#тело', '#старение', '#удовольствие',
+  '#конфликт', '#насилие', '#медиа',
+] as const
+
+/**
+ * Особые правила: то, что делает код движка, а не общий эффект.
+ * Каждое правило описано в docs/CARDS.md; новое добавляется сюда и туда.
+ */
+export const RULES = [
+  'обряд',          // бесплатно срабатывает обряд культуры игрока (как точка обмена во взрослом рынке)
+  'летопись',       // отметка в Летописи мира
+] as const
+
+// ── Условия ─────────────────────────────────────────────────────────────
+
+const Stat = z.enum(STATS)
+const Param = z.enum(PARAMS)
+const Tag = z.enum(TAGS)
+const Segment = z.enum(SEGMENTS)
+const Class = z.enum(CLASSES)
+const Ideology = z.enum([...IDEOLOGIES, ...(Object.keys(IDEOLOGY_GROUPS) as (keyof typeof IDEOLOGY_GROUPS)[])])
+const CulturePole = z.enum(CULTURE_POLES)
+const CharPole = z.enum(CHAR_POLES)
+const ItemName = z.string().min(1)
+
+export type Cond =
+  | { all: Cond[] } | { any: Cond[] } | { not: Cond }
+  | { p: (typeof PARAMS)[number]; gte?: number; lte?: number }
+  | { pos: (typeof COUNTRY_POS)[number][] }
+  | { ideo: z.infer<typeof Ideology>[] }
+  | { culture: (typeof CULTURE_POLES)[number]; strong?: boolean }
+  | { neutral: (typeof CULTURE_POLES)[number] }
+  | { char: (typeof CHAR_POLES)[number]; strong?: boolean }
+  | { cls: (typeof CLASSES)[number][] }
+  | { sex: 'м' | 'ж' }
+  | { minority: boolean }
+  | { has: string }
+  | { seg: (typeof SEGMENTS)[number][] }
+  | { flag: string }
+  | { geo: string }
+
+export const Cond: z.ZodType<Cond> = z.lazy(() =>
+  z.union([
+    z.strictObject({ all: z.array(Cond).min(2) }),
+    z.strictObject({ any: z.array(Cond).min(2) }),
+    z.strictObject({ not: Cond }),
+    z.strictObject({ p: Param, gte: z.number().int().optional(), lte: z.number().int().optional() })
+      .refine((c) => c.gte !== undefined || c.lte !== undefined, 'нужен gte или lte'),
+    z.strictObject({ pos: z.array(z.enum(COUNTRY_POS)).min(1) }),
+    z.strictObject({ ideo: z.array(Ideology).min(1) }),
+    z.strictObject({ culture: CulturePole, strong: z.boolean().optional() }),
+    z.strictObject({ neutral: CulturePole }),
+    z.strictObject({ char: CharPole, strong: z.boolean().optional() }),
+    z.strictObject({ cls: z.array(Class).min(1) }),
+    z.strictObject({ sex: z.enum(['м', 'ж']) }),
+    z.strictObject({ minority: z.boolean() }),
+    z.strictObject({ has: ItemName }),
+    z.strictObject({ seg: z.array(Segment).min(1) }),
+    z.strictObject({ flag: z.string().min(1) }),
+    z.strictObject({ geo: z.string().min(1) }),
+  ]),
+)
+
+// ── Проверки ────────────────────────────────────────────────────────────
+
+/** Поправка к проверке при условии: новая сложность, ±к броску, преимущество, помеха, автоуспех. */
+const CheckMod = z.strictObject({
+  if: Cond,
+  dc: z.number().int().optional(),
+  add: z.number().int().optional(),
+  adv: z.literal(true).optional(),
+  dis: z.literal(true).optional(),
+  auto: z.literal(true).optional(),
+})
+
+export const Check = z.strictObject({
+  /** Одна характеристика или несколько на выбор игрока («🎲 Интеллект или Харизма 12»). */
+  stat: z.union([Stat, z.array(Stat).min(2)]),
+  dc: z.number().int(),
+  /** Другие характеристики со своей сложностью («🎲 Смекалка 12 или Сила 15»). */
+  or: z.array(z.strictObject({ stat: Stat, dc: z.number().int() })).optional(),
+  mods: z.array(CheckMod).optional(),
+  /** Что проверяется, если это сказано на карте («понять, к кому идти»). */
+  what: z.string().optional(),
+})
+export type Check = z.infer<typeof Check>
+
+// ── Эффекты ─────────────────────────────────────────────────────────────
+
+/** Диапазон на кубике: «6», «1-2», «4-6». */
+const Range = z.string().regex(/^\d+(-\d+)?$/, 'диапазон вида «1-2» или «6»')
+
+export type Node =
+  | { add: Partial<Record<(typeof PARAMS)[number], number>> }
+  | { addOneOf: (typeof STATS)[number][]; n: number }
+  | { miracle: (typeof STATS)[number][] | 'любая' }
+  | { gain: string; blind?: boolean }
+  | { lose: string }
+  | { charStep: (typeof CHAR_POLES)[number]; n?: number }
+  | { cls: (typeof CLASSES)[number] }
+  | { check: Check; success: Node[]; failure: Node[] }
+  | { choose: { label: string; if?: Cond; then: Node[] }[] }
+  | { d6: Record<string, Node[]> }
+  | { if: Cond; then: Node[]; else?: Node[] }
+  | { cases: { if: Cond; then: Node[] }[]; else?: Node[] }
+  | { mod: { tag?: (typeof TAGS)[number]; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка' } }
+  | { flag: string }
+  | { rule: (typeof RULES)[number] }
+  | { bottom: true }
+  | { say: string }
+
+export const Node: z.ZodType<Node> = z.lazy(() =>
+  z.union([
+    /** Изменение чисел: { add: { "Харизма": 1, "псих": -1 } }. Возрастной сдвиг к физ./псих. добавляет движок. */
+    z.strictObject({ add: z.partialRecord(Param, z.number().int()) }),
+    /** +n к одной характеристике на выбор игрока. */
+    z.strictObject({ addOneOf: z.array(Stat).min(2), n: z.number().int() }),
+    /** Чудо: +2 к характеристике, гриф вскрыт (потолок 12). */
+    z.strictObject({ miracle: z.union([z.array(Stat).min(1), z.literal('любая')]) }),
+    /** Получить предмет по имени из каталога. blind — «вслепую» из стопки людей. */
+    z.strictObject({ gain: ItemName, blind: z.boolean().optional() }),
+    z.strictObject({ lose: ItemName }),
+    /** «Характер на шаг к Вспыльчивости». */
+    z.strictObject({ charStep: CharPole, n: z.number().int().optional() }),
+    /** Смена класса. */
+    z.strictObject({ cls: Class }),
+    /** Проверка 3d6 + характеристика ≥ сложность. Теги карты сами дают поправки культуры, характера, предметов. */
+    z.strictObject({ check: Check, success: z.array(Node), failure: z.array(Node) }),
+    /** Решение игрока. if — вариант доступен только при условии. */
+    z.strictObject({ choose: z.array(z.strictObject({ label: z.string().min(1), if: Cond.optional(), then: z.array(Node) })).min(2) }),
+    /** Бросок d6 с исходами: { "d6": { "1-2": [...], "6": [...] } }. Пропущенные значения — ничего. */
+    z.strictObject({ d6: z.record(Range, z.array(Node)) }),
+    z.strictObject({ if: Cond, then: z.array(Node), else: z.array(Node).optional() }),
+    /** Первая подходящая ветка: «Ядро: … Полупериферия: … Периферия: …». */
+    z.strictObject({ cases: z.array(z.strictObject({ if: Cond, then: z.array(Node) })).min(2), else: z.array(Node).optional() }),
+    /** Временная поправка к будущим проверкам. */
+    z.strictObject({
+      mod: z.strictObject({
+        tag: Tag.optional(), add: z.number().int().optional(), adv: z.literal(true).optional(), dis: z.literal(true).optional(),
+        until: z.enum(['отрезок', 'проверка']),
+      }),
+    }),
+    /** Отметка в журнале жизни: прошлые события для условий смысла и карт. */
+    z.strictObject({ flag: z.string().min(1) }),
+    z.strictObject({ rule: z.enum(RULES) }),
+    /** Карта уходит под низ колоды, а не в сброс. */
+    z.strictObject({ bottom: z.literal(true) }),
+    /** Текст без механики, который игрок видит в журнале. */
+    z.strictObject({ say: z.string().min(1) }),
+  ]),
+)
+
+// ── Карта ───────────────────────────────────────────────────────────────
+
+export const DECKS = {
+  'возраст.детство': 'Возраст: Детство',
+  'возраст.юность': 'Возраст: Юность',
+  'возраст.молодость': 'Возраст: Молодость',
+  'возраст.зрелость': 'Возраст: Зрелость',
+  'возраст.старость': 'Возраст: Старость',
+  'возраст.древность': 'Возраст: Древность',
+  'отношения': 'Отношения',
+  'культура': 'Культура',
+  'страна': 'Страна',
+  'класс': 'Класс',
+  'судьба': 'Судьба',
+  'развилка': 'Развилка',
+  'смута': 'Смута',
+  'мир': 'Мир',
+  'тюрьма': 'Тюрьма',
+  'психбольница': 'Психбольница',
+  'кабала': 'Кабала',
+} as const
+export type DeckId = keyof typeof DECKS
+
+/** Латинские имена файлов колод: кириллица в путях ломается на некоторых системах. */
+export const DECK_FILES: Record<DeckId, string> = {
+  'возраст.детство': 'age-childhood', 'возраст.юность': 'age-youth', 'возраст.молодость': 'age-young',
+  'возраст.зрелость': 'age-mature', 'возраст.старость': 'age-old', 'возраст.древность': 'age-ancient',
+  'отношения': 'relations', 'культура': 'culture', 'страна': 'country', 'класс': 'class', 'судьба': 'fate',
+  'развилка': 'forks', 'смута': 'turmoil', 'мир': 'world', 'тюрьма': 'prison', 'психбольница': 'asylum', 'кабала': 'bondage',
+}
+
+export const Card = z.strictObject({
+  /** Уникальный id: колода и номер, «возраст.детство.04». */
+  id: z.string().regex(/^[а-яё.-]+\.\d{2,3}$/),
+  n: z.number().int().positive(),
+  title: z.string().min(1),
+  /** Художественный текст карты. */
+  text: z.string(),
+  /** Оригинальный текст эффекта из документа колод — дословно. */
+  src: z.string(),
+  /** Тип: Б — просто бывает, П — проверка, Р — решение. */
+  kind: z.enum(['Б', 'П', 'Р']),
+  /** Подсекторы для колод Возраста (коды из документа колод), отрезки — для общих колод. */
+  sub: z.array(z.string()).optional(),
+  segs: z.array(Segment).optional(),
+  /** Для колоды «Класс» — чья стопка. */
+  cls: Class.optional(),
+  tags: z.array(Tag).max(2),
+  miracle: z.literal(true).optional(),
+  effect: z.array(Node),
+  /** Вопросы к автору правил. Пока вопрос открыт, карта помечена спорной. */
+  doubts: z.array(z.string()).optional(),
+})
+export type Card = z.infer<typeof Card>
+
+export const DeckFile = z.strictObject({
+  deck: z.enum(Object.keys(DECKS) as [DeckId, ...DeckId[]]),
+  /** Расшифровка кодов подсекторов колоды. */
+  sub: z.record(z.string(), z.string()).optional(),
+  cards: z.array(Card),
+})
+export type DeckFile = z.infer<typeof DeckFile>

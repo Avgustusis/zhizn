@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Карта «Мир» — Голод</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&amp;family=PT+Sans:wght@400;700&amp;family=PT+Serif:wght@400;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 336px; height: 470px; box-sizing: border-box; padding: 12px; background: #F3EFE6; font-family: 'PT Sans', sans-serif; color: #1E1E24">
+<div style="width: 100%; height: 100%; box-sizing: border-box; border: 1.5px solid #1E1E24; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #4A4A55">
+<span>Мир · мировой ход</span>
+<span style="color: #A8322B; font-weight: 600">Местный</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid #1E1E24; padding-bottom: 8px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #4A4A55">ГОЛОД</span>
+<h2 style="margin: 0; font-family: 'PT Serif', serif; font-size: 30px; line-height: 1">Голод</h2>
+<span style="font-size: 13px; font-style: italic; color: #4A4A55">В магазинах полки. В очередях люди. Между ними ничего.</span>
+</div>
+<div style="font-size: 13px"><b>Где:</b> страна периферии с наименьшей стабильностью.</div>
+<div style="display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 1.35">
+<span><b>Все в стране:</b> −2 физ.</span>
+<span><b>Возможности 5+:</b> можно заплатить −3 возм. вместо физ.</span>
+<span><b>Народ:</b> ещё −1 физ.</span>
+<span><b>Олигархи и Мафия:</b> +2 возм. — склады не пусты.</span>
+</div>
+<div style="margin-top: auto; display: flex; flex-direction: column; gap: 6px">
+<div style="border: 1.5px solid #A8322B; color: #A8322B; padding: 6px 8px; font-size: 12px; line-height: 1.35">Страна: стабильность −2 и сразу проверка кризиса.</div>
+<div style="display: flex; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 12px">
+<span style="border: 1px solid #1E1E24; padding: 2px 6px">#бедность</span>
+<span style="border: 1px solid #1E1E24; padding: 2px 6px">#здоровье</span>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":336,"height":470}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
