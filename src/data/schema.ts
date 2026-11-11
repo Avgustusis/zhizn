@@ -13,7 +13,7 @@ import { z } from 'zod'
 export const STATS = ['Сила', 'Выносливость', 'Ловкость', 'Интеллект', 'Мудрость', 'Харизма', 'Смекалка', 'Красота'] as const
 export const HEALTH = ['физ', 'псих'] as const
 /** Всё, что меняется числом. Финансы, Положение и Сплочённость — шкалы семьи (−3…+3). */
-export const PARAMS = [...STATS, ...HEALTH, 'возм', 'Стаж', 'Пожертвования', 'Сплочённость', 'Финансы', 'Положение'] as const
+export const PARAMS = [...STATS, ...HEALTH, 'возм', 'Стаж', 'Стаж найма', 'Пожертвования', 'Сплочённость', 'Финансы', 'Положение'] as const
 
 export const SEGMENTS = ['Детство', 'Юность', 'Молодость', 'Зрелость', 'Старость', 'Древность'] as const
 export const CLASSES = ['Народ', 'Армия', 'Полиция', 'Интеллигенция', 'Мафия', 'Олигархи'] as const
@@ -25,7 +25,7 @@ export const IDEOLOGY_GROUPS = {
   'демократии': ['Либеральная демократия', 'Социал-демократия'],
   'диктатуры': ['Военная диктатура', 'Госсоциализм', 'Теократия'],
 } as const satisfies Record<string, readonly (typeof IDEOLOGIES)[number][]>
-export const ITEM_KINDS = ['связь', 'статус', 'козырь', 'антикозырь', 'стигма', 'вещь'] as const
+export const ITEM_KINDS = ['связь', 'статус', 'козырь', 'антикозырь', 'стигма', 'вещь', 'дело'] as const
 export const COUNTRY_POS = ['ядро', 'полупериферия', 'периферия'] as const
 
 /** 11 осей культуры: [первый полюс, второй полюс]. */
@@ -70,6 +70,8 @@ export const RULES = [
   'раздать вещи',   // сбросить все вещи из Имущества: +1 псих. за каждую (до +3), Пожертвования +1
   'отдать всё',     // отдать все возм. выше 0 (arg — на что)
   'смута',          // влияние в ближайшей Смуте (arg — сколько)
+  'дело прогорело', // своё дело прогорает, как на входе в отрезок: карта в сброс, −2 псих. (мафиозные — стигма; социал-демократия — пособие)
+  'дело в сброс',   // карта своего дела уходит в сброс без других потерь («разорён»)
   'итог воспитания', // поправка к «Итогу воспитания» ребёнка (arg — сколько), важно в «Роде»  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
 ] as const
 
@@ -182,7 +184,7 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ inFashion: z.boolean() }),
     /** Культура игрока — одна из названных (для бикультурных — родная или приёмная). */
     z.strictObject({ cultureIs: z.array(z.enum(CULTURES)).min(1) }),
-    /** У игрока своё дело. */
+    /** У игрока своё дело (лежит карта дела). */
     z.strictObject({ ownBusiness: z.boolean() }),
     /** Работает (в этом отрезке ставил Стаж; подработка не в счёт) или учится (высшее, идёт Молодость). */
     z.strictObject({ working: z.boolean() }),
@@ -239,7 +241,7 @@ export type Node =
   | { d6: Record<string, Node[]> }
   | { if: Cond; then: Node[]; else?: Node[] }
   | { cases: { if: Cond; then: Node[] }[]; else?: Node[] }
-  | { mod: { tag?: (typeof TAGS)[number]; fork?: string; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка'; max?: 'отрезок' } }
+  | { mod: { tag?: (typeof TAGS)[number]; fork?: string; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка' | 'вражда'; max?: 'отрезок' } }
   | { cancelable: string[]; then: Node[] }
   | { useTrump: string[]; then: Node[]; else: Node[] }
   | { flag: string }
@@ -290,7 +292,7 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({
       mod: z.strictObject({
         tag: Tag.optional(), fork: z.string().optional(), add: z.number().int().optional(), adv: z.literal(true).optional(), dis: z.literal(true).optional(),
-        until: z.enum(['отрезок', 'проверка']),
+        until: z.enum(['отрезок', 'проверка', 'вражда']),
         /** Для until «проверка»: сгорает в конце отрезка, даже если проверки так и не было. */
         max: z.literal('отрезок').optional(),
       }),

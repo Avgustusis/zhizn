@@ -17,7 +17,9 @@ def stigmas(p): return [k for k, v in p.items.items() if v > 0 and p.itype.get(k
 def trumps(p): return [k for k, v in p.items.items() if v > 0 and p.itype.get(k) == 'козырь']
 def things(p): return [k for k, v in p.items.items() if v > 0 and p.itype.get(k) == 'предмет']
 def has(p, nm): return p.items.get(nm, 0) > 0
-def pension(p): return 0 if p.stazh < 5 else (3 if p.stazh >= 10 else 2 if p.stazh >= 7 else 1)
+def pension(p):
+    st = p.stazh - (p.bz['stazh_biz'] if hasattr(p, 'bz') else 0)
+    return 0 if st < 5 else (3 if st >= 10 else 2 if st >= 7 else 1)
 
 UNREACH = 'UNREACH'   # маркер: в модели недостижимо
 

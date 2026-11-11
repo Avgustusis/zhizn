@@ -11,6 +11,7 @@ import json, random, re, sys, os, collections as C
 from engine3 import *
 import engine3 as engine
 import meanings as MN
+import biz as BZ
 
 E = os.environ.get
 CARDS = json.load(open(E('CARDS', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cards_v4.json'))))   # v4: психика в Юности и Старости урезана (8-й прогон)
@@ -114,6 +115,8 @@ for c in CARDS:
     elif d == 'Развилка' and FORKS and 'на поле' in (c.get('Клетка', '') or ''): DECK['Развилка_поле'].append(c)
     elif d == 'Развилка' and E('CHILD_FORK', '1') == '1' and c.get('Развилка') == 'Ребёнок': DECK['Развилка_поле'].append(c); DECK['Развилка_ребёнок'].append(c)
     else: DECK[d].append(c)
+if BZ.BIZ:
+    for _c in BZ.NEW: DECK[('Класс', _c['_sub']) if _c['_deck'] == 'Класс' else _c['_deck']].append(dict(_c))
 EFFCOL = ['Эффект', 'Пути', 'Характеристика']
 def card_effect(c):
     for k in EFFCOL:
@@ -166,6 +169,7 @@ class Player:
     def __init__(s, w, i, metr=None, std=None, gen=1, seat=None, born=0):
         s.i = i; s.w = w; s.gen = gen; s.seat = seat if seat is not None else i; s.born = born
         s.heir = 'first' if (metr is None and std is None) else ('child' if metr else 'std')
+        s.biz = None; s.bz = C.Counter()
         s.items = C.Counter(); s.itype = {}; s.log = C.Counter(); s.segs = C.defaultdict(set); s.entry = {}
         s.alive = True; s.seg = 0; s.cell = 0; s.turns = 0; s.stazh = 0
         s.inst = None; s.inst_left = 0; s.death = None; s.done = False; s.closed = False
@@ -558,7 +562,7 @@ class World:
             pool = [c for c in pool if seg in segs_of(c)] or pool
         for _ in range(12):
             c = random.choice(pool)
-            if s.only_ok(c, p): break
+            if s.only_ok(c, p) and (not BZ.BIZ or BZ.eligible(s, c, p)): break
             s.stats['only_skip'] += 1
         s.stats['draw_' + (deck if isinstance(deck, str) else 'Класс')] += 1
         nm = c.get('Карта', c.get('Развилка', '?'))
@@ -570,6 +574,8 @@ class World:
             if ('emig' in fl and 'return' not in fl) or not EMIG: p.vozm += 1; p.psy -= 1; s.stats['home_card_stay'] += 1
             else: s.arrive(p, p.birth_c, True, 'return', 'карта'); p.psy = min(10, p.psy + 2); s.stats['home_card_back'] += 1
             return c
+        if BZ.BIZ and nm in BZ.HOOK and BZ.card(s, p, nm, seg):
+            s.stats['bizcard_' + nm] += 1; return c
         had_sp = p.items.get('Супруг', 0) > 0; wid0 = p.log['widowed']; div0 = p.log['divorce']
         exec_text(card_effect(c), p, s, seg)
         if nm == 'Развод' and had_sp:
@@ -865,8 +871,9 @@ class World:
         seg = p.seg; c = s.country(p)
         cost = 1 if seg == 2 else (2 if p.cls in ('Мафия', 'Олигархи') else 1)
         p.vozm -= cost; s.stats['spend'] += cost
-        if seg >= 4 and p.stazh >= 5 and p.cidx in p.citizen:
-            pen = min(3 if p.stazh >= 10 else 2 if p.stazh >= 7 else 1, s.income(p)); p.vozm += pen; s.stats['pension'] += pen
+        st_p = p.stazh - p.bz['stazh_biz']   # пенсия — только по Стажу найма
+        if seg >= 4 and st_p >= 5 and p.cidx in p.citizen:
+            pen = min(3 if st_p >= 10 else 2 if st_p >= 7 else 1, s.income(p)); p.vozm += pen; s.stats['pension'] += pen
         if seg == 5:
             if p.vozm >= 4: p.vozm -= 2; s.stats['mk_Сиделка'] += 1
             else: p.phys -= 1
@@ -927,6 +934,7 @@ class World:
             else: p.psy -= 1
             if p.nodoc_t % 3 == 0 and roll3() + p.st['Смекалка'] >= 15: p.drop_item('Без документов'); s.stats['legalized'] += 1
             return
+        if BZ.BIZ and p.biz is not None and BZ.work(s, p, c): return
         if p.psy <= -5 or own <= -4:
             p.vozm += (D + 1) // 2; s.stats['mk_Подработка'] += 1
             if WORK3: s.wear(p, 'podr', kind)
@@ -1095,6 +1103,7 @@ class World:
 
     def seg_enter(s, p, seg):
         p.maxseg = max(p.maxseg, seg)
+        if BZ.BIZ: BZ.seg_enter(s, p, seg)
         if seg == 1 or (seg == 2 and not p.upb2): s.upbringing(p, seg)
         if seg == 2 and not FORKS:
             if (p.st['Интеллект'] >= 4 or p.fin >= 1) and random.random() < 0.6: p.add_item('Диплом', 'статус'); s.stats['diploma_old'] += 1
@@ -1398,7 +1407,7 @@ if __name__ == '__main__':
                              habit=p.habit, donations=p.donations, minority=p.minority, female=p.female, prestige=p.prestige,
                              emig=p.log['emig'], returned=p.log['returned'], flight=p.log['flight'], acc_max=p.log['acc_max'], abroad=p.cidx != p.birth_c,
                              citizen_here=p.cidx in p.citizen, nodocs=p.items.get('Без документов', 0) > 0, oath=p.items.get('Присяга', 0) > 0,
-                             rank=p.items.get('Офицерское звание', 0) > 0, gym=p.log['mk_Спортзал'], courses=p.log['mk_Курсы'], salon=p.log['mk_Салон']))
+                             rank=p.items.get('Офицерское звание', 0) > 0, gym=p.log['mk_Спортзал'], biz_got=p.bz['got'], biz_arm=p.bz['arm'], biz_turns=p.bz['turns'], biz_inc=p.bz['inc'], biz_lost=p.bz['lost'], biz_sold=p.bz['sold'], biz_grew=p.bz['grew'], biz_seg=p.bz['first_seg'], biz_now=p.biz['name'] if p.biz else None, min_phys=p.min_phys, min_psy=p.min_psy, lowpsy=p.lowpsy, lowphys=p.lowphys, max_v=p.max_v, courses=p.log['mk_Курсы'], salon=p.log['mk_Салон']))
     json.dump(dict(N=N, ROUNDS=ROUNDS, MODE=MODE, env={k: v for k, v in os.environ.items() if k in ('MODE', 'AIMODE', 'GS_EDU', 'EDU_IDEO', 'EDU_GO', 'REFUSE', 'CRISIS', 'PILOT', 'FORKS', 'HRAM_WED', 'V_CHILD', 'V_SPOUSE', 'SEED')},
                    tot=tot, games=games, rows=rows), open(OUT, 'w'), ensure_ascii=False, default=list)
     print('done', N)

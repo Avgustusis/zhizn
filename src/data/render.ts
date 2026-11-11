@@ -130,7 +130,7 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('mod' in n) {
       const m = n.mod
       const what = [m.add !== undefined && sign(m.add), m.adv && 'преимущество', m.dis && 'помеха'].filter(Boolean).join(', ')
-      out.push(pad + `${what} к ${m.fork ? `развилке «${m.fork}»` : m.tag ?? 'проверкам'} до ${m.until === 'отрезок' ? 'конца отрезка' : 'следующей такой проверки'}${m.max ? ', но не дольше конца отрезка' : ''}`)
+      out.push(pad + `${what} к ${m.fork ? `развилке «${m.fork}»` : m.tag ?? 'проверкам'} до ${m.until === 'отрезок' ? 'конца отрезка' : m.until === 'вражда' ? 'конца вражды стран' : 'следующей такой проверки'}${m.max ? ', но не дольше конца отрезка' : ''}`)
     } else if ('useTrump' in n) {
       out.push(pad + `потратить козырь ${n.useTrump.map((x) => `«${x}»`).join(' или ')}:`, ...renderNodes(n.then, depth + 1))
       out.push(pad + 'не тратить или нет козыря:', ...renderNodes(n.else, depth + 1))
