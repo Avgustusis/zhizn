@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { allCards, decks } from '../src/data/index.ts'
 import { meanings } from '../src/data/meanings.ts'
 import { items, itemNames } from '../src/data/items.ts'
+import { heirs } from '../src/data/heirs.ts'
+import { CLASSES } from '../src/data/schema.ts'
 import type { Card, Node } from '../src/data/schema.ts'
 
 /** Имена предметов: карты каталога и стопки людей. */
@@ -144,5 +146,18 @@ describe('предметы', () => {
     const names = (x: unknown): string[] =>
       x && typeof x === 'object' ? Object.entries(x).flatMap(([k, v]) => ((k === 'gain' || k === 'lose' || k === 'has') && typeof v === 'string' ? [v] : names(v))) : []
     expect(items.flatMap((i) => names(i).filter((n) => !itemNames.has(n)).map((n) => `${i.name}: ${n}`))).toEqual([])
+  })
+})
+
+describe('наследники', () => {
+  it('12 карт: по две на класс, у каждой 8 характеристик и 6 условий', () => {
+    expect(heirs.length).toBe(12)
+    for (const c of CLASSES) expect(heirs.filter((h) => h.cls === c).map((h) => h.n)).toEqual([1, 2])
+    expect(heirs.filter((h) => Object.keys(h.stats).length !== 8 || h.meaning.conds.length !== 6).map((h) => h.id)).toEqual([])
+  })
+
+  it('стартовые предметы есть в каталоге; наследник входит не позже Старости', () => {
+    expect(heirs.flatMap((h) => (h.startItems ?? []).filter((n) => !itemNames.has(n)))).toEqual([])
+    expect(heirs.filter((h) => !['Молодость', 'Зрелость', 'Старость'].includes(h.entry)).map((h) => h.id)).toEqual([])
   })
 })

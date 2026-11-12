@@ -43,6 +43,7 @@ export function renderCond(c: Cond): string {
   if ('reached' in c) return `дожить до отрезка ${c.reached}`
   if ('clsVsBirth' in c) return `класс ${c.clsVsBirth} класса рождения`
   if ('partnerCls' in c) return `Партнёр или Супруг(а) из класса ${c.partnerCls.join(' или ')}`
+  if ('vsStart' in c) return `${c.vsStart} семьи ${c.is}, чем при вступлении`
   if ('inInst' in c) return `сейчас в институте: ${c.inInst}`
   if ('mainCulture' in c) return `основная культура страны: ${c.mainCulture.join(' или ')}`
   if ('diaspora' in c) return c.diaspora ? 'диаспора без своих' : 'своя культура есть в стране'

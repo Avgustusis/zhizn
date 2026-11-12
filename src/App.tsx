@@ -4,7 +4,8 @@ import { DECKS, type Card, type DeckId } from './data/schema.ts'
 import { renderCond, renderNodes } from './data/render.ts'
 import { meanings } from './data/meanings.ts'
 import { items } from './data/items.ts'
-import type { Item, Meaning } from './data/schema.ts'
+import { heirs } from './data/heirs.ts'
+import type { Heir, Item, Meaning } from './data/schema.ts'
 
 const DECK_COLOR: Partial<Record<string, string>> = {
   'возраст': '#B8862F', 'отношения': '#A8322B', 'культура': '#4E6B4A', 'страна': '#2F4A6B', 'развилка': '#5E5470',
@@ -130,6 +131,38 @@ function ItemView({ it }: { it: Item }) {
   )
 }
 
+function HeirView({ h }: { h: Heir }) {
+  return (
+    <article className="card" style={{ borderTopColor: '#6F6253' }}>
+      <header>
+        <h3>{h.title}</h3>
+        <span className="kind">{h.cls} · {h.n === 1 ? 'd6 1–3' : 'd6 4–6'}</span>
+      </header>
+      <p className="text">{h.text}</p>
+      <pre className="parsed">{[
+        `вход: ${h.entry}; физ. ${h.phys}, псих. ${h.psy}, возм. ${h.vozm}${h.startItems ? `; ${h.startItems.map((x) => `«${x}»`).join(', ')}` : ''}`,
+        Object.entries(h.stats).map(([k, v]) => `${k} ${v}`).join(' · '),
+        `характер: ${h.character.map((c) => `${c.pole} (${c.level === 2 ? 'край' : 'умеренно'})`).join(', ')}`,
+      ].join('\n')}</pre>
+      <h4>Приписанный смысл «{h.meaning.title}»</h4>
+      <table className="conds">
+        <tbody>
+          {h.meaning.conds.map((c, i) => (
+            <tr key={i}>
+              <td className="pts">{c.points}</td>
+              <td>{c.text} <span className="ckind">{c.kind}</span><br /><span className="cparsed">{renderCond(c.cond)}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <footer>
+        <span className="tags">{h.meaning.tags.join(' ')}</span>
+        <span className="id">{h.id}</span>
+      </footer>
+    </article>
+  )
+}
+
 const ITEM_GROUPS: [string, (i: Item) => boolean][] = [
   ['Связи', (i) => i.deck === 'каталог' && i.kind === 'связь'],
   ['Статусы', (i) => i.deck === 'каталог' && i.kind === 'статус'],
@@ -176,7 +209,7 @@ function MeaningView({ m }: { m: Meaning }) {
 }
 
 export default function App() {
-  const [deckId, setDeckId] = useState<DeckId | 'все' | 'смыслы' | 'предметы'>('все')
+  const [deckId, setDeckId] = useState<DeckId | 'все' | 'смыслы' | 'предметы' | 'наследники'>('все')
   const [onlyDoubts, setOnlyDoubts] = useState(false)
   const [query, setQuery] = useState('')
 
@@ -216,11 +249,12 @@ export default function App() {
         <h1>Жизнь</h1>
         <p className="subtitle">Колоды в цифровом формате — проверка перевода. Карт событий: {total}, смыслов: {meanings.length}, предметов: {items.length} видов, спорных: {doubts}.</p>
         <div className="controls">
-          <select value={deckId} onChange={(e) => setDeckId(e.target.value as DeckId | 'все' | 'смыслы' | 'предметы')}>
+          <select value={deckId} onChange={(e) => setDeckId(e.target.value as DeckId | 'все' | 'смыслы' | 'предметы' | 'наследники')}>
             <option value="все">Все колоды</option>
             {decks.map((d) => <option key={d.deck} value={d.deck}>{DECKS[d.deck]} ({d.cards.length})</option>)}
             <option value="смыслы">Смыслы ({meanings.length})</option>
             <option value="предметы">Предметы ({items.length})</option>
+            <option value="наследники">Наследники ({heirs.length})</option>
           </select>
           <label><input type="checkbox" checked={onlyDoubts} onChange={(e) => setOnlyDoubts(e.target.checked)} /> только спорные</label>
           <input type="search" placeholder="поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -255,7 +289,14 @@ export default function App() {
           </section>
         )
       })}
-      {shown.length === 0 && shownMeanings.length === 0 && shownItems.length === 0 && <p className="empty">Ничего не найдено.</p>}
+      {deckId === 'наследники' && (
+        <section className="deck">
+          <h2>Наследники</h2>
+          <p className="legend">Режим «Род»: приходят, когда персонаж умер без ребёнка и воспитанника.</p>
+          <div className="grid">{heirs.map((h) => <HeirView key={h.id} h={h} />)}</div>
+        </section>
+      )}
+      {shown.length === 0 && shownMeanings.length === 0 && shownItems.length === 0 && deckId !== 'наследники' && <p className="empty">Ничего не найдено.</p>}
     </main>
   )
 }
