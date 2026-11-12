@@ -36,11 +36,19 @@ export function renderCond(c: Cond): string {
   if ('has' in c) return `есть «${c.has}»`
   if ('seg' in c) return `отрезок: ${c.seg.join(' или ')}`
   if ('flag' in c) return `в журнале: «${c.flag}»`
+  if ('log' in c) return c.lte === 0 ? `ни разу: ${c.log}` : `в журнале «${c.log}»: ${c.gte !== undefined ? `не меньше ${c.gte}` : `не больше ${c.lte}`}`
+  if ('val' in c) return `${c.val}: ${c.gte !== undefined ? `не меньше ${c.gte}` : `не больше ${c.lte}`}`
+  if ('countOf' in c) return `не меньше ${c.gte} из: ${c.countOf.map((x) => `«${x}»`).join(', ')}`
+  if ('atEntry' in c) return `при входе в ${c.atEntry}: ${renderCond(c.cond)}`
+  if ('reached' in c) return `дожить до отрезка ${c.reached}`
+  if ('clsVsBirth' in c) return `класс ${c.clsVsBirth} класса рождения`
+  if ('partnerCls' in c) return `Партнёр или Супруг(а) из класса ${c.partnerCls.join(' или ')}`
+  if ('inInst' in c) return `сейчас в институте: ${c.inInst}`
   if ('mainCulture' in c) return `основная культура страны: ${c.mainCulture.join(' или ')}`
   if ('diaspora' in c) return c.diaspora ? 'диаспора без своих' : 'своя культура есть в стране'
   if ('meaning' in c) return c.meaning === 'найден' ? 'смысл жизни найден' : 'у игрока Серость'
   if ('visited' in c) return `в этом отрезке был: ${c.visited}`
-  if ('partnerDiff' in c) return `Партнёр или Супруг(а) другого ${c.partnerDiff === 'культура' ? 'культуры' : 'класса'}`
+  if ('partnerDiff' in c) return `Партнёр или Супруг(а) ${c.partnerDiff === 'культура' ? 'другой культуры' : c.partnerDiff === 'раса' ? 'другой расы' : 'другого класса'}`
   if ('count' in c) return `«${c.count}» не меньше ${c.gte}`
   if ('notAlone' in c) return c.notAlone ? 'живёт не один' : 'живёт один'
   if ('emigrant' in c) return c.emigrant ? 'эмигрант' : 'живёт в стране рождения'

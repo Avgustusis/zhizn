@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { allCards, decks } from '../src/data/index.ts'
+import { meanings } from '../src/data/meanings.ts'
 import type { Card, Node } from '../src/data/schema.ts'
 
 /** Имена предметов из каталога: первая колонка таблиц документа предметов. */
@@ -12,7 +13,8 @@ function catalogNames(): Set<string> {
     if (!m || /^-+$/.test(m[1]) || m[1] === 'Карта') continue
     names.add(m[1].replace(/\s*×\d+$/, ''))
   }
-  for (const generic of ['Партнёр', 'Супруг(а)', 'Ребёнок', 'Друг', 'Наставник', 'Покровитель']) names.add(generic)
+  // «Привычка» — отметка на планшете, а не карта каталога.
+  for (const generic of ['Партнёр', 'Супруг(а)', 'Ребёнок', 'Друг', 'Наставник', 'Покровитель', 'Привычка']) names.add(generic)
   return names
 }
 
@@ -96,5 +98,38 @@ describe('карты', () => {
       return false
     }).map((c) => `${c.id} (${c.kind})`)
     expect(bad).toEqual([])
+  })
+})
+
+describe('смыслы', () => {
+  it('101 карта: Серость, 70 Случайных, 30 Династий', () => {
+    expect(meanings.filter((m) => m.deck === 'Серость').length).toBe(1)
+    expect(meanings.filter((m) => m.deck === 'Случайные').length).toBe(70)
+    expect(meanings.filter((m) => m.deck === 'Династии').length).toBe(30)
+  })
+
+  it('очки: Серость 7, остальные 10; число условий по сложности', () => {
+    const shape = { 'Серость': [10, 7], 'Простой': [10, 10], 'Средний': [5, 10], 'Сложный': [4, 10] } as const
+    const bad = meanings.filter((m) => {
+      const [count, sum] = shape[m.difficulty]
+      return m.conds.length !== count || m.conds.reduce((s, c) => s + c.points, 0) !== sum
+    }).map((m) => m.id)
+    expect(bad).toEqual([])
+  })
+
+  it('у всех Династий есть требование; необычных смыслов 5', () => {
+    expect(meanings.filter((m) => m.deck === 'Династии' && !m.requires).map((m) => m.id)).toEqual([])
+    expect(meanings.filter((m) => m.unusual).length).toBe(5)
+  })
+
+  it('предметы в условиях есть в каталоге', () => {
+    const names = catalogNames()
+    const conds = (x: unknown): string[] =>
+      x && typeof x === 'object'
+        ? Object.entries(x).flatMap(([k, v]) =>
+            k === 'has' && typeof v === 'string' ? [v] : k === 'countOf' ? (v as string[]) : k === 'count' && typeof v === 'string' ? [v] : conds(v))
+        : []
+    const unknown = meanings.flatMap((m) => conds([m.conds.map((c) => c.cond), m.requires]).filter((x) => !names.has(x)).map((x) => `${m.id}: ${x}`))
+    expect(unknown).toEqual([])
   })
 })

@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { decks } from './data/index.ts'
 import { DECKS, type Card, type DeckId } from './data/schema.ts'
 import { renderCond, renderNodes } from './data/render.ts'
+import { meanings } from './data/meanings.ts'
+import type { Meaning } from './data/schema.ts'
 
 const DECK_COLOR: Partial<Record<string, string>> = {
   'возраст': '#B8862F', 'отношения': '#A8322B', 'культура': '#4E6B4A', 'страна': '#2F4A6B', 'развилка': '#5E5470',
@@ -60,15 +62,51 @@ function CardView({ card, legend, color }: { card: Card; legend?: Record<string,
   )
 }
 
+const MEANING_DECKS = ['Серость', 'Случайные', 'Династии'] as const
+
+function MeaningView({ m }: { m: Meaning }) {
+  return (
+    <article className={'card' + (m.doubts ? ' doubtful' : '')} style={{ borderTopColor: '#8A8A86' }}>
+      <header>
+        <span className="num">{m.deck === 'Династии' ? 'Д' : '№ '}{m.n || ''}</span>
+        <h3>{m.title}</h3>
+        <span className="kind">{m.difficulty}{m.unusual ? ' · необычный' : ''}</span>
+      </header>
+      <p className="text">«{m.motto}»</p>
+      {m.requires && <p className="req">Требование: {m.requiresText} → {renderCond(m.requires)}</p>}
+      <table className="conds">
+        <tbody>
+          {m.conds.map((c, i) => (
+            <tr key={i}>
+              <td className="pts">{String(c.points).replace('.', ',')}</td>
+              <td>{c.text} <span className="ckind">{c.kind}</span><br /><span className="cparsed">{renderCond(c.cond)}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {m.doubts && (
+        <section className="doubts">
+          <h4>Вопрос к автору</h4>
+          {m.doubts.map((d, i) => <p key={i}>{d}</p>)}
+        </section>
+      )}
+      <footer>
+        <span className="tags">{m.tags.join(' ') || '—'}</span>
+        <span className="id">{m.id}</span>
+      </footer>
+    </article>
+  )
+}
+
 export default function App() {
-  const [deckId, setDeckId] = useState<DeckId | 'все'>('все')
+  const [deckId, setDeckId] = useState<DeckId | 'все' | 'смыслы'>('все')
   const [onlyDoubts, setOnlyDoubts] = useState(false)
   const [query, setQuery] = useState('')
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
     return decks
-      .filter((d) => deckId === 'все' || d.deck === deckId)
+      .filter((d) => deckId !== 'смыслы' && (deckId === 'все' || d.deck === deckId))
       .map((d) => ({
         deck: d,
         cards: d.cards.filter((c) =>
@@ -78,18 +116,27 @@ export default function App() {
       .filter((g) => g.cards.length > 0)
   }, [deckId, onlyDoubts, query])
 
+  const shownMeanings = useMemo(() => {
+    if (deckId !== 'смыслы') return []
+    const q = query.trim().toLowerCase()
+    return meanings.filter((m) =>
+      (!onlyDoubts || m.doubts) &&
+      (!q || [m.title, m.motto, m.tags.join(' '), ...m.conds.map((c) => c.text)].some((s) => s.toLowerCase().includes(q))))
+  }, [deckId, onlyDoubts, query])
+
   const total = decks.reduce((s, d) => s + d.cards.length, 0)
-  const doubts = decks.reduce((s, d) => s + d.cards.filter((c) => c.doubts).length, 0)
+  const doubts = decks.reduce((s, d) => s + d.cards.filter((c) => c.doubts).length, 0) + meanings.filter((m) => m.doubts).length
 
   return (
     <main>
       <header className="top">
         <h1>Жизнь</h1>
-        <p className="subtitle">Колоды в цифровом формате — проверка перевода. Карт событий: {total}, спорных: {doubts}.</p>
+        <p className="subtitle">Колоды в цифровом формате — проверка перевода. Карт событий: {total}, смыслов: {meanings.length}, спорных: {doubts}.</p>
         <div className="controls">
-          <select value={deckId} onChange={(e) => setDeckId(e.target.value as DeckId | 'все')}>
+          <select value={deckId} onChange={(e) => setDeckId(e.target.value as DeckId | 'все' | 'смыслы')}>
             <option value="все">Все колоды</option>
             {decks.map((d) => <option key={d.deck} value={d.deck}>{DECKS[d.deck]} ({d.cards.length})</option>)}
+            <option value="смыслы">Смыслы ({meanings.length})</option>
           </select>
           <label><input type="checkbox" checked={onlyDoubts} onChange={(e) => setOnlyDoubts(e.target.checked)} /> только спорные</label>
           <input type="search" placeholder="поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -105,7 +152,17 @@ export default function App() {
           </div>
         </section>
       ))}
-      {shown.length === 0 && <p className="empty">Ничего не найдено.</p>}
+      {deckId === 'смыслы' && MEANING_DECKS.map((dk) => {
+        const list = shownMeanings.filter((m) => m.deck === dk)
+        return list.length === 0 ? null : (
+          <section key={dk} className="deck">
+            <h2>Смыслы: {dk}</h2>
+            {dk === 'Серость' && <p className="legend">Под каждым условием — как его понял движок. «сост.» — пока выполняется; «соб.» — один раз и навсегда; «итог» — в момент смерти.</p>}
+            <div className="grid">{list.map((m) => <MeaningView key={m.id} m={m} />)}</div>
+          </section>
+        )
+      })}
+      {shown.length === 0 && shownMeanings.length === 0 && <p className="empty">Ничего не найдено.</p>}
     </main>
   )
 }

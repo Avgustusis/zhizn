@@ -112,6 +112,35 @@ export const RULES = [
 /** События, которых может ждать отложенный эффект (`later`). */
 export const LATER_EVENTS = ['вход в Зрелость', 'вход в следующий отрезок', 'смена власти', 'выход из тюрьмы', 'конец учёбы', 'переход в Мафию', 'следующий мировой ход'] as const
 
+/**
+ * Журнал жизни: счётчики событий, которые движок ведёт с рождения.
+ * На них ссылаются карты смысла («Никогда не эмигрировать», «Сменить класс дважды»).
+ */
+export const LOG_EVENTS = [
+  // страна и класс
+  'эмиграция', 'возвращение на родину', 'бегство', 'вход в отрезок без документов',
+  'смена класса', 'уход из Армии', 'уход из Мафии', 'уход из Олигархов',
+  'получен Партбилет, Присяга или Значок',
+  // семья
+  'партнёр', 'развод', 'первый брак в Зрелости или позже',
+  // мир и власть
+  'война', 'смена власти', 'смена власти без потери класса', 'смена власти при возм. +5 и выше',
+  'смена власти с Присягой', 'смена власти со Значком', 'победа в Смуте', 'поражение в Смуте',
+  'глобальное событие в своей стране',
+  // институты и долги
+  'тюрьма', 'срок отбыт', 'психбольница', 'кабала', 'выход из института', 'повторное попадание в институт',
+  'Стаж после выхода', 'микрозайм',
+  // предметы
+  'козырь получен', 'получен «Компромат»', 'антикозырь сыгран', 'стигма получена', 'стигма снята',
+  // рынок
+  'бар', 'казино', 'выигрыш в казино', 'бордель', 'хобби', 'обряд своей культуры', 'обряд в новой стране',
+  'пожертвование в храме', 'вещь через Заповедник', 'отметка в Заповеднике', 'виды с отметками в Заповеднике',
+  'отрезков с Хобби', 'отрезков с Храмом', 'отрезков с Курсами',
+] as const
+
+/** Производные значения «сейчас», которых нет среди параметров. */
+export const VALUES = ['пенсия', 'связи', 'вещи', 'козыри', 'друзья', 'аккультурация', 'аккультурация (максимум за жизнь)'] as const
+
 // ── Условия ─────────────────────────────────────────────────────────────
 
 const Stat = z.enum(STATS)
@@ -142,6 +171,14 @@ export type Cond =
   | { has: string }
   | { seg: (typeof SEGMENTS)[number][] }
   | { flag: string }
+  | { log: (typeof LOG_EVENTS)[number]; gte?: number; lte?: number }
+  | { val: (typeof VALUES)[number]; gte?: number; lte?: number }
+  | { countOf: string[]; gte: number }
+  | { atEntry: (typeof SEGMENTS)[number]; cond: Cond }
+  | { reached: (typeof SEGMENTS)[number] }
+  | { clsVsBirth: 'выше' | 'не ниже' }
+  | { partnerCls: (typeof CLASSES)[number][] }
+  | { inInst: 'тюрьма' | 'психбольница' | 'кабала' }
   | { mainCulture: (typeof CULTURES)[number][] }
   | { diaspora: boolean }
   | { mode: 'поколение' | 'род' }
@@ -157,7 +194,7 @@ export type Cond =
   | { sentenceTag: (typeof TAGS)[number] }
   | { emigrant: boolean }
   | { notAlone: boolean }
-  | { partnerDiff: 'культура' | 'класс' }
+  | { partnerDiff: 'культура' | 'класс' | 'раса' }
   | { count: string; gte: number }
   | { powerChanged: boolean; inSeg?: true }
   | { stability: { gte?: number; lte?: number } }
@@ -198,6 +235,24 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ has: ItemName }),
     z.strictObject({ seg: z.array(Segment).min(1) }),
     z.strictObject({ flag: z.string().min(1) }),
+    /** Счётчик журнала жизни: { log: "эмиграция", gte: 1 }, «никогда» — lte: 0. */
+    z.strictObject({ log: z.enum(LOG_EVENTS), gte: z.number().int().optional(), lte: z.number().int().optional() })
+      .refine((c) => c.gte !== undefined || c.lte !== undefined, 'нужен gte или lte'),
+    /** Производное значение сейчас: пенсия за ход, число связей, вещей, козырей, друзей, шаг аккультурации. */
+    z.strictObject({ val: z.enum(VALUES), gte: z.number().int().optional(), lte: z.number().int().optional() })
+      .refine((c) => c.gte !== undefined || c.lte !== undefined, 'нужен gte или lte'),
+    /** Одновременно есть не меньше gte предметов из списка. */
+    z.strictObject({ countOf: z.array(ItemName).min(2), gte: z.number().int().positive() }),
+    /** Условие выполнялось в момент входа в отрезок («Войти в Старость в браке»). */
+    z.strictObject({ atEntry: Segment, cond: Cond }),
+    /** Дожить до отрезка. */
+    z.strictObject({ reached: Segment }),
+    /** Класс относительно класса рождения по лестнице: Народ < Армия = Полиция = Интеллигенция < Мафия < Олигархи. */
+    z.strictObject({ clsVsBirth: z.enum(['выше', 'не ниже']) }),
+    /** Класс Партнёра или Супруга(и). */
+    z.strictObject({ partnerCls: z.array(Class).min(1) }),
+    /** Игрок сейчас в институте. */
+    z.strictObject({ inInst: z.enum(['тюрьма', 'психбольница', 'кабала']) }),
     /** Основная культура страны проживания. По ней же география: Большое озеро — Карвенцы, Олейцы; болота — Эшвины; ледник — Сарды. */
     z.strictObject({ mainCulture: z.array(z.enum(CULTURES)).min(1) }),
     /** Диаспора без своих: культуры игрока нет в стране ни как основной, ни как меньшинства. */
@@ -229,7 +284,7 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     /** «Живёшь не один»: Супруг(а) или Партнёр; или отметка «Не один» в журнале (до конца жизни); или сиделка за 2 возм., оплаченная в этот ход в Древности. */
     z.strictObject({ notAlone: z.boolean() }),
     /** Партнёр или Супруг(а) другой культуры или другого класса, чем игрок. */
-    z.strictObject({ partnerDiff: z.enum(['культура', 'класс']) }),
+    z.strictObject({ partnerDiff: z.enum(['культура', 'класс', 'раса']) }),
     /** Предметов с этим именем не меньше gte («при двух детях и больше»). */
     z.strictObject({ count: ItemName, gte: z.number().int().positive() }),
     /** В стране проживания за партию (inSeg — в этом отрезке) была смена власти. */
@@ -506,3 +561,38 @@ export const DeckFile = z.strictObject({
   cards: z.array(Card),
 })
 export type DeckFile = z.infer<typeof DeckFile>
+
+// ── Смыслы ──────────────────────────────────────────────────────────────
+
+/**
+ * Условие карты смысла.
+ * сост. — засчитывается, пока выполняется; соб. — один раз и навсегда: движок с рождения помнит,
+ * что условие хоть раз выполнилось; итог — проверяется в момент смерти.
+ */
+export const MeaningCond = z.strictObject({
+  /** Оригинальный текст условия. */
+  text: z.string().min(1),
+  kind: z.enum(['сост.', 'соб.', 'итог']),
+  points: z.number().positive(),
+  cond: Cond,
+})
+
+export const Meaning = z.strictObject({
+  /** «серость», «смысл.01» … «смысл.70», «династия.01» … «династия.30». */
+  id: z.string().regex(/^(серость|смысл\.\d{2}|династия\.\d{2})$/),
+  deck: z.enum(['Серость', 'Случайные', 'Династии']),
+  n: z.number().int().nonnegative(),
+  title: z.string().min(1),
+  motto: z.string(),
+  difficulty: z.enum(['Серость', 'Простой', 'Средний', 'Сложный']),
+  /** Необычный смысл (5 на колоду). */
+  unusual: z.literal(true).optional(),
+  tags: z.array(Tag),
+  /** Требование карты: не подходишь — тянешь следующую. */
+  requires: Cond.optional(),
+  requiresText: z.string().optional(),
+  conds: z.array(MeaningCond).min(4),
+  doubts: z.array(z.string()).optional(),
+})
+export type Meaning = z.infer<typeof Meaning>
+export const MeaningsFile = z.strictObject({ meanings: z.array(Meaning) })

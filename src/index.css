@@ -47,3 +47,8 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; }
   .grid { grid-template-columns: 1fr; }
 }
 .req { margin: 0; font-size: 0.85rem; font-family: ui-monospace, 'Courier New', monospace; color: var(--red); }
+.conds { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+.conds td { vertical-align: top; padding: 3px 4px; border-top: 1px dashed var(--line); }
+.conds .pts { font-family: ui-monospace, 'Courier New', monospace; color: var(--muted); width: 2.2em; }
+.ckind { font-family: ui-monospace, 'Courier New', monospace; font-size: 0.7rem; color: var(--muted); }
+.cparsed { font-family: ui-monospace, 'Courier New', monospace; font-size: 0.75rem; color: #4E6B4A; }
