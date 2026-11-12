@@ -1,21 +1,12 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { allCards, decks } from '../src/data/index.ts'
 import { meanings } from '../src/data/meanings.ts'
+import { items, itemNames } from '../src/data/items.ts'
 import type { Card, Node } from '../src/data/schema.ts'
 
-/** Имена предметов из каталога: первая колонка таблиц документа предметов. */
+/** Имена предметов: карты каталога и стопки людей. */
 function catalogNames(): Set<string> {
-  const md = readFileSync('reference/docs/items.md', 'utf8')
-  const names = new Set<string>()
-  for (const line of md.split('\n')) {
-    const m = line.match(/^\|\s*([^|]+?)\s*\|/)
-    if (!m || /^-+$/.test(m[1]) || m[1] === 'Карта') continue
-    names.add(m[1].replace(/\s*×\d+$/, ''))
-  }
-  // «Привычка» — отметка на планшете, а не карта каталога.
-  for (const generic of ['Партнёр', 'Супруг(а)', 'Ребёнок', 'Друг', 'Наставник', 'Покровитель', 'Привычка']) names.add(generic)
-  return names
+  return itemNames
 }
 
 /** Все шаги карты: эффект, часть страны (Мир), строки сторон (Смута). */
@@ -131,5 +122,27 @@ describe('смыслы', () => {
         : []
     const unknown = meanings.flatMap((m) => conds([m.conds.map((c) => c.cond), m.requires]).filter((x) => !names.has(x)).map((x) => `${m.id}: ${x}`))
     expect(unknown).toEqual([])
+  })
+})
+
+describe('предметы', () => {
+  it('число карт по видам, как в документе', () => {
+    const copies = (f: (i: (typeof items)[number]) => boolean) => items.filter(f).reduce((s, i) => s + i.copies, 0)
+    const cat = (kind: string) => copies((i) => i.deck === 'каталог' && i.kind === kind)
+    expect([cat('связь'), cat('статус'), cat('козырь'), cat('стигма'), cat('вещь'), cat('дело')]).toEqual([27, 19, 9, 16, 29, 12])
+    expect(copies((i) => i.deck === 'Верхи')).toBe(15)
+    expect(copies((i) => i.deck === 'Дно')).toBe(10)
+  })
+
+  it('имена уникальны; у антикозырей есть катастрофа, у козырей — способ сыграть', () => {
+    expect(new Set(items.map((i) => i.name)).size).toBe(items.length)
+    expect(items.filter((i) => i.kind === 'антикозырь' && !i.risk && !i.riskRule).map((i) => i.name)).toEqual([])
+    expect(items.filter((i) => (i.kind === 'козырь' || i.kind === 'антикозырь') && !i.play?.length).map((i) => i.name)).toEqual([])
+  })
+
+  it('предметы, которые дают сами предметы, есть в каталоге', () => {
+    const names = (x: unknown): string[] =>
+      x && typeof x === 'object' ? Object.entries(x).flatMap(([k, v]) => ((k === 'gain' || k === 'lose' || k === 'has') && typeof v === 'string' ? [v] : names(v))) : []
+    expect(items.flatMap((i) => names(i).filter((n) => !itemNames.has(n)).map((n) => `${i.name}: ${n}`))).toEqual([])
   })
 })

@@ -596,3 +596,77 @@ export const Meaning = z.strictObject({
 })
 export type Meaning = z.infer<typeof Meaning>
 export const MeaningsFile = z.strictObject({ meanings: z.array(Meaning) })
+
+// ── Предметы ────────────────────────────────────────────────────────────
+
+/** Постоянная поправка к проверкам с тегом: +1, преимущество, помеха; может зависеть от условия. */
+const ItemBonus = z.strictObject({
+  tags: z.array(Tag).min(1),
+  add: z.number().int().optional(),
+  adv: z.literal(true).optional(),
+  dis: z.literal(true).optional(),
+  if: Cond.optional(),
+})
+
+/** Один способ сыграть козырь, антикозырь или расходную вещь. */
+const ItemPlay = z.strictObject({
+  label: z.string().optional(),
+  /** Поправка к одной проверке с любым из тегов (any — к любой проверке): +n или автоуспех. */
+  tags: z.array(Tag).optional(),
+  any: z.literal(true).optional(),
+  add: z.number().int().optional(),
+  auto: z.literal(true).optional(),
+  /** Прямой эффект. */
+  effect: z.array(Node).optional(),
+  /** Особое действие, которое выполняет код (текст с карты). */
+  rule: z.string().optional(),
+})
+
+/** Постоянные свойства карты (или одной её стороны). */
+const ItemPassive = {
+  bonus: z.array(ItemBonus).optional(),
+  /** В начале каждого отрезка. */
+  perSeg: z.array(Node).optional(),
+  /** Ключ к классу. */
+  keyCls: z.array(Class).optional(),
+  /** Особые свойства, которые выполняет код (текст с карты). */
+  rules: z.array(z.string()).optional(),
+}
+
+export const Item = z.strictObject({
+  name: z.string().min(1),
+  kind: z.enum(ITEM_KINDS),
+  /** Где лежит: открытый каталог, слепые колоды «Верхи» и «Дно», отметка на планшете. */
+  deck: z.enum(['каталог', 'Верхи', 'Дно', 'планшет']),
+  /** Стопка людей: событие «получи Друга» тянет вслепую из стопки; «есть Друг» — любая карта стопки. */
+  group: z.enum(['Партнёр', 'Ребёнок', 'Друг', 'Наставник', 'Покровитель']).optional(),
+  copies: z.number().int().nonnegative(),
+  /** Оригинальные тексты из документа предметов, по колонкам. */
+  src: z.record(z.string(), z.string()),
+  ...ItemPassive,
+  /** Партнёр и Супруг(а) — одна карта: до свадьбы действует сторона partner, после — spouse. */
+  sides: z.strictObject({
+    partner: z.strictObject(ItemPassive),
+    spouse: z.strictObject({ ...ItemPassive, onWed: z.array(Node).optional() }),
+  }).optional(),
+  /** Тень: постоянная цена характера или статуса. */
+  shadow: z.strictObject(ItemPassive).optional(),
+  /** При получении. */
+  onGain: z.array(Node).optional(),
+  /** Козыри, антикозыри, расходные вещи: способы сыграть (на выбор один). */
+  play: z.array(ItemPlay).optional(),
+  /** Сколько раз можно сыграть (по умолчанию 1). */
+  uses: z.number().int().positive().optional(),
+  /** Антикозырь: катастрофа на d6 1–2 после розыгрыша. */
+  risk: z.array(Node).optional(),
+  riskRule: z.string().optional(),
+  /** Вещи: цена в скупке и её особенности. */
+  sell: z.number().int().positive().optional(),
+  sellRule: z.string().optional(),
+  consumable: z.literal(true).optional(),
+  /** Своё дело: размер и бонус к доходу. */
+  biz: z.strictObject({ size: z.enum(['малое', 'среднее', 'крупное', 'мафия']), bonus: z.number().int().positive(), only: z.array(Class).optional() }).optional(),
+  doubts: z.array(z.string()).optional(),
+})
+export type Item = z.infer<typeof Item>
+export const ItemsFile = z.strictObject({ items: z.array(Item) })
