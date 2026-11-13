@@ -136,6 +136,7 @@ export function* birth(g: G, seat: number, gen = 1): Flow<Player> {
     mods: [], laters: [], income: [], pensionAdd: 0, everySeg: [], installments: [], noAging: 0, rules: {},
   }
   g.s.players[seat] = p
+  if (cls === 'Армия') p.flags['Армия, война'] = true
   say(g, p, `${p.name}: ${sex === 'м' ? 'мальчик' : 'девочка'}, ${race}, ${culture}; ${country.name}; семья — ${cls}; финансы ${fin}, положение ${pos}, сплочённость ${coh}`)
   // Что даёт семья: каждая строка таблицы — свой бросок.
   for (const line of t.items) yield* run(g, p, line, newCtx('правило'))

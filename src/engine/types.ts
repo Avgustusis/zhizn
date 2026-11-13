@@ -244,7 +244,8 @@ export interface GameState {
 
 // ── Вопросы и журнал ────────────────────────────────────────────────────
 
-export interface Option { id: string; label: string; note?: string; off?: string }
+/** Вариант ответа. `effect` — шаги, к которым он ведёт (для ИИ; интерфейсу не нужны). */
+export interface Option { id: string; label: string; note?: string; off?: string; effect?: Node[] }
 
 /** Вопрос к игроку: выбери один вариант. */
 export interface Request {

@@ -204,3 +204,8 @@ export function meaningPiles(g: G): void {
   g.s.piles['смыслы'] = shuffle(g, g.c.meanings.filter((m) => m.deck === 'Случайные').map((m) => m.id))
   g.s.piles['династии'] = shuffle(g, g.c.meanings.filter((m) => m.deck === 'Династии').map((m) => m.id))
 }
+
+/** Условия карты смысла игрока с отметкой «выполнено сейчас» — для листа игрока. */
+export function meaningStatus(g: G, p: Player): { text: string; kind: string; points: number; met: boolean }[] {
+  return (meaningOf(g, p)?.conds ?? []).map((k) => ({ text: k.text, kind: k.kind, points: k.points, met: met(g, p, k) }))
+}

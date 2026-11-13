@@ -406,3 +406,36 @@ describe('смысл и счастье', () => {
     console.log(`дошли до Зрелости ${n}, из них Серость ${grey} (${Math.round((100 * grey) / n)}%)`)
   }, 60000)
 })
+
+describe('все карты', () => {
+  it('каждая карта каждой колоды играется без ошибок при любых ответах', () => {
+    const todo: Record<string, number> = {}
+    let played = 0
+    for (const [deck, cards] of Object.entries(content.decks)) {
+      for (const c of cards) {
+        for (let seed = 1; seed <= 4; seed++) {
+          const seg = Math.max(0, ['Детство', 'Юность', 'Молодость', 'Зрелость', 'Старость', 'Древность'].indexOf(c.segs?.[0] ?? (deck.startsWith('возраст.') ? { 'детство': 'Детство', 'юность': 'Юность', 'молодость': 'Молодость', 'зрелость': 'Зрелость', 'старость': 'Старость', 'древность': 'Древность' }[deck.slice(8)]! : 'Зрелость')))
+          const { e, p } = lab(seed, { seg, vozm: seed * 3 - 4, fin: seed - 2, pos: seed - 2 })
+          if (c.cls) p.cls = c.cls
+          if (seed % 2) { drive(gainItem(e.g, p, 'Партнёр')); drive(gainItem(e.g, p, 'Друг')); drive(gainItem(e.g, p, 'Диплом')) }
+          const r = lcg(seed * 977 + c.n)
+          const flow = playCard(e.g, p, c, deck)
+          let step = flow.next()
+          let guard = 0
+          while (!step.done) {
+            const open = step.value.options.filter((o) => !o.off)
+            expect(open.length, `${c.id}: вопрос без открытых вариантов`).toBeGreaterThan(0)
+            step = flow.next(open[Math.floor(r() * open.length)].id)
+            expect(guard++, `${c.id}: слишком много вопросов`).toBeLessThan(60)
+          }
+          for (const [k, v] of Object.entries(e.state.todo)) todo[k] = (todo[k] ?? 0) + v
+          played++
+        }
+      }
+    }
+    expect(played).toBe(700 * 4)
+    const known = new Set<string>(RULES)
+    for (const k of Object.keys(todo)) expect(known.has(k), `неизвестное правило «${k}»`).toBe(true)
+    console.log(`особых правил на этап 3: ${Object.keys(todo).length} — ${Object.keys(todo).sort().join(', ')}`)
+  }, 120000)
+})

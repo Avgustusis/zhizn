@@ -1,7 +1,7 @@
 /** Изменения состояния игрока: числа, здоровье и смерть, класс, характер, институты, предметы. */
 import { SEGMENTS, STATS, type Node } from '../data/schema.ts'
 import { ask, clamp, countryOf, die, emit, pick, say, segName, shuffle, step, todo, type Flow, type G } from './core.ts'
-import { charAxisOf, has, held, kindOf, pairOf, type Ctx, newCtx } from './cond.ts'
+import { charAxisOf, cultureLean, has, held, kindOf, pairOf, type Ctx, newCtx } from './cond.ts'
 import { run } from './exec.ts'
 import { settle } from './meaning.ts'
 import type { CharPole, Cls, Culture, Held, InstKind, Player, Race, Stat, Tag } from './types.ts'
@@ -40,7 +40,8 @@ export function addParam(g: G, p: Player, param: string, delta: number, ctx: Ctx
   else if (param === 'возм') to = clamp(to, t.caps.bondage, vozmCap(g, p))
   else if (param === 'Сплочённость' || param === 'Финансы' || param === 'Положение') to = clamp(to, -t.caps.scale, t.caps.scale)
   else if ((STATS as readonly string[]).includes(param)) {
-    const cap = ctx.cap ?? statCap(g, p, param as Stat)
+    // Рынок поднимает до 7 (с предрасположенностью до 8); события — до 10, с чудом до 12. Явный потолок шага важнее.
+    const cap = ctx.cap ?? (ctx.source === 'действие' ? (p.predisp === param ? t.caps.marketPredisp : t.caps.market) : statCap(g, p, param as Stat))
     to = delta > 0 ? Math.max(from, Math.min(cap, to)) : Math.max(0, to)
   } else to = Math.max(0, to)
   if (to === from) return
@@ -266,7 +267,17 @@ export function* gainItem(g: G, p: Player, name: string, opts: { adopted?: true 
   const cardName = group ? drawBlind(g, `люди.${group}`, () => g.groups.get(group)!.flatMap((n) => Array<string>(Math.max(1, g.items.get(n)!.copies)).fill(n))) : name
   const item = g.items.get(cardName)
   if (!item) throw new Error(`нет предмета «${cardName}»`)
-  if (item.group === 'Партнёр' && pairOf(g, p)) { say(g, p, 'пара уже есть: новый Партнёр не приходит'); return }
+  if (item.group === 'Партнёр' && pairOf(g, p)) {
+    if (group) g.s.piles[`люди.${group}`].unshift(cardName)
+    say(g, p, 'пара уже есть: новый Партнёр не приходит')
+    return
+  }
+  // Карту человека назвали по имени: из слепой стопки она тоже уходит.
+  if (!group && item.group) {
+    const stack = g.s.piles[`люди.${item.group}`]
+    const i = stack?.indexOf(cardName) ?? -1
+    if (i >= 0) stack.splice(i, 1)
+  }
   // Стигмы и статусы не дублируются: «стигма одна».
   if ((item.kind === 'стигма' || item.kind === 'статус') && has(g, p, item.name) && item.name !== 'Привычка') {
     if (item.kind === 'стигма') count(p, 'стигма получена')
@@ -335,6 +346,8 @@ export function* dropHeld(g: G, p: Player, h: Held, price: boolean, widowed = fa
   const ctx = newCtx('правило')
   addParam(g, p, 'псих', cost.psy, ctx)
   if (cost.coh) addParam(g, p, 'Сплочённость', cost.coh, ctx)
+  // Развод в традиционной или теистичной культуре: ещё помеха в #статус до конца отрезка.
+  if (h.spouse && (cultureLean(g, p, 'Традиция') || cultureLean(g, p, 'Теизм'))) p.mods.push({ tag: '#статус', dis: true, until: 'отрезок', seg: p.seg })
   if (cost.enemyUpTo && rollDie(g, p, 6, 'обида Покровителя') <= cost.enemyUpTo) yield* gainItem(g, p, 'Враг')
 }
 

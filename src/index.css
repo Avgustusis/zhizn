@@ -52,3 +52,39 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; }
 .conds .pts { font-family: ui-monospace, 'Courier New', monospace; color: var(--muted); width: 2.2em; }
 .ckind { font-family: ui-monospace, 'Courier New', monospace; font-size: 0.7rem; color: var(--muted); }
 .cparsed { font-family: ui-monospace, 'Courier New', monospace; font-size: 0.75rem; color: #4E6B4A; }
+
+/* Вкладки и пробная партия */
+.tabs { display: flex; gap: 4px; max-width: 1200px; margin: 0 auto; padding: 8px 16px 0; }
+.tabs button, .trial button {
+  font: inherit; padding: 6px 12px; border: 1px solid var(--line); background: #fffdf8; color: var(--ink); border-radius: 4px; cursor: pointer;
+}
+.tabs button.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.trial button:disabled { color: var(--muted); cursor: not-allowed; background: #f1ece0; }
+.trial h2 { margin: 8px 0; font-size: 1.3rem; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.trial input[type=number] { font: inherit; padding: 6px 8px; border: 1px solid var(--line); background: #fffdf8; border-radius: 4px; }
+.sheets { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.sheet { background: #fffdf8; border: 1px solid var(--line); border-left: 6px solid var(--line); border-radius: 4px; padding: 8px 10px; }
+.sheet.current { border-left-color: var(--red); }
+.sheet.dead { opacity: 0.6; }
+.sheet header { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+.sheet h3 { margin: 0; font-size: 1rem; }
+.sheet p { margin: 4px 0; font-size: 0.9rem; }
+.vitals { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.sheet summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
+.mconds { margin: 4px 0; padding: 0; list-style: none; font-size: 0.85rem; }
+.mconds li.met { color: #4E6B4A; }
+.log {
+  margin: 10px 0; max-height: 38vh; overflow-y: auto; background: #f6f2e8; border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px;
+  font-size: 0.9rem;
+}
+.log p { margin: 1px 0; }
+.log .head { margin-top: 8px; font-weight: bold; }
+.log .quiet { color: var(--muted); font-size: 0.8rem; }
+.log .loud { color: var(--red); }
+.ask { background: #fffdf8; border: 2px solid var(--ink); border-radius: 4px; padding: 10px 12px; }
+.ask p { margin: 0 0 6px; }
+.ask .who { font-family: ui-monospace, 'Courier New', monospace; font-size: 0.75rem; color: var(--red); text-transform: uppercase; letter-spacing: 0.08em; }
+.ask .q { font-size: 1.05rem; }
+.options { display: flex; flex-direction: column; gap: 6px; }
+.options button { text-align: left; padding: 10px 12px; }
+.tools { margin-top: 10px; }

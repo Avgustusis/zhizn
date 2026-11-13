@@ -49,7 +49,7 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
     const v = ctx.d6.value
     for (const [range, then] of Object.entries(n.d6)) if (inRange(range, v)) yield* run(g, p, then, { ...ctx, d6: {} })
   } else if ('choose' in n) {
-    const options = n.choose.map((o, i) => ({ id: String(i), label: o.label, ...(cond(g, p, o.if, ctx) ? {} : { off: 'недоступно' }) }))
+    const options = n.choose.map((o, i) => ({ id: String(i), label: o.label, effect: o.then, ...(cond(g, p, o.if, ctx) ? {} : { off: 'недоступно' }) }))
     if (options.every((o) => o.off)) { say(g, p, 'ни один вариант не доступен'); return }
     const id = yield* ask(g, p, 'карта', title(g, ctx), options, { card: ctx.card, force: true })
     const o = n.choose[Number(id)]
