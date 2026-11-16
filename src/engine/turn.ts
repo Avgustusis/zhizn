@@ -8,7 +8,8 @@ import { spend, strongIn } from './checks.ts'
 import { run } from './exec.ts'
 import { markEntry, meaningAtEntry, settle } from './meaning.ts'
 import { rollFashion } from './setup.ts'
-import type { Player, Slot } from './types.ts'
+import { businessAtEntry, money } from './market.ts'
+import type { Action, Player, Slot } from './types.ts'
 
 const cellsOf = (g: G, seg: number): BoardCell[] => g.c.board.segments[seg].cells
 export const cellOf = (g: G, p: Player): BoardCell => cellsOf(g, p.seg)[p.cell]
@@ -54,6 +55,7 @@ export function* playCard(g: G, p: Player, card: Card, deck: string): Flow<'по
     if (a === 'да') { spend(g, p, trump); return 'под низ' }
   }
   if (card.miracle) p.flags['чудо'] = true
+  if (card.tags.includes('#утрата')) visit(p, 'утрата')
   yield* run(g, p, card.effect, ctx)
   // #закон: проваленная проверка в «жёсткой» стране — на d6 = 1 тюрьма («Тотальные институты»).
   const t = g.c.tables.inst
@@ -130,6 +132,7 @@ function* enterSegment(g: G, p: Player): Flow {
   if (charLean(p, 'Аппетит')) { addParam(g, p, 'физ', -1, ctx); addParam(g, p, 'псих', 1, ctx) }
   rollFashion(g, countryOf(g, p))
   yield* itemsPerSeg(g, p)
+  yield* businessAtEntry(g, p)
   for (const nodes of p.everySeg) yield* run(g, p, nodes, ctx)
   fire(g, p, 'вход в следующий отрезок')
   if (seg === 'Зрелость') fire(g, p, 'вход в Зрелость')
@@ -170,7 +173,11 @@ function* move(g: G, p: Player, steps: number): Flow<BoardCell | undefined> {
       yield* payInstallments(g, p)
     } else {
       p.cell += 1
-      if (cellOf(g, p).sub !== subBefore) yield* payInstallments(g, p)
+      if (cellOf(g, p).sub !== subBefore) {
+        yield* payInstallments(g, p)
+        // Студент — первые 15 клеток Молодости; дальше учёба кончается.
+        if (p.rules['студент'] && segName(p) === 'Молодость') { delete p.rules['студент']; say(g, p, 'учёба окончена'); fire(g, p, 'конец учёбы'); yield* runDue(g, p) }
+      }
     }
     const cell = cellOf(g, p)
     if (cell.type === 'итог воспитания') upbringing(g, p)
@@ -218,33 +225,53 @@ function* instTurn(g: G, p: Player): Flow {
 // ── Слоты действий ──────────────────────────────────────────────────────
 
 /** После события: ■ основное, ▲ дополнительное, ◆ рынок молодости. Действия — данные (`Content.actions`). */
+/** Цена действия: первая подходящая строка; нет строк — даром. */
+export function priceOf(g: G, p: Player, a: Action): number {
+  return a.price?.find((x) => cond(g, p, x.if))?.n ?? 0
+}
+
+/** После события: ■ основное, ▲ дополнительное, ■▲ большой обмен, ◆ рынок молодости. Действия — данные (src/data/market.ts). */
 function* actions(g: G, p: Player): Flow {
   const t = g.c.tables
   if (!g.c.actions.length || p.inst || p.skip > 0) return
+  // «Тихий день» Эшвинов: на следующем ходу рынок недоступен.
+  if (p.rules['без рынка']) {
+    const due = p.rules['без рынка'].arg === String(p.turns)
+    if (Number(p.rules['без рынка'].arg) <= p.turns) delete p.rules['без рынка']
+    if (due) { say(g, p, 'тихий день: рынок недоступен'); return }
+  }
   const left = {} as Record<Slot, number>
   for (const s of Object.keys(t.turnSlots) as Slot[]) left[s] = t.slotSegments[s].includes(segName(p)) ? t.turnSlots[s] : 0
   left['◆'] = Math.min(left['◆'], p.youthTokens)
   for (;;) {
-    if (!p.alive) return
-    const open = g.c.actions.filter((a) => {
+    if (!p.alive || p.inst) return
+    const shown = g.c.actions.flatMap((a) => {
       const need: Partial<Record<Slot, number>> = {}
       for (const s of a.slots) need[s] = (need[s] ?? 0) + 1
-      if ((Object.keys(need) as Slot[]).some((s) => left[s] < need[s]!)) return false
-      if (a.perSeg !== undefined && (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) >= a.perSeg) return false
-      return cond(g, p, a.requires)
+      if ((Object.keys(need) as Slot[]).some((s) => left[s] < need[s]!)) return []
+      if (a.perSeg !== undefined && (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) >= a.perSeg) return []
+      if (a.once && p.counters[`действие:${a.id}`]) return []
+      if (!cond(g, p, a.requires)) return []
+      const price = priceOf(g, p, a)
+      // Заплатить можно только из своих: в минус нельзя.
+      return [{ a, price, off: price > 0 && p.vozm < price ? 'нет денег' : undefined }]
     })
-    if (!open.length) return
+    if (!shown.some((x) => !x.off)) return
     const id = yield* ask(g, p, 'действие', `Что делаешь? Слоты: ${(Object.keys(left) as Slot[]).map((s) => s.repeat(left[s])).join(' ') || '—'}`, [
-      ...open.map((a) => ({ id: a.id, label: a.label, note: a.slots.join('') })),
+      ...shown.map(({ a, price, off }) => ({ id: a.id, label: a.label, note: `${a.slots.join('')}${price ? ` · ${price} возм.` : ''}${a.note ? ` · ${a.note}` : ''}`, effect: a.effect, ...(off ? { off } : {}) })),
       { id: 'конец', label: 'закончить ход' },
     ], { force: true })
     if (id === 'конец') return
-    const a = open.find((x) => x.id === id)!
+    const { a, price } = shown.find((x) => x.a.id === id)!
     for (const s of a.slots) left[s] -= 1
     if (a.slots.includes('◆')) p.youthTokens -= 1
     p.counters[`действие:${a.id}:${p.seg}`] = (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) + 1
+    p.counters[`действие:${a.id}`] = (p.counters[`действие:${a.id}`] ?? 0) + 1
     if (a.place) visit(p, a.place)
-    yield* run(g, p, a.effect, newCtx('действие', { card: a.id }))
+    for (const l of a.log ?? []) p.counters[l] = (p.counters[l] ?? 0) + 1
+    const ctx = newCtx('действие', { card: a.id, tags: a.tags ?? [], ...(a.cap ? { cap: a.cap } : {}) })
+    if (price) addParam(g, p, 'возм', -price, ctx)
+    yield* run(g, p, a.effect, ctx)
     settle(g, p)
     yield* runDue(g, p)
   }
@@ -255,6 +282,7 @@ function* actions(g: G, p: Player): Flow {
 export function* playerTurn(g: G, p: Player): Flow {
   const t = g.c.tables
   p.turns += 1
+  delete p.rules['сиделка']
   emit(g, { t: 'ход', p: p.seat, round: g.s.round + 1 })
   if (p.skip > 0) {
     p.skip -= 1
@@ -267,6 +295,7 @@ export function* playerTurn(g: G, p: Player): Flow {
     if (p.alive && !p.finished) {
       if (p.inst) { if (wasInst) yield* instTurn(g, p) } else if (cell) yield* resolveCell(g, p, cell)
     }
+    if (p.alive && !p.finished && !p.inst && p.skip === 0) money(g, p)
     if (p.alive && !p.finished) yield* actions(g, p)
   }
   yield* endTurn(g, p)
@@ -278,10 +307,15 @@ function* endTurn(g: G, p: Player): Flow {
   if (!p.alive || p.finished) return
   if (segName(p) === 'Древность') {
     if (p.noAging > 0) p.noAging -= 1
-    else addParam(g, p, 'физ', -t.segments.ancientWear, newCtx('правило'))
+    else {
+      // Сиделка за 2 возм. отменяет потерю за ход (и даёт «живёшь не один» в этот ход).
+      const nurse = !p.inst && p.vozm >= t.segments.nurse
+        ? yield* ask(g, p, 'действие', `Древность: −${t.segments.ancientWear} физ. за ход. Нанять сиделку за ${t.segments.nurse} возм.?`, [{ id: 'да', label: `сиделка: −${t.segments.nurse} возм.` }, { id: 'нет', label: `без сиделки: −${t.segments.ancientWear} физ.` }], { force: true })
+        : 'нет'
+      if (nurse === 'да') { addParam(g, p, 'возм', -t.segments.nurse, newCtx('правило')); p.rules['сиделка'] = {} } else addParam(g, p, 'физ', -t.segments.ancientWear, newCtx('правило'))
+    }
   }
   if (p.alive && !p.inst && p.seg >= SEGMENTS.indexOf('Молодость') && p.vozm <= t.caps.bondage) enterInst(g, p, 'кабала', 0)
-  delete p.rules['сиделка']
   // Козырь без ячейки, не сыгранный в этот ход, уходит.
   for (const h of p.items.filter((x) => x.temp)) removeHeld(g, p, h)
   if (p.alive) { settle(g, p); yield* runDue(g, p) }

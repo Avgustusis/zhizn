@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { loadContent } from '../data/content.ts'
 import { CHAR_AXES, SEGMENTS, STATS } from '../data/schema.ts'
 import { Engine } from '../engine/engine.ts'
+import { answer as aiAnswer } from '../engine/ai/simple.ts'
 import { meaningOf, meaningStatus } from '../engine/meaning.ts'
 import type { Player, SaveFile } from '../engine/types.ts'
 import { describe } from './log.ts'
@@ -74,7 +75,8 @@ export default function Trial() {
     store(next)
     setBox({ e: next })
   }
-  const randomId = (x: Engine) => { const open = x.pending!.options.filter((o) => !o.off); return open[Math.floor(Math.random() * open.length)].id }
+  /** Ответ за игрока — простой ИИ (лечится, работает, растёт; на смысл не играет). */
+  const randomId = (x: Engine) => aiAnswer(x.g, x.pending!)
   const start = () => act(() => new Engine(content, { mode: 'поколение', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `Игрок ${i + 1}` })) }))
   const resume = () => act((x) => (saved ? Engine.load(content, saved) : x))
   const answer = (id: string) => act((x) => { x?.answer(id); return x })
@@ -97,7 +99,7 @@ export default function Trial() {
     return (
       <section className="trial">
         <h2>Пробная партия</h2>
-        <p className="legend">Отладочный экран ядра (этап 2): рождение, поле, карты событий, проверки, здоровье, смысл и счастье. Работы, рынка, трат, эмиграции и мировых событий ещё нет — это этап 3, поэтому здоровье здесь только тает. Смысл жизни виден всем: это проверка правил, а не игра.</p>
+        <p className="legend">Отладочный экран движка (этапы 2 и 3а): рождение, поле, карты событий, проверки, здоровье, смысл и счастье. Рынок, работа, траты, пенсия, город и знакомства уже работают (этап 3а). Эмиграции, мировых событий, кризисов и войны ещё нет — это этапы 3б и 3в. Смысл жизни виден всем: это проверка правил, а не игра.</p>
         <div className="controls">
           <label>Игроков <select value={seats} onChange={(ev) => setSeats(Number(ev.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n}>{n}</option>)}</select></label>
           <label>Зерно <input type="number" value={seed} onChange={(ev) => setSeed(Number(ev.target.value) || 0)} style={{ width: '7em' }} /></label>
@@ -130,11 +132,17 @@ export default function Trial() {
           <p className="who">{s.players[req.player].name}</p>
           <p className="q">{req.text}</p>
           <div className="options">
-            {req.options.map((o) => (
-              <button key={o.id} disabled={!!o.off} onClick={() => answer(o.id)} title={o.off}>
-                {o.label}{o.note ? <span className="num"> {o.note}</span> : null}{o.off ? <span className="num"> — {o.off}</span> : null}
+            {req.options.filter((o) => !o.off).map((o) => (
+              <button key={o.id} onClick={() => answer(o.id)}>
+                {o.label}{o.note ? <span className="num"> {o.note}</span> : null}
               </button>
             ))}
+            {req.options.some((o) => o.off) && (
+              <details className="closed">
+                <summary>недоступно сейчас ({req.options.filter((o) => o.off).length})</summary>
+                {req.options.filter((o) => o.off).map((o) => <p key={o.id}>{o.label} <span className="num">— {o.off}</span></p>)}
+              </details>
+            )}
           </div>
         </div>
       ) : (
@@ -144,8 +152,8 @@ export default function Trial() {
         </div>
       )}
       <div className="controls tools">
-        {req && <button onClick={skipTurn}>Ход наугад</button>}
-        {req && <button onClick={skipAll}>До конца наугад</button>}
+        {req && <button onClick={skipTurn}>Ход за ИИ</button>}
+        {req && <button onClick={skipAll}>До конца за ИИ</button>}
         {req && <button onClick={undo}>Отменить ответ</button>}
         <button onClick={quit}>Новая партия</button>
       </div>

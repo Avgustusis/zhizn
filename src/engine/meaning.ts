@@ -116,13 +116,13 @@ function drawMeaning(g: G, p: Player, pile: 'смыслы' | 'династии')
 }
 
 /** Бросок на смысл: 3d6 + поправка Мудрости (с Юности) + Наставник. */
-function meaningRoll(g: G, p: Player, seg: Seg): boolean {
+function meaningRoll(g: G, p: Player, seg: Seg, forceAdv = false): boolean {
   const t = g.c.tables.meaning
   const need = t.need[seg]
   if (need === undefined) return false
   const child = seg === 'Детство'
   const mod = (child ? 0 : step(g.c.tables.statMod, p.stats['Мудрость'])) + (has(g, p, 'Наставник') ? t.mentorAdd : 0)
-  const adv = !child && p.predisp === 'Мудрость' ? 1 : 0
+  const adv = forceAdv || (!child && p.predisp === 'Мудрость') ? 1 : 0
   const roll = roll3(g, adv)
   const ok = roll.sum + mod >= need
   emit(g, { t: 'проверка', p: p.seat, stat: 'Мудрость', dice: roll.dice, kept: roll.sum, value: 0, mod, trump: 0, dc: need, ok, adv, what: 'поиск смысла' })
@@ -208,4 +208,21 @@ export function meaningPiles(g: G): void {
 /** Условия карты смысла игрока с отметкой «выполнено сейчас» — для листа игрока. */
 export function meaningStatus(g: G, p: Player): { text: string; kind: string; points: number; met: boolean }[] {
   return (meaningOf(g, p)?.conds ?? []).map((k) => ({ text: k.text, kind: k.kind, points: k.points, met: met(g, p, k) }))
+}
+
+/** Бросок на смысл прямо сейчас (рынок молодости, «Озарение»): по порогу текущего отрезка. Смысл уже есть — ничего. */
+export function searchNow(g: G, p: Player, adv: boolean): void {
+  if (p.meaning) return
+  const seg = segName(p)
+  if (meaningRoll(g, p, g.c.tables.meaning.need[seg] !== undefined ? seg : 'Молодость', adv)) {
+    const id = drawMeaning(g, p, 'смыслы')
+    if (id) setMeaning(g, p, id, 'поиск')
+  }
+}
+
+/** Смысл найден без броска («Призвание»): тянешь карту, если смысла ещё не было. */
+export function foundNow(g: G, p: Player): void {
+  if (p.meaning) return
+  const id = drawMeaning(g, p, 'смыслы')
+  if (id) setMeaning(g, p, id, 'поиск')
 }

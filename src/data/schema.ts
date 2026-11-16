@@ -115,6 +115,16 @@ export const RULES = [
   'метка фронта',   // фронт: метка на arg клеток к противнику (минус — к своим)
   'плен',           // фронт: d3 хода по колоде «Тюрьма» без «Судимости», потом домой
   'отпуск',         // фронт: следующий ход дома — играешь клетку поля, потом возвращаешься
+  // Рынок (действия после хода)
+  'работа',         // доход и износ: arg — подработка, работа, переработка, дело
+  'закон ловушки',  // незаконная ловушка: −3 возм. (штраф или взятка); второй раз за отрезок — тюрьма
+  'привычка',       // третье посещение места за отрезок (arg — id действия) — «Привычка»
+  'обжорство',      // три хода подряд в ресторане — Аппетит +1
+  'знакомство',     // ▲: здание с колодой в доступном кольце, встреча, шаг характера, 📇 — «Знакомый»
+  'поиск смысла',   // бросок на смысл сейчас (arg «преимущество»); смысл уже есть — ничего
+  'смысл найден',   // смысл найден: тянешь карту, если ещё не было
+  'переход в класс партнёра', // разрешён переход в класс Партнёра или Супруга(и), если он выше
+  'без рынка',      // на следующем ходу рынок недоступен («Тихий день» Эшвинов)
 ] as const
 
 /** События, которых может ждать отложенный эффект (`later`). */
@@ -220,6 +230,8 @@ export type Cond =
   | { ownBusiness: boolean }
   | { bizAtLeast: 'среднее' | 'крупное' }
   | { tactic: 'атака' | 'держать' | 'беречь' }
+  | { rule: string }
+  | { citizen: boolean }
   | { working: boolean }
 
 export const Cond: z.ZodType<Cond> = z.lazy(() =>
@@ -327,6 +339,10 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ bizAtLeast: z.enum(['среднее', 'крупное']) }),
     /** Фронт: тактика, выбранная в этот ход. */
     z.strictObject({ tactic: z.enum(['атака', 'держать', 'беречь']) }),
+    /** На игрока действует особое правило («срыв», «студент», «только подработка»). */
+    z.strictObject({ rule: z.string().min(1) }),
+    /** Игрок — гражданин страны, где живёт (пенсия, льготы, армия и полиция). */
+    z.strictObject({ citizen: z.boolean() }),
     /** Работает (в этом отрезке ставил Стаж; подработка не в счёт) или учится (высшее, идёт Молодость). */
     z.strictObject({ working: z.boolean() }),
   ]),
@@ -395,6 +411,7 @@ export type Node =
   | { check: Check; success: Node[]; failure: Node[] }
   | { choose: { label: string; if?: Cond; must?: Cond; then: Node[] }[] }
   | { d6: Record<string, Node[]> }
+  | { die: number; out: Record<string, Node[]> }
   | { if: Cond; then: Node[]; else?: Node[] }
   | { cases: { if: Cond; then: Node[] }[]; else?: Node[] }
   | { mod: { tag?: (typeof TAGS)[number]; fork?: string; add?: number; adv?: true; dis?: true; until: 'отрезок' | 'проверка' | 'вражда' | 'конец Молодости'; max?: 'отрезок' } }
@@ -469,6 +486,8 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     z.strictObject({ choose: z.array(z.strictObject({ label: z.string().min(1), if: Cond.optional(), must: Cond.optional(), then: z.array(Node) })).min(2) }),
     /** Бросок d6 с исходами: { "d6": { "1-2": [...], "6": [...] } }. Пропущенные значения — ничего. */
     z.strictObject({ d6: z.record(Range, z.array(Node)) }),
+    /** Бросок другого кубика (d10 у Двора, d12 у Борделя): всегда отдельный бросок, с d6 карты не делится. */
+    z.strictObject({ die: z.number().int().min(2), out: z.record(Range, z.array(Node)) }),
     z.strictObject({ if: Cond, then: z.array(Node), else: z.array(Node).optional() }),
     /** Первая подходящая ветка: «Ядро: … Полупериферия: … Периферия: …». */
     z.strictObject({ cases: z.array(z.strictObject({ if: Cond, then: z.array(Node) })).min(2), else: z.array(Node).optional() }),

@@ -324,6 +324,7 @@ export function* gainItem(g: G, p: Player, name: string, opts: { adopted?: true 
   if (item.name === 'Компромат') count(p, 'получен «Компромат»')
   if (['Партбилет', 'Присяга', 'Значок'].includes(item.name)) count(p, 'получен Партбилет, Присяга или Значок')
   if (item.group === 'Партнёр') count(p, 'партнёр')
+  if (item.group === 'Ребёнок') visit(p, 'ребёнок')
   if (item.kind === 'дело') count(p, 'своё дело открыто')
   if (item.onGain) yield* run(g, p, item.onGain, newCtx('правило'))
   return h
@@ -344,7 +345,7 @@ export function removeHeld(g: G, p: Player, h: Held): void {
   emit(g, { t: 'предмет', p: p.seat, name: h.name, how: 'потерян' })
   if (item?.kind === 'стигма') { count(p, 'стигма снята'); if (h.name === 'Долг') count(p, 'снят «Долг»') }
   if (item?.group && g.s.piles[`люди.${item.group}`]) g.s.piles[`люди.${item.group}`].push(h.name)
-  if (item && (item.deck === 'Верхи' || item.deck === 'Дно') && g.s.piles[item.deck]) g.s.piles[item.deck].push(h.name)
+  if (item && (item.deck === 'Верхи' || item.deck === 'Дно' || item.deck === 'Знакомые') && g.s.piles[item.deck]) g.s.piles[item.deck].push(h.name)
 }
 
 /** Сбросить карту; price — с ценой сброса своего вида («Сброс предметов»). */

@@ -23,7 +23,9 @@ function quiet(over: Partial<Content> = {}): Content {
     blank('тест.развилка'),
     ...['Образование', 'Эмиграция', 'Партнёрство', 'Ребёнок'].map((title) => blank(`тест.развилка.${title}`, { title, cell: 'на поле', effect: [{ flag: `развилка ${title}` }] })),
   ]
-  return { ...real, decks, polar: [], subCodes: {}, ...over }
+  // Ни рынка, ни трат: проверяем сам ход. Рынок — в tests/engine.market.test.ts.
+  const tables = { ...real.tables, spending: { ...real.tables.spending, young: 0, base: 0, rich: 0 } }
+  return { ...real, decks, polar: [], subCodes: {}, actions: [], tables, ...over }
 }
 
 const config = (seed: number): GameConfig => ({ mode: 'поколение', seed, seats: [{ name: 'Опыт' }] })

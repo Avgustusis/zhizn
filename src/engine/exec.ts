@@ -48,6 +48,10 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
     ctx.d6.value ??= rollDie(g, p, 6, 'карта')
     const v = ctx.d6.value
     for (const [range, then] of Object.entries(n.d6)) if (inRange(range, v)) yield* run(g, p, then, { ...ctx, d6: {} })
+  } else if ('die' in n) {
+    // Бросок другого кубика (d10, d12): всегда отдельный, с d6 карты не делится.
+    const v = rollDie(g, p, n.die, `d${n.die}`)
+    for (const [range, then] of Object.entries(n.out)) if (inRange(range, v)) yield* run(g, p, then, { ...ctx, d6: {} })
   } else if ('choose' in n) {
     // Черта характера обязывает (фронт): если хоть один вариант «обязан», открыты только такие.
     const bound = n.choose.map((o) => !!o.must && cond(g, p, o.must, ctx))

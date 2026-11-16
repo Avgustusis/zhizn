@@ -5,6 +5,7 @@ import { cultureAxisOf, newCtx } from './cond.ts'
 import { gainItem } from './change.ts'
 import { run } from './exec.ts'
 import { markEntry, meaningAtBirth, meaningPiles, settle } from './meaning.ts'
+import { cityPiles } from './market.ts'
 import type { Cls, Country, Culture, GameConfig, GameState, Player, Race, Relation, Stat } from './types.ts'
 
 export function newState(config: GameConfig): GameState {
@@ -100,6 +101,7 @@ export function setupPiles(g: G): void {
     g.s.piles[deck] = shuffle(g, g.c.items.filter((i) => i.deck === deck).flatMap((i) => Array<string>(Math.max(1, i.copies)).fill(i.name)))
   }
   meaningPiles(g)
+  cityPiles(g)
 }
 
 // ── Рождение ────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import type { Content } from '../engine/types.ts'
 import { Board } from './board-schema.ts'
 import { CityFile, DeckFile, FrontFile, HeirsFile, ItemsFile, MeaningsFile } from './schema.ts'
 import { tables } from './tables.ts'
+import { actions } from './market.ts'
 import board from './board.json' with { type: 'json' }
 import city from './city.json' with { type: 'json' }
 import front from './front.json' with { type: 'json' }
@@ -43,7 +44,7 @@ export function loadContent(): Content {
     meanings: MeaningsFile.parse(meanings).meanings,
     heirs: HeirsFile.parse(heirs).heirs,
     board: Board.parse(board),
-    actions: [],
+    actions,
     buildings: CityFile.parse(city).buildings,
     front: FrontFile.parse(front),
     tables,

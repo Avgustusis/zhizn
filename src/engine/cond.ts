@@ -179,7 +179,11 @@ export function cond(g: G, p: Player, c: Cond | undefined, ctx?: Ctx): boolean {
   if ('has' in c) return has(g, p, c.has)
   if ('seg' in c) return c.seg.includes(SEGMENTS[p.seg])
   if ('flag' in c) return !!p.flags[c.flag]
-  if ('log' in c) return inRange(p.counters[c.log] ?? 0, c)
+  if ('log' in c) {
+    // «Отрезков с Хобби (Храмом, Курсами)» — сколько отрезков игрок бывал в этом месте.
+    const per = { 'отрезков с Хобби': 'Хобби', 'отрезков с Храмом': 'Храм', 'отрезков с Курсами': 'Курсы' }[c.log as string]
+    return inRange(per ? (p.visits[per] ?? []).length : p.counters[c.log] ?? 0, c)
+  }
   if ('val' in c) return inRange(derived(g, p, c.val), c)
   if ('countOf' in c) return c.countOf.filter((n) => has(g, p, n)).length >= c.gte
   if ('atEntry' in c) return !!p.flags[entryKey(c)]
@@ -232,7 +236,9 @@ export function cond(g: G, p: Player, c: Cond | undefined, ctx?: Ctx): boolean {
     const size = biz.b.size === 'малое' ? (biz.h.grown ? 'среднее' : 'малое') : biz.b.size === 'мафия' ? 'среднее' : biz.b.size
     return c.bizAtLeast === 'среднее' ? size !== 'малое' : size === 'крупное'
   }
-  if ('working' in c) return ((p.visits['Стаж'] ?? []).includes(p.seg) || !!p.student) === c.working
+  if ('working' in c) return ((p.visits['Стаж'] ?? []).includes(p.seg) || !!p.rules['студент']) === c.working
+  if ('rule' in c) return !!p.rules[c.rule]
+  if ('citizen' in c) return p.citizenship.includes(p.country) === c.citizen
   throw new Error(`неизвестное условие: ${JSON.stringify(c)}`)
 }
 

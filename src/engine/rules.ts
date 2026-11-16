@@ -5,7 +5,9 @@
 import { clamp, countryOf, pick, say, todo, type Flow, type G } from './core.ts'
 import type { Ctx } from './cond.ts'
 import { kindOf } from './cond.ts'
-import { addParam, removeHeld, wed } from './change.ts'
+import { addParam, charStep, gainItem, removeHeld, wed } from './change.ts'
+import { acquaintance, burn, lawTrap, partnerClass, rite, work } from './market.ts'
+import { foundNow, searchNow } from './meaning.ts'
 import { newCtx } from './cond.ts'
 import type { Player } from './types.ts'
 
@@ -41,7 +43,28 @@ const RULES: Record<string, Rule> = {
     addParam(g, p, 'псих', Math.min(3, list.length), c)
     addParam(g, p, 'Пожертвования', 1, c)
   },
-  'студент'(_g, p) { p.student = true },
+  'студент'(_g, p) { p.rules['студент'] = {} },
+  // ── Рынок ──
+  *'работа'(g, p, arg) { yield* work(g, p, arg ?? 'работа') },
+  'закон ловушки'(g, p) { lawTrap(g, p) },
+  *'привычка'(g, p, arg) {
+    // Третье посещение места за отрезок — «Привычка».
+    if ((p.counters[`действие:${arg}:${p.seg}`] ?? 0) === 3) yield* gainItem(g, p, 'Привычка')
+  },
+  'обжорство'(g, p) {
+    // Три хода подряд в ресторане — Аппетит +1.
+    const last = p.counters['обжорство: ход'] ?? -9
+    p.counters['обжорство: подряд'] = last === p.turns - 1 ? (p.counters['обжорство: подряд'] ?? 1) + 1 : 1
+    p.counters['обжорство: ход'] = p.turns
+    if (p.counters['обжорство: подряд'] === 3) charStep(g, p, 'Аппетит')
+  },
+  *'знакомство'(g, p) { yield* acquaintance(g, p) },
+  *'обряд'(g, p) { yield* rite(g, p) },
+  'без рынка'(_g, p) { p.rules['без рынка'] = { arg: String(p.turns + 1) } },
+  'поиск смысла'(g, p, arg) { searchNow(g, p, arg === 'преимущество') },
+  'смысл найден'(g, p) { foundNow(g, p) },
+  *'переход в класс партнёра'(g, p) { yield* partnerClass(g, p) },
+  *'дело прогорело'(g, p) { yield* burn(g, p) },
 }
 
 export function* runRule(g: G, p: Player, rule: string, arg: string | undefined, ctx: Ctx): Flow {
