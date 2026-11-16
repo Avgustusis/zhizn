@@ -120,8 +120,10 @@ describe('цены по стране и идеологии', () => {
     expect(priceOf(e.g, p, act('психолог'))).toBe(3)
     Object.assign(c, { pos: 'ядро' })
     expect(priceOf(e.g, p, act('больница-большой'))).toBe(4)
-    c.ideology = 'Клептократия'
+    c.ideology = 'Социал-демократия'
     expect(priceOf(e.g, p, act('больница-большой'))).toBe(3)
+    c.ideology = 'Клептократия' // больница на 1 дороже (решено 17.11)
+    expect(priceOf(e.g, p, act('больница-большой'))).toBe(4)
   })
 
   it('без денег действие закрыто: в минус платить нельзя', () => {
@@ -251,4 +253,74 @@ describe('партии с простым ИИ', () => {
     expect(worked / lives).toBeGreaterThan(0.9)
     expect(stazh / lives).toBeGreaterThan(5)
   }, 120000)
+})
+
+describe('правила хода 17.11', () => {
+  const menu = (over: Partial<Player>, setup?: (e: Engine, p: Player) => void, answers: string[] = ['бросок', 'конец']) => {
+    const { e, p } = lab(31, over)
+    setup?.(e, p)
+    const { asked } = drive(playerTurn(e.g, p), answers)
+    return { e, p, asked, menu: actionMenu(asked)! }
+  }
+
+  it('два действия за ход: работа не больше одной; большой обмен — оба действия', () => {
+    const { asked, p } = menu({ vozm: 20, phys: 3, psy: 3 }, undefined, ['бросок', 'работа', 'больница', 'конец'])
+    const menus = asked.filter((q) => q.type === 'действие' && q.options.some((o) => o.id === 'конец'))
+    expect(menus.length).toBe(2) // после двух действий ход окончен
+    expect(menus[1].options.some((o) => o.id === 'работа')).toBe(false) // работа уже была
+    expect(menus[1].options.some((o) => o.id === 'больница-большой')).toBe(false) // на одно действие большой обмен не влезает
+    expect(p.counters['действие:работа']).toBe(1)
+    const twoSmall = menu({ vozm: 20, phys: 3, psy: 3 }, undefined, ['бросок', 'хобби', 'больница', 'конец'])
+    expect(twoSmall.p.counters['действие:больница']).toBe(1)
+  })
+
+  it('больница по идеологии: база +2, лучше +3; теократия без большого обмена', () => {
+    const heal = (ideology: string, cls: Player['cls']) => {
+      const { e, p } = lab(32, { cls, phys: 0 })
+      Object.assign(country(e, p), { ideology, pos: 'ядро' })
+      drive(run(e.g, p, act('больница').effect, newCtx('действие')))
+      return p.phys
+    }
+    expect(heal('Либеральная демократия', 'Народ')).toBe(3)
+    expect(heal('Госсоциализм', 'Народ')).toBe(2)
+    expect(heal('Госсоциализм', 'Армия')).toBe(3)
+    expect(heal('Клептократия', 'Олигархи')).toBe(3)
+    expect(heal('Теократия', 'Народ')).toBe(2)
+    const { e, p } = lab(33)
+    Object.assign(country(e, p), { ideology: 'Теократия', pos: 'ядро' })
+    const { asked } = drive(playerTurn(e.g, p), ['бросок', 'конец'])
+    expect(actionMenu(asked)!.options.find((o) => o.id === 'больница-большой')?.off).toMatch(/нельзя/)
+  })
+
+  it('характер: сильная Мера закрывает бар; сильная Беспечность — больница по проверке d6 4–6; закрытое объясняет почему', () => {
+    const { menu: m } = menu({ vozm: 10, character: [0, 0, 0, 0, 2, 0, -2] }, (e, p) => { country(e, p).ideology = 'Либеральная демократия' })
+    expect(m.options.find((o) => o.id === 'бар')?.off).toMatch(/Мера/)
+    expect(m.options.find((o) => o.id === 'больница')?.note).toMatch(/d6 4–6/)
+    expect(m.options.find((o) => o.id === 'больница')?.off).toBeUndefined()
+  })
+
+  it('тяга: в стрессе сильный Аппетит уводит действие в ресторан', () => {
+    let pulled = 0
+    for (let seed = 1; seed <= 30; seed++) {
+      const { e, p } = lab(seed, { vozm: 20, psy: -3, phys: 3, character: [0, 0, 0, 0, -2, 0, 0] })
+      drive(playerTurn(e.g, p), ['бросок', 'конец'])
+      if (p.counters['действие:обжорство']) pulled++
+    }
+    expect(pulled).toBeGreaterThan(10) // d6 ≤ 2 на каждое из двух действий
+  })
+
+  it('большая благотворительность ставит одну отметку «Пожертвование»', () => {
+    const { e, p } = lab(34, { donations: 0 })
+    drive(run(e.g, p, act('благотворительность-большая').effect, newCtx('действие')))
+    expect(p.donations).toBe(1)
+  })
+
+  it('у варианта выбора на карте видно проверку: характеристика, сложность, поправки, шанс', () => {
+    const { e, p } = lab(35)
+    const flow = run(e.g, p, [{ choose: [{ label: 'рискнуть', then: [{ check: { stat: 'Харизма', dc: 15 }, success: [{ add: { 'возм': 3 } }], failure: [{ add: { 'псих': -1 } }] }] }, { label: 'нет', then: [] }] }], newCtx('карта', { tags: ['#карьера'] }))
+    const q = flow.next().value as Request
+    expect(q.options[0].check).toMatchObject({ stat: 'Харизма', dc: 15 })
+    expect(q.options[0].check!.chance).toBeGreaterThan(0)
+    expect(q.options[1].check).toBeUndefined()
+  })
 })

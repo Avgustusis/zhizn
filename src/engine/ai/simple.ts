@@ -37,6 +37,12 @@ export function value(p: Player, nodes: Node[] | undefined, depth = 0): number {
 }
 
 /**
+ * Пороги лечения. По умолчанию — как у ИИ симуляции автора (sim3.py: HOSP_T = 0, подлечиться при физ. < 3), без особой
+ * заботы о Старости. Старые значения 3 и 6 в Старости держали физ. ≈ 5,5 к входу в Древность.
+ */
+export const policy = { heal: 0, topUp: 3, oldHeal: 0, oldTopUp: 3 }
+
+/**
  * Какое действие рынка выбрать — порядок как у ИИ симуляции автора (sim3.py: market, work, small):
  * тяжело — большой обмен; работа, пока денег меньше 10; малый обмен: больница при физ. 0 и ниже, психолог при псих. 0 и ниже,
  * обряд, семья, рост характеристик своего класса, отдых; в остатке — подлечиться, если есть запас денег.
@@ -52,7 +58,7 @@ function marketPick(g: G, p: Player, ids: string[], price: (id: string) => numbe
   // ■: работа, пока денег меньше 10 (переработка — когда здоровья в запасе, а денег нет).
   if (work && p.vozm < 10 && p.seg < 5) return p.vozm < 2 && p.phys >= 3 && p.psy >= 3 && !old && hasId('переработка') ? 'переработка' : work
   // ▲: малый обмен.
-  if (p.phys <= (old ? 3 : 0)) { const h = first('больница-старость', 'больница-льгота', 'больница-старцы', 'больница'); if (h) return h }
+  if (p.phys <= (old ? policy.oldHeal : policy.heal)) { const h = first('больница-старость', 'больница-льгота', 'больница-старцы', 'больница'); if (h) return h }
   if (p.psy <= 0) { const h = first('исповедь', 'психолог-льгота', 'обряд', 'двор', 'психолог', 'семья', 'храм'); if (h) return h }
   if (p.phys <= -5 && old) { const h = first('больница-большой'); if (h) return h }
   const youth = ids.filter((id) => id.startsWith('молодость-'))
@@ -66,7 +72,7 @@ function marketPick(g: G, p: Player, ids: string[], price: (id: string) => numbe
   }
   if (hasId('путешествие') && p.vozm >= 7 && p.psy < 4) return 'путешествие'
   if (hasId('хобби') && p.psy < 5) return 'хобби'
-  if (p.phys < (old ? 6 : 3)) { const h = first('больница-старость', 'больница-льгота', 'больница'); if (h && p.vozm >= price(h) + 2) return h }
+  if (p.phys < (old ? policy.oldTopUp : policy.topUp)) { const h = first('больница-старость', 'больница-льгота', 'больница'); if (h && p.vozm >= price(h) + 2) return h }
   if (p.psy < 3) { const h = first('психолог-льгота', 'психолог'); if (h && p.vozm >= price(h) + 2) return h }
   return first('знакомство', 'двор') ?? 'конец'
 }

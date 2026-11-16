@@ -1,5 +1,5 @@
 /** Проверка: 3d6 + характеристика ≥ сложность, со всеми поправками («Проверки»). */
-import type { Check, Cond } from '../data/schema.ts'
+import type { Check, Cond, Node } from '../data/schema.ts'
 import type { PoleTag } from '../data/tables.ts'
 import { CHAR_AXES, CULTURE_AXES } from '../data/schema.ts'
 import { ask, clamp, countryOf, emit, roll3, type Flow, type G } from './core.ts'
@@ -239,4 +239,47 @@ export function spend(g: G, p: Player, h: Held): void {
   emit(g, { t: 'предмет', p: p.seat, name: h.name, how: 'сыгран' })
   if (h.uses && h.uses > 1) { h.uses -= 1; return }
   removeHeld(g, p, h)
+}
+
+/** Что игрок видит о проверке до броска: характеристика, сложность, его поправки, шанс (козыри не считаются). */
+export interface CheckPreview { stat: Stat; dc: number; value: number; mod: number; parts: string[]; adv: number; chance: number; auto: boolean; tags: Tag[] }
+
+/** Расчёт проверки без броска и без вопросов — для подсказки у варианта выбора. Козыри «по желанию» не учитываются. */
+export function previewCheck(g: G, p: Player, check: Check, ctx: Ctx): CheckPreview {
+  let dcBase = check.dc
+  let add = 0
+  let adv = false
+  let dis = false
+  let auto = false
+  const parts: string[] = []
+  for (const m of check.mods ?? []) {
+    if (m.spend || !cond(g, p, m.if, ctx)) continue
+    const moderate = !!ctx.polar && !m.fixed && polesIn(m.if).length > 0 && !strongIn(g, p, m.if)
+    if (m.dc !== undefined) dcBase = moderate ? check.dc + Math.sign(m.dc - check.dc) : m.dc
+    if (m.add) { const v = moderate ? Math.sign(m.add) : m.add; add += v; parts.push(`карта ${v > 0 ? '+' : ''}${v}`) }
+    if (m.adv) adv = true
+    if (m.dis) dis = true
+    if (m.auto) auto = true
+  }
+  const options = [...(Array.isArray(check.stat) ? check.stat : [check.stat]).map((stat) => ({ stat, dc: dcBase })), ...(check.or ?? [])]
+  const rated = options.map((o) => {
+    const s = situational(g, p, o.stat, ctx)
+    const a = net(adv || s.adv || p.predisp === o.stat, dis || s.dis)
+    return { ...o, s, a, chance: auto ? 1 : chance(o.dc - effStat(g, p, o.stat) - add - s.add, a) }
+  })
+  const best = rated.reduce((x, y) => (y.chance > x.chance ? y : x))
+  return {
+    stat: best.stat, dc: best.dc, value: effStat(g, p, best.stat), mod: add + best.s.add, parts: [...parts, ...best.s.parts],
+    adv: best.a, chance: best.chance, auto, tags: ctx.tags,
+  }
+}
+
+/** Первая проверка в шагах (для подсказки у варианта). */
+export function firstCheck(nodes: Node[] | undefined): Check | undefined {
+  for (const n of nodes ?? []) {
+    if ('check' in n) return n.check
+    const inner = 'then' in n && Array.isArray(n.then) ? firstCheck(n.then as Node[]) : undefined
+    if (inner) return inner
+  }
+  return undefined
 }

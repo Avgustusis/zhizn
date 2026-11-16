@@ -90,3 +90,16 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; }
 .tools { margin-top: 10px; }
 .closed summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
 .closed p { margin: 2px 0; font-size: 0.85rem; color: var(--muted); }
+.cardpanel { background: #fffdf8; border: 2px solid var(--ink); border-top: 8px solid var(--red); border-radius: 4px; padding: 10px 12px; margin: 10px 0; }
+.cardpanel h3 { margin: 2px 0 6px; font-size: 1.2rem; }
+.cardpanel .who { margin: 0; font-family: ui-monospace, 'Courier New', monospace; font-size: 0.75rem; color: var(--muted); }
+.cardpanel .text { font-style: italic; margin: 0 0 6px; }
+.cardpanel .src { margin: 0 0 6px; }
+.cardpanel .tags { font-family: ui-monospace, 'Courier New', monospace; font-size: 0.75rem; color: var(--muted); margin: 0 0 6px; }
+.cardpanel .result { border-top: 1px dashed var(--line); padding-top: 4px; margin-bottom: 8px; }
+.cardpanel .result h4 { margin: 0; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.cardpanel .result p { margin: 2px 0; font-size: 0.9rem; }
+.option { display: flex; flex-direction: column; gap: 2px; }
+.option .chk { margin: 0 0 0 8px; font-size: 0.85rem; }
+.option .parsed { margin-left: 8px; }
+.option .what summary { cursor: pointer; color: var(--muted); font-size: 0.8rem; margin-left: 8px; }

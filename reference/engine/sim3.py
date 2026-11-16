@@ -16,7 +16,8 @@ import char as CH
 
 E = os.environ.get
 CARDS = json.load(open(E('CARDS', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cards_v4.json'))))   # v4: психика в Юности и Старости урезана (8-й прогон)
-DREV_T = int(E('DREV_T', '12')); DREV_PER = int(E('DREV_PER', '-2'))
+HOSPX = int(E('HOSPX', '2')); HIDEO = E('HIDEO', '1') == '1'; GATE = E('GATE', '1') == '1'; PULL = E('PULL', '1') == '1'; ACT2 = E('ACT2', '1') == '1'   # 16.11: больница ×N; два равных действия вместо основного и дополнительного
+DREV_T = int(E('DREV_T', '14')); DREV_PER = int(E('DREV_PER', '-2'))   # 17.11: порог Древности был 12
 HOSP_T = int(E('HOSP_T', '0')); PSY_T = int(E('PSY_T', '0'))
 OLDRULES = False
 LAW_H = int(E('LAW_H', '1')); LAW_S = int(E('LAW_S', '0')); WORK2 = int(E('WORK2', '2'))
@@ -58,6 +59,11 @@ CELLS = {0: [14, 4, 6, 2, 0, 1, 3], 1: [10, 6, 4, 4, 2, 1, 3], 2: [8, 6, 3, 6, 4
 if FORKS: CELLS[1][4] -= 1; CELLS[2][4] -= 2
 if E('CHILD_FORK', '1') == '1': CELLS[3][4] -= 1
 CTYPES = ['Возраст', 'Отношения', 'Культура', 'Страна', 'Развилка', 'Судьба', 'Тихая']
+# доступ к местам по характеру: место → (ось, знак полюса, вид). need — нужное: проверка; lux — остальное: на ±1 проверка d6 4–6, на ±2 закрыто
+GATES = {'Больница': (6, 1, 'need'), 'Больница+': (6, 1, 'need'), 'Психолог': (0, 1, 'need'), 'Психолог+': (0, 1, 'need'),
+         'Курсы': (6, 1, 'lux'), 'Спортзал': (4, 1, 'lux'), 'Салон': (0, -1, 'lux'), 'Путешествие': (1, 1, 'lux'), 'Благотворительность': (1, 1, 'lux'),
+         'Бордель': (2, -1, 'lux'), 'Бар': (4, -1, 'lux'), 'Обжорство': (4, -1, 'lux'), 'Казино': (5, -1, 'lux'), 'Знакомство': (0, -1, 'lux'), 'Хобби': (6, -1, 'lux')}
+PLACE_OF = lambda k: 'Салон' if k == 'Красота' else 'Спортзал' if k in ('Сила', 'Выносливость', 'Ловкость') else 'Курсы'
 IDEOS = ['Либеральная демократия', 'Социал-демократия', 'Теократия', 'Национализм', 'Госсоциализм', 'Военная диктатура', 'Клептократия']
 FIN_DIST = {'ядро': [0.4, 2.4, 7.7, 40.7, 25.6, 17.4, 5.8], 'полупериферия': [1.9, 7.4, 16.7, 48.1, 16.7, 7.4, 1.9], 'периферия': [5.8, 17.4, 25.6, 40.7, 7.7, 2.4, 0.4]}
 NARROW = [1.9, 7.4, 16.7, 48.1, 16.7, 7.4, 1.9]; WIDE = [4.6, 11.6, 21.3, 25, 21.3, 11.6, 4.6]
@@ -453,6 +459,9 @@ class Player:
         s.alive = False; s.death = (SEGS[s.seg], why); s.w.stats['death_' + why.split(' ')[0]] += 1
 
 
+class Blocked(Exception): pass
+
+
 class World:
     def __init__(s, rounds):
         s.stats = C.Counter(); s.trans = C.Counter(); s.gstat = C.Counter(); s.wt = 0; s.round = 0; s.rounds = rounds
@@ -823,13 +832,74 @@ class World:
         pos, ideo = c['pos'], c['ideo']
         if big:
             if pos == 'периферия': return None
+            if HIDEO and ideo == 'Теократия': return None   # 17.11: лечат верой, без хирургии
             pr = 3 if pos == 'ядро' else 4
         else:
             pr = PERI_HOSP if pos == 'периферия' else 1
             if p.seg >= 4 and p.cidx in p.citizen and s.free_old(p, c): return 0
             if ideo in ('Социал-демократия', 'Госсоциализм') and ('freeh', p.seg) not in p.used_seg and p.cidx in p.citizen: return 0
         if ideo == 'Либеральная демократия': pr += 1
+        if HIDEO and ideo == 'Клептократия': pr += 1
+        if HIDEO and ideo == 'Национализм' and p.minority: pr += 1
         return pr
+
+    def hosp_eff(s, p, c, big=False):
+        """Сколько физ. даёт больница. HIDEO — по идеологии (16.11): база варианта D +2/+4, лучше +3/+5, хуже +1/+3."""
+        if not HIDEO: return (2 if big else 1) * HOSPX
+        ideo = c['ideo']; good = False; bad = False
+        if ideo in ('Либеральная демократия', 'Социал-демократия'): good = True
+        elif ideo == 'Теократия': bad = E('THEO_BAD', '0') == '1'
+        elif ideo == 'Национализм': good = not p.minority
+        elif ideo == 'Госсоциализм': good = p.cls in ('Полиция', 'Армия')
+        elif ideo == 'Военная диктатура': good = p.cls == 'Армия'
+        elif ideo == 'Клептократия': good = p.cls in ('Полиция', 'Олигархи')
+        e = 3 if good else 1 if bad else 2
+        return e + 2 if big else e
+
+    def try_(s, p, name):
+        """Доступ к месту по характеру (GATE, 16.11). None — закрыто (ИИ знает и не идёт), False — проверка провалена, действие потрачено, True — можно."""
+        if not GATE: return True
+        g = GATES.get(name)
+        if not g: return True
+        a, sg, kind = g
+        v = p.char[a] * sg
+        if v <= 0: return True
+        if name == 'Благотворительность' and v >= 2:   # 17.11: не закрыта, проверка d6 5–6 — смыслы с пожертвованиями остаются достижимы
+            s.stats['gate_chk_' + name] += 1
+            if d6() >= 5: return True
+            s.stats['gate_fail'] += 1; s.stats['gate_fail_' + name] += 1; return False
+        if kind == 'lux' and v >= 2: s.stats['gate_ban'] += 1; s.stats['gate_ban_' + name] += 1; return None
+        need = (3 if v == 1 else 4) if kind == 'need' else 4
+        s.stats['gate_chk_' + name] += 1
+        if d6() >= need: return True
+        s.stats['gate_fail'] += 1; s.stats['gate_fail_' + name] += 1; return False
+
+    def banned(s, p, name):
+        if not GATE or name not in GATES: return False
+        a, sg, kind = GATES[name]; return kind == 'lux' and p.char[a] * sg >= 2 and name != 'Благотворительность'
+
+    def G(s, p, name):
+        """Для условий в small(): False — закрыто, ИИ ищет другое; провал проверки — Blocked (действие потрачено)."""
+        r = s.try_(p, name)
+        if r is None: return False
+        if r is False: raise Blocked()
+        return True
+
+    def slot(s, p, c, acq_ok):
+        if s.pull(p): return
+        try:
+            if acq_ok and CH.want(s, p) and s.G(p, 'Знакомство') and CH.acq(s, p): return
+            s.small(p, c)
+        except Blocked: pass
+
+    def pull(s, p):
+        """Тяга характера (PULL, 16.11): в стрессе (псих. −1 и ниже) d6 ≤ уровень черты — действие уходит в ловушку."""
+        if not PULL or p.psy > -1 or p.inst is not None: return False
+        for a, t in ((4, 'Обжорство'), (5, 'Бар'), (1, 'Казино'), (2, 'Бордель')):
+            v = p.char[a]
+            if v > 0 and d6() <= v and p.vozm >= {'Обжорство': 3, 'Бордель': 2}.get(t, 1):
+                s.stats['pull'] += 1; s.stats['pull_' + t] += 1; s.trap(p, t, forced=True); return True
+        return False
 
     def psy_price(s, p, c, big=False):
         pos, ideo = c['pos'], c['ideo']
@@ -855,6 +925,7 @@ class World:
         return False
 
     def do(s, p, name, **d):
+        if name.startswith('Больница'): s.stats['hospI_' + s.country(p)['ideo']] += 1
         s.stats['mk_' + name] += 1; p.n_mk += 1; p.log['mk_' + name] += 1; p.segs[name].add(p.seg)
         for k, v in d.items():
             if k == 'vozm': p.vozm += v
@@ -870,6 +941,7 @@ class World:
 
     def market(s, p):
         seg = p.seg; c = s.country(p)
+        s.stats['mturnI_' + c['ideo']] += 1
         cost = 1 if seg == 2 else (2 if p.cls in ('Мафия', 'Олигархи') else 1)
         p.vozm -= cost; s.stats['spend'] += cost
         st_p = p.stazh - p.bz['stazh_biz']   # пенсия — только по Стажу найма
@@ -879,12 +951,18 @@ class World:
             if p.vozm >= 4: p.vozm -= 2; s.stats['mk_Сиделка'] += 1
             else: p.phys -= 1
         hb = s.hosp_price(p, c, True); pb = s.psy_price(p, c, True)
-        if p.phys <= -6 and hb is not None and p.vozm >= hb:
-            s.do(p, 'Больница+', vozm=-hb, phys=2); return s.after(p)
-        if (p.psy <= -6 or (p.habit and p.psy <= -1 and p.vozm >= (pb or 99) + 2)) and pb is not None and p.vozm >= pb:
+        if p.phys <= -6 and hb is not None and p.vozm >= hb and (g := s.try_(p, 'Больница+')) is not None:
+            if not g: return s.after(p)
+            s.do(p, 'Больница+', vozm=-hb, phys=s.hosp_eff(p, c, True)); return s.after(p)
+        if (p.psy <= -6 or (p.habit and p.psy <= -1 and p.vozm >= (pb or 99) + 2)) and pb is not None and p.vozm >= pb and (g := s.try_(p, 'Психолог+')) is not None:
+            if not g: return s.after(p)
             s.do(p, 'Психолог+', vozm=-pb, psy=2); return s.after(p)
+        v0, z0 = p.vozm, p.stazh
         s.work(p, c)
-        if not (CH.want(s, p) and CH.acq(s, p)): s.small(p, c)
+        worked = p.vozm != v0 or p.stazh != z0
+        if not worked: s.stats['turn_nowork'] += 1
+        s.slot(p, c, True)
+        if ACT2 and not worked and p.alive and p.inst is None: s.stats['act2_extra'] += 1; s.slot(p, c, False)
         s.after(p)
 
     def after(s, p):
@@ -968,21 +1046,21 @@ class World:
         nodoc = p.items.get('Без документов', 0) > 0
         rite_ok = p.cidx == p.birth_c or s.diaspora[(p.cidx, p.culture)]
         if nodoc:   # «Без документов»: только ловушки, больница и обряд
-            if p.phys <= HOSP_T and hp is not None and p.vozm >= hp: s.do(p, 'Больница', vozm=-hp, phys=1); return
+            if p.phys <= HOSP_T and hp is not None and p.vozm >= hp and s.G(p, 'Больница'): s.do(p, 'Больница', vozm=-hp, phys=s.hosp_eff(p, c)); return
             if rite_ok and ('rite', seg) not in p.used_seg:
                 p.used_seg.add(('rite', seg)); s.rite(p); return
             if p.psy <= -2 and p.vozm >= 1 and random.random() < 0.15: return s.trap(p, random.choice(['Бар', 'Казино', 'Лотерея', 'Бордель']))
             s.stats['mk_ничего'] += 1; return
         psy_t = PSY_T
         if wn and wn['psy'] is not None and p.psy < wn['psy'] and p.seg >= 3: psy_t = max(PSY_T, wn['psy'] - 1)
-        if p.phys <= HOSP_T and hp is not None and p.vozm >= hp:
+        if p.phys <= HOSP_T and hp is not None and p.vozm >= hp and s.G(p, 'Больница'):
             if hp == 0 and ideo in ('Социал-демократия', 'Госсоциализм') and not (seg >= 4): p.used_seg.add(('freeh', seg))
-            s.do(p, 'Больница', vozm=-hp, phys=1); return
+            s.do(p, 'Больница', vozm=-hp, phys=s.hosp_eff(p, c)); return
         if p.psy <= psy_t:
             if ideo == 'Теократия':
                 if ('conf', seg) not in p.used_seg: p.used_seg.add(('conf', seg)); s.do(p, 'Исповедь', psy=1); p.n_psy += 1; return
                 if p.psy > -8 and p.vozm >= 1: s.temple(p); return
-            elif pp is not None and p.vozm >= pp + (0 if p.psy <= PSY_T else 2):
+            elif pp is not None and p.vozm >= pp + (0 if p.psy <= PSY_T else 2) and s.G(p, 'Психолог'):
                 if pp == 0: p.used_seg.add(('freep', seg))
                 s.do(p, 'Психолог', vozm=-pp, psy=1); return
         r = random.random()
@@ -1001,10 +1079,10 @@ class World:
                 for t, key in (('Бар', 'mk_Бар'), ('Казино', 'mk_Казино'), ('Бордель', 'mk_Бордель')):
                     if p.log[key] == 0: return s.trap(p, t)
                 if p.log['casino_win'] == 0 and random.random() < 0.3: return s.trap(p, 'Казино')
-            if 'donate' in fl and p.vozm >= 5 and random.random() < 0.5:
+            if 'donate' in fl and p.vozm >= 5 and random.random() < 0.5 and s.G(p, 'Благотворительность'):
                 s.do(p, 'Благотворительность', vozm=-2, psy=1); s.stats['donations'] += 1; p.donations += 1; p.don_since += 1; return
             if 'temple' in fl and ('Храм' not in p.segs or seg not in p.segs['Храм']) and p.vozm >= 2 and random.random() < 0.7: s.temple(p); return
-            if 'hobby' in fl and ('hobby', seg) not in p.used_seg and p.vozm >= 2 and random.random() < 0.7:
+            if 'hobby' in fl and ('hobby', seg) not in p.used_seg and p.vozm >= 2 and random.random() < 0.7 and s.G(p, 'Хобби'):
                 p.used_seg.add(('hobby', seg)); return s.hobby(p)
             if 'zapoved' in fl and p.phys >= 1 and p.vozm >= 1 and random.random() < 0.4: s.do(p, 'Заповедник', phys=-2, psy=1); return
             if 'rite' in fl and ('rite', seg) not in p.used_seg and rite_ok:
@@ -1027,7 +1105,8 @@ class World:
                         and (k in cand2 or (k in ('Сила', 'Выносливость', 'Ловкость') and p.phys > -5 and seg < 4))]
                 if 'courses' in fl and seg not in p.segs['Курсы']: want = want + [x for x in cand2 if x not in want][:1]
             want += [k for k in (a1, a2) if k in cand + cand2 and k not in want]
-            if want and p.vozm >= pr + 2 and random.random() < 0.7:
+            want = [k for k in want if not s.banned(p, PLACE_OF(k))]
+            if want and p.vozm >= pr + 2 and random.random() < 0.7 and s.G(p, PLACE_OF(want[0])):
                 k = want[0]
                 if k in cand2 and ideo == 'Национализм' and p.minority: pr += 1
                 if k == 'Красота': s.do(p, 'Салон', vozm=-pr, Красота=2 if pos == 'полупериферия' else 1); s.salon6(p); return
@@ -1039,22 +1118,22 @@ class World:
                     s.do(p, 'Курсы', vozm=-pr, **{k: 1})
                     if d6() == 6: p.add_item('Учитель', 'связь'); s.stats['item_связь_Учитель (курсы)'] += 1
                 return
-            if p.st['Красота'] < 7 and random.random() < 0.25 and p.vozm >= pr + 2:
+            if p.st['Красота'] < 7 and random.random() < 0.25 and p.vozm >= pr + 2 and s.G(p, 'Салон'):
                 s.do(p, 'Салон', vozm=-pr, Красота=2 if pos == 'полупериферия' else 1); s.salon6(p); return
-        if p.vozm >= 7 and ('travel', seg) not in p.used_seg and p.psy < 4 and p.phys > -5 and p.psy > -5 and random.random() < 0.35:
+        if p.vozm >= 7 and ('travel', seg) not in p.used_seg and p.psy < 4 and p.phys > -5 and p.psy > -5 and random.random() < 0.35 and s.G(p, 'Путешествие'):
             p.used_seg.add(('travel', seg)); s.do(p, 'Путешествие', vozm=-5, psy=2, Мудрость=1)
             if TRAVEL_KID and p.items.get('Партнёр', 0) + p.items.get('Супруг', 0) > 0 and p.v_child > 0 and seg in (2, 3):
                 s.stats['travel_kid_try'] += 1
                 if d6() >= 5: p.add_child(); s.stats['travel_kid'] += 1
             return
-        if ('hobby', seg) not in p.used_seg and p.psy < 5 and p.psy > -5 and p.vozm >= 2 and random.random() < 0.35:
+        if ('hobby', seg) not in p.used_seg and p.psy < 5 and p.psy > -5 and p.vozm >= 2 and random.random() < 0.35 and s.G(p, 'Хобби'):
             p.used_seg.add(('hobby', seg)); return s.hobby(p)
         if p.psy < 3 and p.psy > -8 and p.vozm >= 2 and random.random() < 0.3: s.temple(p); return
-        if p.vozm >= 8 and random.random() < 0.15:
+        if p.vozm >= 8 and random.random() < 0.15 and s.G(p, 'Благотворительность'):
             s.do(p, 'Благотворительность', vozm=-2, psy=1); s.stats['donations'] += 1; p.donations += 1; p.don_since += 1; return
         if p.vozm >= 8 and random.random() < 0.06: s.do(p, 'Заповедник', phys=-2, psy=1); return
-        if p.phys < 3 and hp is not None and p.vozm >= hp + 2: s.do(p, 'Больница', vozm=-hp, phys=1); return
-        if p.psy < 3 and pp is not None and p.vozm >= pp + 2: s.do(p, 'Психолог', vozm=-pp, psy=1); return
+        if p.phys < 3 and hp is not None and p.vozm >= hp + 2 and s.G(p, 'Больница'): s.do(p, 'Больница', vozm=-hp, phys=s.hosp_eff(p, c)); return
+        if p.psy < 3 and pp is not None and p.vozm >= pp + 2 and s.G(p, 'Психолог'): s.do(p, 'Психолог', vozm=-pp, psy=1); return
         s.stats['mk_ничего'] += 1
 
     def rite(s, p):
@@ -1062,7 +1141,10 @@ class World:
         s.do(p, 'Обряд', **{('psy' if k == 'псих' else 'phys' if k == 'физ' else k): v for k, v in d.items()})
         if p.cidx != p.birth_c: p.log['rite_abroad'] += 1
 
-    def trap(s, p, t):
+    def trap(s, p, t, forced=False):
+        if GATE and not forced and t in GATES:
+            r = s.try_(p, t)
+            if not r: s.stats['mk_ничего'] += 1; return
         if t == 'Бар': s.do(p, 'Бар', vozm=-1, psy=2, phys=-1 if d6() <= 2 else 0)
         elif t == 'Обжорство' and p.vozm >= 3:   # дорогой ресторан
             r = d6(); s.do(p, 'Обжорство', vozm=-3, psy=2, phys=-1 if r <= 2 else 0)

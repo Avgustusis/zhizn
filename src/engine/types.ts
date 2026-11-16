@@ -47,6 +47,11 @@ export interface Action {
   log?: (typeof import('../data/schema.ts').LOG_EVENTS)[number][]
   /** Подсказка для игрока. */
   note?: string
+  /**
+   * Доступ по характеру (решено 17.11). need — нужное место (больница, психолог): не закрывается, проверка d6
+   * 3–6 при черте ±1 и 4–6 при ±2. Остальное: ±1 — d6 4–6, ±2 — закрыто; strongRoll — вместо закрытия проверка от этого числа.
+   */
+  gate?: { pole: CharPole; need?: true; strongRoll?: number }
   effect: Node[]
 }
 
@@ -264,7 +269,11 @@ export interface GameState {
 // ── Вопросы и журнал ────────────────────────────────────────────────────
 
 /** Вариант ответа. `effect` — шаги, к которым он ведёт (для ИИ; интерфейсу не нужны). */
-export interface Option { id: string; label: string; note?: string; off?: string; effect?: Node[] }
+export interface Option {
+  id: string; label: string; note?: string; off?: string; effect?: Node[]
+  /** Проверка в этом варианте: что игрок видит до выбора (характеристика, сложность, поправки, шанс). */
+  check?: import('./checks.ts').CheckPreview
+}
 
 /** Вопрос к игроку: выбери один вариант. */
 export interface Request {

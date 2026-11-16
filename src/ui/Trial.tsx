@@ -8,7 +8,8 @@ import { CHAR_AXES, SEGMENTS, STATS } from '../data/schema.ts'
 import { Engine } from '../engine/engine.ts'
 import { answer as aiAnswer } from '../engine/ai/simple.ts'
 import { meaningOf, meaningStatus } from '../engine/meaning.ts'
-import type { Player, SaveFile } from '../engine/types.ts'
+import type { LogEvent, Option, Player, SaveFile } from '../engine/types.ts'
+import { renderNodes } from '../data/render.ts'
 import { describe } from './log.ts'
 
 const content = loadContent()
@@ -57,6 +58,45 @@ function Sheet({ e, p, current }: { e: Engine; p: Player; current: boolean }) {
   )
 }
 
+/** Карта целиком, как в настольной версии: название, текст, оригинальный эффект, теги — и что из неё вышло. */
+function CardPanel({ id, deck, who, result, pending, onClose }: { id: string; deck: string; who: string; result: string[]; pending: boolean; onClose: () => void }) {
+  const card = Object.values(content.decks).flat().find((c) => c.id === id)
+  if (!card) return null
+  return (
+    <article className="cardpanel">
+      <p className="who">{who} · {deck}{card.cls ? ` · ${card.cls}` : ''} · {{ 'Б': 'бывает', 'П': 'проверка', 'Р': 'решение' }[card.kind]}</p>
+      <h3>{card.title}{card.miracle ? ' ✨' : ''}</h3>
+      {card.text && <p className="text">{card.text}</p>}
+      <p className="src">{card.src}</p>
+      <p className="tags">{card.tags.join(' ')}</p>
+      {result.length > 0 && <div className="result"><h4>Что вышло</h4>{result.map((r, i) => <p key={i}>{r}</p>)}</div>}
+      {!pending && <button onClick={onClose}>Закрыть карту</button>}
+      {pending && <p className="num">выбери вариант ниже</p>}
+    </article>
+  )
+}
+
+/** Вариант ответа: проверка (тег, характеристика, сложность, поправки, шанс) и что будет — без выбора вслепую. */
+function OptionButton({ o, market, onPick }: { o: Option; market: boolean; onPick: () => void }) {
+  const c = o.check
+  const lines = o.effect ? renderNodes(o.effect) : []
+  return (
+    <div className="option">
+      <button onClick={onPick}>{o.label}{o.note ? <span className="num"> {o.note}</span> : null}</button>
+      {c && (
+        <p className="chk">
+          🎲 {c.stat} {c.dc}{c.tags.length ? ` · ${c.tags.join(' ')}` : ''} · у тебя {c.stat} {c.value}
+          {c.mod ? `, поправки ${c.mod > 0 ? '+' : ''}${c.mod}` : ''}{c.adv > 0 ? ', преимущество' : c.adv < 0 ? ', помеха' : ''}
+          {c.parts.length ? <span className="num"> ({c.parts.join('; ')})</span> : null} · <b>шанс {Math.round(c.chance * 100)}%</b>
+        </p>
+      )}
+      {lines.length > 0 && (market
+        ? <details className="what"><summary>что будет</summary><pre className="parsed">{lines.join('\n')}</pre></details>
+        : <pre className="parsed">{lines.join('\n')}</pre>)}
+    </div>
+  )
+}
+
 export default function Trial() {
   // Движок меняется на месте, поэтому лежит в обёртке: новая обёртка — новый кадр.
   const [box, setBox] = useState<{ e: Engine | null }>({ e: null })
@@ -64,6 +104,8 @@ export default function Trial() {
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 100000))
   const [saved, setSaved] = useState<SaveFile | null>(loadSaved)
   const [error, setError] = useState('')
+  /** До какого места журнала игрок уже видел карты: новые карты показываются целиком и закрываются игроком. */
+  const [seen, setSeen] = useState(0)
   const logEnd = useRef<HTMLDivElement | null>(null)
   const e = box.e
   useEffect(() => { logEnd.current?.scrollIntoView({ block: 'nearest' }) })
@@ -77,17 +119,20 @@ export default function Trial() {
   }
   /** Ответ за игрока — простой ИИ (лечится, работает, растёт; на смысл не играет). */
   const randomId = (x: Engine) => aiAnswer(x.g, x.pending!)
-  const start = () => act(() => new Engine(content, { mode: 'поколение', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `Игрок ${i + 1}` })) }))
-  const resume = () => act((x) => (saved ? Engine.load(content, saved) : x))
+  const start = () => act(() => { setSeen(0); return new Engine(content, { mode: 'поколение', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `Игрок ${i + 1}` })) }) })
+  const resume = () => act((x) => { const y = saved ? Engine.load(content, saved) : x; if (y) setSeen(y.state.log.length); return y })
   const answer = (id: string) => act((x) => { x?.answer(id); return x })
   /** Отвечать наугад, пока не дойдём до следующего вопроса «твой ход» (или до конца партии). */
   const skipTurn = () => act((x) => {
+    queueMicrotask(() => setSeen(Number.MAX_SAFE_INTEGER))
     if (!x?.pending) return x
     x.answer(randomId(x))
     for (let i = 0; i < 500 && x.pending && x.pending.type !== 'ход'; i++) x.answer(randomId(x))
     return x
   })
-  const skipAll = () => act((x) => { for (let i = 0; x && i < 100000 && x.pending; i++) x.answer(randomId(x)); return x })
+  const skipAll = () => act((x) => {
+    queueMicrotask(() => setSeen(Number.MAX_SAFE_INTEGER))
+    for (let i = 0; x && i < 100000 && x.pending; i++) x.answer(randomId(x)); return x })
   const undo = () => act((x) => {
     if (!x) return x
     const save = x.save()
@@ -115,6 +160,13 @@ export default function Trial() {
   const s = e.state
   const req = e.pending
   const log = s.log.slice(-80)
+  // Выпавшие карты, которые игрок ещё не закрыл: первая из них показывается целиком.
+  const from = Math.min(seen, s.log.length)
+  const cardAt = s.log.findIndex((ev, i) => i >= from && ev.t === 'карта')
+  const shownCard = cardAt >= 0 ? (s.log[cardAt] as Extract<LogEvent, { t: 'карта' }>) : undefined
+  const nextCard = cardAt >= 0 ? s.log.findIndex((ev, i) => i > cardAt && (ev.t === 'карта' || ev.t === 'ход')) : -1
+  const cardResult = cardAt >= 0 ? s.log.slice(cardAt + 1, nextCard < 0 ? s.log.length : nextCard).map((ev) => describe(ev, s)).filter((d) => d.kind !== 'quiet') : []
+  const closeCard = () => setSeen(nextCard < 0 ? s.log.length : nextCard)
   const ranking = [...s.players].sort((a, b) => b.happiness - a.happiness || (b.death?.round ?? 999) - (a.death?.round ?? 999))
   return (
     <section className="trial">
@@ -127,16 +179,15 @@ export default function Trial() {
         <div ref={logEnd} />
       </div>
 
-      {req ? (
+      {shownCard ? (
+        <CardPanel id={shownCard.id} deck={shownCard.deck} who={s.players[shownCard.p]?.name ?? ''} result={cardResult.map((d) => d.text)} pending={nextCard < 0 && !!req && req.card === shownCard.id} onClose={closeCard} />
+      ) : null}
+      {(!shownCard || (nextCard < 0 && req?.card === shownCard.id)) && (req ? (
         <div className="ask">
           <p className="who">{s.players[req.player].name}</p>
           <p className="q">{req.text}</p>
           <div className="options">
-            {req.options.filter((o) => !o.off).map((o) => (
-              <button key={o.id} onClick={() => answer(o.id)}>
-                {o.label}{o.note ? <span className="num"> {o.note}</span> : null}
-              </button>
-            ))}
+            {req.options.filter((o) => !o.off).map((o) => <OptionButton key={o.id} o={o} market={req.type === 'действие'} onPick={() => answer(o.id)} />)}
             {req.options.some((o) => o.off) && (
               <details className="closed">
                 <summary>недоступно сейчас ({req.options.filter((o) => o.off).length})</summary>
@@ -150,7 +201,7 @@ export default function Trial() {
           <p className="q">Партия окончена.</p>
           <ol>{ranking.map((p) => <li key={p.seat}>{p.name}: счастье {p.happiness}{p.alive ? '' : ` (умер в отрезке «${p.death?.seg}»)`}</li>)}</ol>
         </div>
-      )}
+      ))}
       <div className="controls tools">
         {req && <button onClick={skipTurn}>Ход за ИИ</button>}
         {req && <button onClick={skipAll}>До конца за ИИ</button>}

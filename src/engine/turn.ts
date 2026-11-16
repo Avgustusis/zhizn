@@ -9,7 +9,8 @@ import { run } from './exec.ts'
 import { markEntry, meaningAtEntry, settle } from './meaning.ts'
 import { rollFashion } from './setup.ts'
 import { businessAtEntry, money } from './market.ts'
-import type { Action, Player, Slot } from './types.ts'
+import { whyNot } from './explain.ts'
+import type { Action, Player } from './types.ts'
 
 const cellsOf = (g: G, seg: number): BoardCell[] => g.c.board.segments[seg].cells
 export const cellOf = (g: G, p: Player): BoardCell => cellsOf(g, p.seg)[p.cell]
@@ -224,13 +225,27 @@ function* instTurn(g: G, p: Player): Flow {
 
 // ── Слоты действий ──────────────────────────────────────────────────────
 
-/** После события: ■ основное, ▲ дополнительное, ◆ рынок молодости. Действия — данные (`Content.actions`). */
 /** Цена действия: первая подходящая строка; нет строк — даром. */
 export function priceOf(g: G, p: Player, a: Action): number {
   return a.price?.find((x) => cond(g, p, x.if))?.n ?? 0
 }
 
-/** После события: ■ основное, ▲ дополнительное, ■▲ большой обмен, ◆ рынок молодости. Действия — данные (src/data/market.ts). */
+/** Подсказка о доступе по характеру: шанс пройти проверку или «закрыто». */
+export function gateOf(g: G, p: Player, a: Action): { closed?: string; need?: number } {
+  if (!a.gate) return {}
+  const lean = charLean(p, a.gate.pole)
+  if (!lean) return {}
+  const t = g.c.tables.gate
+  if (a.gate.need) return { need: t.need[lean] }
+  if (lean >= 2) return a.gate.strongRoll ? { need: a.gate.strongRoll } : { closed: `не в твоём характере (${a.gate.pole})` }
+  return { need: t.lux }
+}
+
+/**
+ * После события: два действия (решено 17.11). ■ работа — не больше одной за ход; ▲ малый обмен или знакомство;
+ * большой обмен ▲▲ — оба действия. ◆ — решение рынка молодости сверх двух. Действия — данные (src/data/market.ts).
+ * Характер: место может требовать проверки d6 или быть закрыто; в стрессе черта тянет в ловушку.
+ */
 function* actions(g: G, p: Player): Flow {
   const t = g.c.tables
   if (!g.c.actions.length || p.inst || p.skip > 0) return
@@ -240,41 +255,65 @@ function* actions(g: G, p: Player): Flow {
     if (Number(p.rules['без рынка'].arg) <= p.turns) delete p.rules['без рынка']
     if (due) { say(g, p, 'тихий день: рынок недоступен'); return }
   }
-  const left = {} as Record<Slot, number>
-  for (const s of Object.keys(t.turnSlots) as Slot[]) left[s] = t.slotSegments[s].includes(segName(p)) ? t.turnSlots[s] : 0
-  left['◆'] = Math.min(left['◆'], p.youthTokens)
+  const adult = t.slotSegments['▲'].includes(segName(p))
+  const left = { acts: adult ? t.turnActions : 0, work: adult ? t.workPerTurn : 0, youth: t.slotSegments['◆'].includes(segName(p)) ? Math.min(t.turnSlots['◆'], p.youthTokens) : 0 }
+  const cost = (a: Action) => ({ acts: a.slots.filter((s) => s !== '◆').length, work: a.slots.filter((s) => s === '■').length, youth: a.slots.filter((s) => s === '◆').length })
+  const fits = (a: Action) => { const c = cost(a); return c.acts <= left.acts && c.work <= left.work && c.youth <= left.youth }
+  const spendSlots = (a: Action) => { const c = cost(a); left.acts -= c.acts; left.work -= c.work; left.youth -= c.youth; p.youthTokens -= c.youth }
+  const ready = (a: Action) => (a.perSeg === undefined || (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) < a.perSeg) && !(a.once && p.counters[`действие:${a.id}`]) && cond(g, p, a.requires)
+
   for (;;) {
-    if (!p.alive || p.inst) return
+    if (!p.alive || p.inst || (left.acts <= 0 && left.youth <= 0)) return
+    // Тяга: в стрессе черта уводит действие в свою ловушку (если хватает Возможностей).
+    if (left.acts > 0 && p.psy <= t.pull.stressFrom) {
+      const pulled = t.pull.list.map(([pole, id]) => ({ pole, a: g.c.actions.find((x) => x.id === id)! })).find(({ pole, a }) => {
+        const lean = charLean(p, pole)
+        return lean > 0 && a && ready(a) && p.vozm >= priceOf(g, p, a) && rollDie(g, p, 6, `тяга: ${pole}`) <= lean
+      })
+      if (pulled) {
+        say(g, p, `тяга (${pulled.pole}): действие уходит в «${pulled.a.label.split(':')[0]}»`)
+        left.acts -= 1
+        yield* perform(g, p, pulled.a)
+        continue
+      }
+    }
     const shown = g.c.actions.flatMap((a) => {
-      const need: Partial<Record<Slot, number>> = {}
-      for (const s of a.slots) need[s] = (need[s] ?? 0) + 1
-      if ((Object.keys(need) as Slot[]).some((s) => left[s] < need[s]!)) return []
-      if (a.perSeg !== undefined && (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) >= a.perSeg) return []
-      if (a.once && p.counters[`действие:${a.id}`]) return []
-      if (!cond(g, p, a.requires)) return []
+      if (!fits(a) || (a.once && p.counters[`действие:${a.id}`])) return []
       const price = priceOf(g, p, a)
-      // Заплатить можно только из своих: в минус нельзя.
-      return [{ a, price, off: price > 0 && p.vozm < price ? 'нет денег' : undefined }]
+      const gate = gateOf(g, p, a)
+      const off = a.perSeg !== undefined && (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) >= a.perSeg ? 'уже было в этом отрезке'
+        : whyNot(g, p, a.requires) ?? gate.closed ?? (price > 0 && p.vozm < price ? 'нет денег' : undefined)
+      return [{ a, price, gate, off }]
     })
     if (!shown.some((x) => !x.off)) return
-    const id = yield* ask(g, p, 'действие', `Что делаешь? Слоты: ${(Object.keys(left) as Slot[]).map((s) => s.repeat(left[s])).join(' ') || '—'}`, [
-      ...shown.map(({ a, price, off }) => ({ id: a.id, label: a.label, note: `${a.slots.join('')}${price ? ` · ${price} возм.` : ''}${a.note ? ` · ${a.note}` : ''}`, effect: a.effect, ...(off ? { off } : {}) })),
+    const id = yield* ask(g, p, 'действие', `Что делаешь? Действий осталось: ${left.acts}${left.acts && !left.work ? ' (работа уже была)' : ''}${left.youth ? '; ещё ◆ рынок молодости' : ''}`, [
+      ...shown.map(({ a, price, gate, off }) => ({
+        id: a.id, label: a.label, effect: a.effect, ...(off ? { off } : {}),
+        note: [a.slots.join(''), price ? `${price} возм.` : '', gate.need ? `характер (${a.gate!.pole}): d6 ${gate.need}–6, ${Math.round(((7 - gate.need) / 6) * 100)}%` : '', a.note ?? ''].filter(Boolean).join(' · '),
+      })),
       { id: 'конец', label: 'закончить ход' },
     ], { force: true })
     if (id === 'конец') return
-    const { a, price } = shown.find((x) => x.a.id === id)!
-    for (const s of a.slots) left[s] -= 1
-    if (a.slots.includes('◆')) p.youthTokens -= 1
-    p.counters[`действие:${a.id}:${p.seg}`] = (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) + 1
-    p.counters[`действие:${a.id}`] = (p.counters[`действие:${a.id}`] ?? 0) + 1
-    if (a.place) visit(p, a.place)
-    for (const l of a.log ?? []) p.counters[l] = (p.counters[l] ?? 0) + 1
-    const ctx = newCtx('действие', { card: a.id, tags: a.tags ?? [], ...(a.cap ? { cap: a.cap } : {}) })
-    if (price) addParam(g, p, 'возм', -price, ctx)
-    yield* run(g, p, a.effect, ctx)
-    settle(g, p)
-    yield* runDue(g, p)
+    const { a, gate } = shown.find((x) => x.a.id === id)!
+    spendSlots(a)
+    // Проверка характера: провал — действие потрачено, деньги не списываются.
+    if (gate.need && rollDie(g, p, 6, `характер: ${a.gate!.pole}`) < gate.need) { say(g, p, 'дошёл до двери и раздумал'); continue }
+    yield* perform(g, p, a)
   }
+}
+
+/** Выполнить действие: цена, отметки, шаги. */
+function* perform(g: G, p: Player, a: Action): Flow {
+  p.counters[`действие:${a.id}:${p.seg}`] = (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) + 1
+  p.counters[`действие:${a.id}`] = (p.counters[`действие:${a.id}`] ?? 0) + 1
+  if (a.place) visit(p, a.place)
+  for (const l of a.log ?? []) p.counters[l] = (p.counters[l] ?? 0) + 1
+  const ctx = newCtx('действие', { card: a.id, tags: a.tags ?? [], ...(a.cap ? { cap: a.cap } : {}) })
+  const price = priceOf(g, p, a)
+  if (price) addParam(g, p, 'возм', -price, ctx)
+  yield* run(g, p, a.effect, ctx)
+  settle(g, p)
+  yield* runDue(g, p)
 }
 
 // ── Ход ─────────────────────────────────────────────────────────────────

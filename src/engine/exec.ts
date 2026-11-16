@@ -3,7 +3,7 @@ import { STATS, type Node } from '../data/schema.ts'
 import { ask, countryOf, clamp, emit, say, type Flow, type G } from './core.ts'
 import { cond, has, type Ctx } from './cond.ts'
 import { addParam, charStep, enterInst, gainItem, leaveInst, loseItem, rollDie, setClass, setParam, statCap } from './change.ts'
-import { runCheck, spend, strongIn } from './checks.ts'
+import { firstCheck, previewCheck, runCheck, spend, strongIn, type CheckPreview } from './checks.ts'
 import { runRule } from './rules.ts'
 import type { Player, Stat } from './types.ts'
 
@@ -58,6 +58,7 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
     const forced = bound.some(Boolean)
     const options = n.choose.map((o, i) => ({
       id: String(i), label: o.label, effect: o.then,
+      ...((): { check?: CheckPreview } => { const c = firstCheck(o.then); return c ? { check: previewCheck(g, p, c, ctx) } : {} })(),
       ...(!cond(g, p, o.if, ctx) ? { off: 'недоступно' } : forced && !bound[i] ? { off: 'не в твоём характере' } : {}),
     }))
     if (options.every((o) => o.off)) { say(g, p, 'ни один вариант не доступен'); return }
