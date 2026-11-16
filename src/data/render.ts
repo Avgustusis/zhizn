@@ -72,6 +72,8 @@ export function renderCond(c: Cond): string {
   if ('inFashion' in c) return c.inFashion ? 'раса в моде' : 'раса не в моде'
   if ('cultureIs' in c) return `культура: ${c.cultureIs.join(' или ')}`
   if ('ownBusiness' in c) return c.ownBusiness ? 'своё дело' : 'нет своего дела'
+  if ('bizAtLeast' in c) return `своё дело ${c.bizAtLeast} или крупнее`
+  if ('tactic' in c) return `тактика на фронте: ${c.tactic}`
   if ('working' in c) return c.working ? 'работает или учится' : 'не работает и не учится'
   if ('mode' in c) return `режим «${c.mode === 'род' ? 'Род' : 'Поколение'}»`
   return JSON.stringify(c)
@@ -161,7 +163,7 @@ export function renderNodes(nodes: Node[], depth = 0): string[] {
     } else if ('choose' in n) {
       out.push(pad + 'выбор:')
       n.choose.forEach((o, i) => {
-        out.push(pad + `  ${'АБВГД'[i]}) ${o.label}${o.if ? ` [только если ${renderCond(o.if)}]` : ''}:`)
+        out.push(pad + `  ${'АБВГД'[i]}) ${o.label}${o.if ? ` [только если ${renderCond(o.if)}]` : ''}${o.must ? ` [обязан, если ${renderCond(o.must)}]` : ''}:`)
         out.push(...renderNodes(o.then, depth + 2))
       })
     } else if ('d6' in n) {

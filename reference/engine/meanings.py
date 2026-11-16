@@ -237,6 +237,8 @@ def build(text, prev=None):
     if t == 'Пережить смену власти, сохранив «Значок»': return (lambda p: p.log['pc_keep_Значок'] > 0), 'ok'
     if t.startswith('Пережить смену власти или глобальное'): return (lambda p: p.log['pc'] > 0 or p.log['global'] > 0), 'ok'
     if t == 'Побывать на войне': return (lambda p: p.log['war'] > 0), 'ok'
+    if t == 'Побывать на войне или «Офицерское звание»': return (lambda p: p.log['war'] > 0 or has(p, 'Офицерское звание')), 'ok'
+    if t == 'Побывать на войне или пожить в воюющей стране': return (lambda p: p.log['war'] > 0 or p.log['war_home'] > 0), 'ok'
     # --- выборы в событиях ---
     if t.startswith('«Стук ночью»'): return (lambda p: p.log['hide_neighbor'] > 0), 'ok'
     if t.startswith('Выбрать «сказать»'): return (lambda p: p.log['say_reveal'] > 0), 'ok'

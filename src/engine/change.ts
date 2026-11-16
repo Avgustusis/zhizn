@@ -1,7 +1,8 @@
 /** Изменения состояния игрока: числа, здоровье и смерть, класс, характер, институты, предметы. */
 import { SEGMENTS, STATS, type Node } from '../data/schema.ts'
 import { ask, clamp, countryOf, die, emit, pick, say, segName, shuffle, step, todo, type Flow, type G } from './core.ts'
-import { charAxisOf, cultureLean, has, held, kindOf, pairOf, type Ctx, newCtx } from './cond.ts'
+import { charAxisOf, cultureLean, culturesOf, has, held, kindOf, pairOf, type Ctx, newCtx } from './cond.ts'
+import { runCheck } from './checks.ts'
 import { run } from './exec.ts'
 import { settle } from './meaning.ts'
 import type { CharPole, Cls, Culture, Held, InstKind, Player, Race, Stat, Tag } from './types.ts'
@@ -222,7 +223,7 @@ export function capacity(g: G, p: Player, kind: string): number | undefined {
   const t = g.c.tables.slots
   const best = Math.max(p.fin, p.pos)
   switch (kind) {
-    case 'связь': return step(t.links, p.stats['Харизма'])
+    case 'связь': case 'знакомый': return step(t.links, p.stats['Харизма'])
     case 'статус': return t.statuses
     case 'козырь': return Math.max(0, best)
     case 'антикозырь': return p.fin === -3 || p.pos === -3 ? 1 : 0
@@ -290,8 +291,19 @@ export function* gainItem(g: G, p: Player, name: string, opts: { adopted?: true 
   }
   const cap = capacity(g, p, item.kind)
   if (cap !== undefined && inSlotKind(g, item.kind, item.group)) {
-    const same = p.items.filter((h) => kindOf(g, h) === item.kind && inSlot(g, h))
-    if (cap === 0) { say(g, p, `нет ячейки: «${item.name}» не взять`); return }
+    // «Знакомые» занимают ячейки связей.
+    const slotKind = (k?: string) => (k === 'знакомый' ? 'связь' : k)
+    const same = p.items.filter((h) => slotKind(kindOf(g, h)) === slotKind(item.kind) && inSlot(g, h))
+    if (cap === 0) {
+      // Козырь без ячейки можно сыграть сразу, в этом же ходу; иначе он уходит (ответы 13.11).
+      if (item.kind !== 'козырь' && item.kind !== 'антикозырь') { say(g, p, `нет ячейки: «${item.name}» не взять`); return }
+      const h: Held = { uid: ++g.s.uid, name: item.name, temp: true }
+      if (item.uses) h.uses = item.uses
+      p.items.push(h)
+      emit(g, { t: 'предмет', p: p.seat, name: item.name, how: 'получен' })
+      say(g, p, `ячейки нет: «${item.name}» можно сыграть только до конца хода`)
+      return h
+    }
     if (same.length >= cap) {
       const a = yield* ask(g, p, 'сброс', `Ячейки заняты. Взять «${item.name}» вместо другой карты?`, [
         ...same.map((h) => ({ id: String(h.uid), label: `сбросить «${h.name}»`, note: dropNote(g, h) })),
@@ -312,6 +324,7 @@ export function* gainItem(g: G, p: Player, name: string, opts: { adopted?: true 
   if (item.name === 'Компромат') count(p, 'получен «Компромат»')
   if (['Партбилет', 'Присяга', 'Значок'].includes(item.name)) count(p, 'получен Партбилет, Присяга или Значок')
   if (item.group === 'Партнёр') count(p, 'партнёр')
+  if (item.kind === 'дело') count(p, 'своё дело открыто')
   if (item.onGain) yield* run(g, p, item.onGain, newCtx('правило'))
   return h
 }
@@ -366,11 +379,37 @@ export function* wed(g: G, p: Player): Flow<boolean> {
   if (!h || h.spouse) return false
   h.spouse = true
   emit(g, { t: 'предмет', p: p.seat, name: h.name, how: 'свадьба' })
+  yield* mesalliance(g, p, h)
   count(p, 'свадьба')
   if (p.counters['свадьба'] === 1 && p.seg >= SEGMENTS.indexOf('Зрелость')) count(p, 'первый брак в Зрелости или позже')
   const onWed = g.items.get(h.name)?.sides?.spouse.onWed
   if (onWed) yield* run(g, p, onWed, newCtx('правило'))
   return true
+}
+
+/**
+ * Мезальянс (ответы 13.11): разные классы — 🎲 Харизма 12; разные культуры — сложность +3; и то и другое — 15.
+ * Провал: свадьба состоится, но родня против. Этноцентричная культура: межрасовый брак — Положение −1.
+ */
+function* mesalliance(g: G, p: Player, h: Held): Flow {
+  const person = h.person
+  if (!person) return
+  const t = g.c.tables.mesalliance
+  const ctx = newCtx('правило', { tags: t.tags })
+  const cls = person.cls !== p.cls
+  const cult = !culturesOf(p).includes(person.culture)
+  const dc = cls && cult ? t.bothDc : cls ? t.dc : cult ? t.dc + t.cultureAdd : undefined
+  if (dc !== undefined) {
+    say(g, p, 'мезальянс: родня решает, принять ли пару')
+    if (!(yield* runCheck(g, p, { stat: t.stat, dc, what: 'мезальянс' }, ctx))) {
+      say(g, p, 'свадьба состоялась, но родня против')
+      for (const [k, v] of Object.entries(t.failure)) addParam(g, p, k, v, ctx)
+    }
+  }
+  if (person.race !== p.race && cultureLean(g, p, 'Этноцентризм') > 0) {
+    say(g, p, 'межрасовый брак в этноцентричной культуре')
+    for (const [k, v] of Object.entries(t.interracialEthno)) addParam(g, p, k, v, ctx)
+  }
 }
 
 /** Эффекты предметов в начале отрезка: сама карта, её сторона (Партнёр или Супруг(а)) и тень. */

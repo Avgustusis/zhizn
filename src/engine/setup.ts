@@ -39,14 +39,13 @@ function makeCountry(g: G, id: number, pos: Country['pos']): Country {
   const mainCultures = take<Culture>(g, CULTURES, n())
   const minorityRaces: Race[] = []
   const minorityCultures: Culture[] = []
-  const minorities = t.minorities[0] + rnd(g, t.minorities[1] - t.minorities[0] + 1)
+  const minorities = die(g, t.minorityDie) - 1
   for (let i = 0; i < minorities; i++) {
-    if (rnd(g, 2)) minorityRaces.push(...take<Race>(g, RACES, 1, [...mainRaces, ...minorityRaces]))
+    if (!multicultural && die(g, 6) <= t.minorityRaceUpTo) minorityRaces.push(...take<Race>(g, RACES, 1, [...mainRaces, ...minorityRaces]))
     else minorityCultures.push(...take<Culture>(g, CULTURES, 1, [...mainCultures, ...minorityCultures]))
   }
   const ideology = pick(g, IDEOLOGIES)
-  const dominant = pick(g, CLASSES)
-  const alienated = pick(g, CLASSES.filter((c) => c !== dominant))
+  const { dominant, alienated } = classesFor(g, ideology)
   // Идеология тянет против культуры большинства: её полюс противоположен положению основной культуры.
   const pole = t.ideologyShift[ideology]
   const against = !!pole && g.s.world.cultures[mainCultures[0]][cultureAxisOf(pole)[0]] * cultureAxisOf(pole)[1] < 0
@@ -65,6 +64,16 @@ export function rollFashion(g: G, c: Country): void {
   const ethno = g.s.world.cultures[c.mainCultures[0]][cultureAxisOf('Этноцентризм')[0]] === -2
   c.fashionIn = ethno ? c.mainRaces[0] : pick(g, RACES)
   c.fashionOut = pick(g, RACES.filter((r) => r !== c.fashionIn))
+}
+
+/** Доминирующий и отчуждённый класс по таблице «Идеологии и классы»; совпали — перебросить отчуждённый. */
+export function classesFor(g: G, ideology: Country['ideology']): { dominant: Cls; alienated: Cls } {
+  const row = g.c.tables.world.ideologyClasses[ideology]
+  const byDie = (list: [number, Cls][]) => { const r = die(g, 6); return list.find(([hi]) => r <= hi)![1] }
+  const dominant = byDie(row.dom)
+  let alienated = byDie(row.ali)
+  while (alienated === dominant) alienated = byDie(row.ali)
+  return { dominant, alienated }
 }
 
 export function setupWorld(g: G): void {
@@ -133,7 +142,7 @@ export function* birth(g: G, seat: number, gen = 1): Flow<Player> {
     seg: 0, cell: 0, turns: 0, skip: 0, stazh: 0, stazhHire: 0, donations: 0,
     items: [], achieved: {}, approved: [], happiness: 0,
     flags: {}, counters: {}, visits: {}, entry: {},
-    mods: [], laters: [], income: [], pensionAdd: 0, everySeg: [], installments: [], noAging: 0, rules: {},
+    mods: [], laters: [], income: [], pensionAdd: 0, everySeg: [], installments: [], noAging: 0, youthTokens: 0, rules: {},
   }
   g.s.players[seat] = p
   if (cls === 'Армия') p.flags['Армия, война'] = true

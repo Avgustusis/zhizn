@@ -4,9 +4,11 @@
  */
 import type { Content } from '../engine/types.ts'
 import { Board } from './board-schema.ts'
-import { DeckFile, HeirsFile, ItemsFile, MeaningsFile } from './schema.ts'
+import { CityFile, DeckFile, FrontFile, HeirsFile, ItemsFile, MeaningsFile } from './schema.ts'
 import { tables } from './tables.ts'
 import board from './board.json' with { type: 'json' }
+import city from './city.json' with { type: 'json' }
+import front from './front.json' with { type: 'json' }
 import heirs from './heirs.json' with { type: 'json' }
 import items from './items.json' with { type: 'json' }
 import meanings from './meanings.json' with { type: 'json' }
@@ -42,7 +44,8 @@ export function loadContent(): Content {
     heirs: HeirsFile.parse(heirs).heirs,
     board: Board.parse(board),
     actions: [],
-    buildings: [],
+    buildings: CityFile.parse(city).buildings,
+    front: FrontFile.parse(front),
     tables,
   }
 }

@@ -155,7 +155,11 @@ export function cond(g: G, p: Player, c: Cond | undefined, ctx?: Ctx): boolean {
   if ('all' in c) return c.all.every((x) => cond(g, p, x, ctx))
   if ('any' in c) return c.any.some((x) => cond(g, p, x, ctx))
   if ('not' in c) return !cond(g, p, c.not, ctx)
-  if ('p' in c) return inRange(paramValue(g, p, c.p), c)
+  if ('p' in c) {
+    // Правило привилегий снижает порог характеристики без броска («Смекалка 7+» → 5+) на картах с его тегами.
+    const priv = ctx && c.gte !== undefined && (STATS as readonly string[]).includes(c.p) && ctx.tags.some((x) => g.c.tables.privilege.tags.includes(x)) ? privilege(g, p) : 0
+    return inRange(paramValue(g, p, c.p), priv ? { ...c, gte: c.gte! - priv } : c)
+  }
   if ('pos' in c) return c.pos.includes(country.pos)
   if ('ideo' in c) return c.ideo.some((i) => (i in IDEOLOGY_GROUPS ? (IDEOLOGY_GROUPS[i as keyof typeof IDEOLOGY_GROUPS] as readonly string[]).includes(country.ideology) : i === country.ideology))
   if ('culture' in c) return c.strong ? cultureLean(g, p, c.culture) === 2 : cultureLean(g, p, c.culture) > 0
@@ -221,8 +225,29 @@ export function cond(g: G, p: Player, c: Cond | undefined, ctx?: Ctx): boolean {
   if ('inFashion' in c) return (country.fashionIn === p.race) === c.inFashion
   if ('cultureIs' in c) return culturesOf(p).some((x) => c.cultureIs.includes(x))
   if ('ownBusiness' in c) return p.items.some((h) => kindOf(g, h) === 'дело') === c.ownBusiness
+  if ('tactic' in c) return p.inst?.kind === 'фронт' && p.inst.tactic === c.tactic
+  if ('bizAtLeast' in c) {
+    const biz = p.items.map((h) => ({ h, b: g.items.get(h.name)?.biz })).find((x) => x.b)
+    if (!biz?.b) return false
+    const size = biz.b.size === 'малое' ? (biz.h.grown ? 'среднее' : 'малое') : biz.b.size === 'мафия' ? 'среднее' : biz.b.size
+    return c.bizAtLeast === 'среднее' ? size !== 'малое' : size === 'крупное'
+  }
   if ('working' in c) return ((p.visits['Стаж'] ?? []).includes(p.seg) || !!p.student) === c.working
   throw new Error(`неизвестное условие: ${JSON.stringify(c)}`)
+}
+
+/**
+ * Правило привилегий: на сколько семья снижает порог и прибавляет к броску (минус — помеха низким при Иерархии).
+ * Лучшее из финансов и положения: +2 → 2, +3 → 3. Иерархия: высоким ещё 1, низким (−2 и ниже) −1. Равенство: вдвое слабее (вверх), низким ничего.
+ */
+export function privilege(g: G, p: Player): number {
+  const t = g.c.tables.privilege
+  const best = Math.max(p.fin, p.pos)
+  const hier = cultureLean(g, p, 'Иерархия') > 0
+  const equal = cultureLean(g, p, 'Равенство') > 0
+  if (best >= t.from) return equal ? Math.ceil(best / 2) : best + (hier ? 1 : 0)
+  if (best <= t.lowUpTo && hier) return -1
+  return 0
 }
 
 /** Призыв: в «призывных» идеологиях — всегда, в остальных — d6 1–3, один бросок на карту. Зовут пол в преимуществе. */

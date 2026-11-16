@@ -3,7 +3,9 @@ import { allCards, decks } from '../src/data/index.ts'
 import { meanings } from '../src/data/meanings.ts'
 import { items, itemNames } from '../src/data/items.ts'
 import { heirs } from '../src/data/heirs.ts'
-import { CLASSES } from '../src/data/schema.ts'
+import { CHAR_POLES, CLASSES, CityFile, FrontFile } from '../src/data/schema.ts'
+import city from '../src/data/city.json' with { type: 'json' }
+import front from '../src/data/front.json' with { type: 'json' }
 import type { Card, Node } from '../src/data/schema.ts'
 
 /** Имена предметов: карты каталога и стопки людей. */
@@ -134,6 +136,17 @@ describe('предметы', () => {
     expect([cat('связь'), cat('статус'), cat('козырь'), cat('стигма'), cat('вещь'), cat('дело')]).toEqual([27, 19, 9, 16, 29, 12])
     expect(copies((i) => i.deck === 'Верхи')).toBe(15)
     expect(copies((i) => i.deck === 'Дно')).toBe(10)
+    expect(copies((i) => i.deck === 'Знакомые')).toBe(72)
+  })
+
+  it('«Знакомые»: 36 пар с одним разбором, занимают ячейки связей', () => {
+    const z = items.filter((i) => i.deck === 'Знакомые')
+    for (const i of z) {
+      const twin = z.find((x) => x.name === i.twin)
+      expect(twin?.twin, i.name).toBe(i.name)
+      expect(JSON.stringify({ ...twin, name: '', twin: '' })).toBe(JSON.stringify({ ...i, name: '', twin: '' }))
+    }
+    expect(z.filter((i) => i.kind !== 'знакомый')).toEqual([])
   })
 
   it('имена уникальны; у антикозырей есть катастрофа, у козырей — способ сыграть', () => {
@@ -159,5 +172,33 @@ describe('наследники', () => {
   it('стартовые предметы есть в каталоге; наследник входит не позже Старости', () => {
     expect(heirs.flatMap((h) => (h.startItems ?? []).filter((n) => !itemNames.has(n)))).toEqual([])
     expect(heirs.filter((h) => !['Молодость', 'Зрелость', 'Старость'].includes(h.entry)).map((h) => h.id)).toEqual([])
+  })
+})
+
+describe('город', () => {
+  const { buildings } = CityFile.parse(city)
+  it('28 зданий; 17 колод по 10 встреч; большой обмен в пяти местах', () => {
+    expect(buildings.length).toBe(28)
+    const withDeck = buildings.filter((b) => b.deck)
+    expect(withDeck.length).toBe(17)
+    expect(withDeck.every((b) => b.deck!.length === 10 && b.deck!.map((c) => c.n).join() === '1,2,3,4,5,6,7,8,9,10')).toBe(true)
+    expect(buildings.filter((b) => b.big).map((b) => b.name).sort()).toEqual(['Больница', 'Заповедник', 'Психолог', 'Фонд', 'Храм'])
+  })
+  it('в каждом кольце есть все 14 полюсов характера; у встречи два разных полюса', () => {
+    for (const ring of ['окраина', 'середина', 'центр'] as const) {
+      const poles = new Set(buildings.filter((b) => b.ring === ring).flatMap((b) => (b.deck ?? []).flatMap((c) => c.poles)))
+      expect([...CHAR_POLES].filter((p) => !poles.has(p)), ring).toEqual([])
+    }
+    expect(buildings.flatMap((b) => (b.deck ?? []).filter((c) => c.poles[0] === c.poles[1]).map((c) => `${b.name}: ${c.title}`))).toEqual([])
+  })
+})
+
+describe('фронт', () => {
+  const data = FrontFile.parse(front)
+  it('14 клеток по 10 событий, предметы есть в каталоге', () => {
+    for (let cell = -6; cell <= 7; cell++) expect(data.events.filter((e) => e.cell === cell).map((e) => e.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    const names = (x: unknown): string[] =>
+      x && typeof x === 'object' ? Object.entries(x).flatMap(([k, v]) => ((k === 'gain' || k === 'lose' || k === 'has') && typeof v === 'string' ? [v] : names(v))) : []
+    expect(data.events.flatMap((e) => names(e).filter((n) => !itemNames.has(n)).map((n) => `${e.id}: ${n}`))).toEqual([])
   })
 })

@@ -3,7 +3,7 @@ import type { BoardCell } from '../data/board-schema.ts'
 import { SEGMENTS, type Card } from '../data/schema.ts'
 import { ask, countryOf, emit, rnd, roll3, say, segName, type Flow, type G } from './core.ts'
 import { charLean, cond, has, newCtx, type Ctx } from './cond.ts'
-import { addParam, death, enterInst, fire, gainItem, itemsPerSeg, leaveInst, rollDie, runDue, visit } from './change.ts'
+import { addParam, death, enterInst, fire, gainItem, itemsPerSeg, leaveInst, rollDie, runDue, visit, removeHeld } from './change.ts'
 import { spend, strongIn } from './checks.ts'
 import { run } from './exec.ts'
 import { markEntry, meaningAtEntry, settle } from './meaning.ts'
@@ -115,6 +115,8 @@ function* enterSegment(g: G, p: Player): Flow {
   emit(g, { t: 'отрезок', p: p.seat, seg })
   expire(p)
   const ctx = newCtx('правило')
+  // Жетоны ◆: три на входе в Молодость, неиспользованные сгорают на выходе.
+  p.youthTokens = seg === 'Молодость' ? g.c.tables.youthTokens : 0
   if (seg === 'Молодость' && p.cls === 'Армия' && p.citizenship.includes(p.country)) yield* gainItem(g, p, 'Присяга')
   if (seg === 'Зрелость' && p.cls === 'Армия' && has(g, p, 'Присяга') && p.stazh >= 5 && !has(g, p, 'Офицерское звание')) {
     const stat = p.stats['Интеллект'] >= p.stats['Харизма'] ? 'Интеллект' as const : 'Харизма' as const
@@ -124,7 +126,8 @@ function* enterSegment(g: G, p: Player): Flow {
     if (ok) yield* gainItem(g, p, 'Офицерское звание')
   }
   if (t.segments.beautyLoss.includes(seg)) addParam(g, p, 'Красота', -1, ctx)
-  if (charLean(p, 'Аппетит')) addParam(g, p, 'физ', -1, ctx)
+  // Аппетит заедает стресс: с Юности на входе в каждый отрезок −1 физ. и +1 псих.
+  if (charLean(p, 'Аппетит')) { addParam(g, p, 'физ', -1, ctx); addParam(g, p, 'псих', 1, ctx) }
   rollFashion(g, countryOf(g, p))
   yield* itemsPerSeg(g, p)
   for (const nodes of p.everySeg) yield* run(g, p, nodes, ctx)
@@ -220,6 +223,7 @@ function* actions(g: G, p: Player): Flow {
   if (!g.c.actions.length || p.inst || p.skip > 0) return
   const left = {} as Record<Slot, number>
   for (const s of Object.keys(t.turnSlots) as Slot[]) left[s] = t.slotSegments[s].includes(segName(p)) ? t.turnSlots[s] : 0
+  left['◆'] = Math.min(left['◆'], p.youthTokens)
   for (;;) {
     if (!p.alive) return
     const open = g.c.actions.filter((a) => {
@@ -237,6 +241,7 @@ function* actions(g: G, p: Player): Flow {
     if (id === 'конец') return
     const a = open.find((x) => x.id === id)!
     for (const s of a.slots) left[s] -= 1
+    if (a.slots.includes('◆')) p.youthTokens -= 1
     p.counters[`действие:${a.id}:${p.seg}`] = (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) + 1
     if (a.place) visit(p, a.place)
     yield* run(g, p, a.effect, newCtx('действие', { card: a.id }))
@@ -277,5 +282,7 @@ function* endTurn(g: G, p: Player): Flow {
   }
   if (p.alive && !p.inst && p.seg >= SEGMENTS.indexOf('Молодость') && p.vozm <= t.caps.bondage) enterInst(g, p, 'кабала', 0)
   delete p.rules['сиделка']
+  // Козырь без ячейки, не сыгранный в этот ход, уходит.
+  for (const h of p.items.filter((x) => x.temp)) removeHeld(g, p, h)
   if (p.alive) { settle(g, p); yield* runDue(g, p) }
 }

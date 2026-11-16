@@ -1,7 +1,7 @@
 /** Состояние партии и протокол вопросов. Всё здесь — обычные данные: состояние целиком сохраняется в JSON. */
 import type { Board } from '../data/board-schema.ts'
 import type {
-  Card, CHAR_POLES, CLASSES, COUNTRY_POS, CULTURES, Heir, IDEOLOGIES, Item, ITEM_KINDS, LATER_EVENTS, Meaning, Node, RACES, SEGMENTS, STATS, TAGS,
+  Building, Card, CHAR_POLES, FrontFile, CLASSES, COUNTRY_POS, CULTURES, Heir, IDEOLOGIES, Item, ITEM_KINDS, LATER_EVENTS, Meaning, Node, RACES, SEGMENTS, STATS, TAGS,
 } from '../data/schema.ts'
 import type { Tables } from '../data/tables.ts'
 
@@ -16,7 +16,7 @@ export type Race = (typeof RACES)[number]
 export type CharPole = (typeof CHAR_POLES)[number]
 export type ItemKind = (typeof ITEM_KINDS)[number]
 export type Slot = '■' | '▲' | '◆'
-export type InstKind = 'тюрьма' | 'психбольница' | 'кабала'
+export type InstKind = 'тюрьма' | 'психбольница' | 'кабала' | 'фронт'
 export type Relation = 'вражда' | 'нейтралитет' | 'союз'
 export type Mode = 'поколение' | 'род'
 
@@ -35,8 +35,6 @@ export interface Action {
   effect: Node[]
 }
 
-/** Здание города: кольцо, колода знакомств, точки обмена. Данные придут позже. */
-export interface Building { id: string; name: string; ring: 'окраина' | 'середина' | 'центр'; deck?: string; actions?: string[] }
 
 /** Всё содержание игры. Движок не знает, сколько чего здесь лежит. */
 export interface Content {
@@ -50,7 +48,10 @@ export interface Content {
   heirs: Heir[]
   board: Board
   actions: Action[]
+  /** Город: здания с кольцами, точками рынка и колодами знакомств. */
   buildings: Building[]
+  /** Поле «Фронт»: клетки трека и 140 событий. */
+  front: FrontFile
   tables: Tables
 }
 
@@ -99,6 +100,10 @@ export interface Held {
   person?: { cls: Cls; culture: Culture; race: Race }
   /** Сколько раз ещё можно сыграть. */
   uses?: number
+  /** Малое дело выросло до среднего: карту перевернули. */
+  grown?: true
+  /** Козырь без ячейки: можно сыграть до конца этого хода, потом карта уходит. */
+  temp?: true
 }
 
 /** Временная поправка к будущим проверкам (шаг `mod`). */
@@ -168,7 +173,7 @@ export interface Player {
   donations: number
 
   items: Held[]
-  inst?: { kind: InstKind; left: number; tag?: Tag; workoff?: number; turn: number; noStigma?: true }
+  inst?: { kind: InstKind; left: number; tag?: Tag; workoff?: number; turn: number; noStigma?: true; /** Фронт: тактика этого хода. */ tactic?: 'атака' | 'держать' | 'беречь' }
   /** Подростковый срыв уже был. */
   teenBreak?: true
 
@@ -199,6 +204,8 @@ export interface Player {
   installments: { left: number; each: Node[] }[]
   /** Древность: ходы без потери физ. */
   noAging: number
+  /** Жетоны ◆ Рынка молодости: три на входе в Молодость, сгорают на выходе. */
+  youthTokens: number
   /** Особые правила, действующие на игрока: имя → значение и отрезок, в конце которого гаснет. */
   rules: Record<string, { arg?: string; seg?: number }>
   /** Разовые окна перехода в класс использованы. */

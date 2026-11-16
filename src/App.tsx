@@ -5,7 +5,12 @@ import { renderCond, renderNodes } from './data/render.ts'
 import { meanings } from './data/meanings.ts'
 import { items } from './data/items.ts'
 import { heirs } from './data/heirs.ts'
-import type { Heir, Item, Meaning } from './data/schema.ts'
+import { CityFile, FrontFile, type Building, type FrontEvent, type Heir, type Item, type Meaning } from './data/schema.ts'
+import cityRaw from './data/city.json' with { type: 'json' }
+import frontRaw from './data/front.json' with { type: 'json' }
+
+const city = CityFile.parse(cityRaw).buildings
+const front = FrontFile.parse(frontRaw)
 
 const DECK_COLOR: Partial<Record<string, string>> = {
   'возраст': '#B8862F', 'отношения': '#A8322B', 'культура': '#4E6B4A', 'страна': '#2F4A6B', 'развилка': '#5E5470',
@@ -131,6 +136,47 @@ function ItemView({ it }: { it: Item }) {
   )
 }
 
+function MeetingsView({ b }: { b: Building }) {
+  return (
+    <article className="card" style={{ borderTopColor: { 'окраина': '#7A5A36', 'середина': '#2F4A6B', 'центр': '#A8322B', 'за городом': '#4E6B4A' }[b.ring] }}>
+      <header>
+        <h3>{b.name}</h3>
+        <span className="kind">{b.ring}{b.market ? ` · рынок: ${b.market}` : ''}{b.big ? ' · ■▲' : ''}</span>
+      </header>
+      {b.about && <p className="text">{b.about}</p>}
+      {b.deck && (
+        <table className="conds">
+          <tbody>
+            {b.deck.map((c) => (
+              <tr key={c.n}>
+                <td className="pts">{c.n}</td>
+                <td><b>{c.title}</b>{c.acquaintance ? ' 📇' : ''} — {c.text}<br /><span className="cparsed">шаг к: {c.poles.join(' или ')}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <footer><span className="tags">{b.deck ? `${b.deck.length} встреч` : 'без колоды знакомств'}</span></footer>
+    </article>
+  )
+}
+
+function FrontView({ ev }: { ev: FrontEvent }) {
+  return (
+    <article className="card" style={{ borderTopColor: ev.cell >= 5 ? '#4E6B4A' : ev.cell >= 2 ? '#7A5A36' : ev.cell >= -1 ? '#6b6760' : ev.cell >= -4 ? '#A8322B' : '#1E1E24' }}>
+      <header>
+        <span className="num">d10 {ev.n}</span>
+        <h3>{ev.title}</h3>
+      </header>
+      <p className="text">{ev.text}</p>
+      <section><h4>Оригинал</h4><p className="src">{ev.src}</p></section>
+      <section><h4>Разбор</h4><pre className="parsed">{renderNodes(ev.effect).join('\n')}</pre></section>
+      {ev.officer && <section><h4>Разбор: офицер</h4><pre className="parsed">{renderNodes(ev.officer).join('\n')}</pre></section>}
+      <footer><span className="tags">{ev.tags.join(' ')}</span><span className="id">{ev.id}</span></footer>
+    </article>
+  )
+}
+
 function HeirView({ h }: { h: Heir }) {
   return (
     <article className="card" style={{ borderTopColor: '#6F6253' }}>
@@ -172,6 +218,7 @@ const ITEM_GROUPS: [string, (i: Item) => boolean][] = [
   ['Своё дело', (i) => i.kind === 'дело'],
   ['Колода «Верхи»', (i) => i.deck === 'Верхи'],
   ['Колода «Дно»', (i) => i.deck === 'Дно'],
+  ['Колода «Знакомые»', (i) => i.deck === 'Знакомые'],
 ]
 
 function MeaningView({ m }: { m: Meaning }) {
@@ -209,7 +256,7 @@ function MeaningView({ m }: { m: Meaning }) {
 }
 
 export default function App() {
-  const [deckId, setDeckId] = useState<DeckId | 'все' | 'смыслы' | 'предметы' | 'наследники'>('все')
+  const [deckId, setDeckId] = useState<DeckId | 'все' | 'смыслы' | 'предметы' | 'наследники' | 'город' | 'фронт'>('все')
   const [onlyDoubts, setOnlyDoubts] = useState(false)
   const [query, setQuery] = useState('')
 
@@ -249,12 +296,14 @@ export default function App() {
         <h1>Жизнь</h1>
         <p className="subtitle">Колоды в цифровом формате — проверка перевода. Карт событий: {total}, смыслов: {meanings.length}, предметов: {items.length} видов, спорных: {doubts}.</p>
         <div className="controls">
-          <select value={deckId} onChange={(e) => setDeckId(e.target.value as DeckId | 'все' | 'смыслы' | 'предметы' | 'наследники')}>
+          <select value={deckId} onChange={(e) => setDeckId(e.target.value as DeckId | 'все' | 'смыслы' | 'предметы' | 'наследники' | 'город' | 'фронт')}>
             <option value="все">Все колоды</option>
             {decks.map((d) => <option key={d.deck} value={d.deck}>{DECKS[d.deck]} ({d.cards.length})</option>)}
             <option value="смыслы">Смыслы ({meanings.length})</option>
             <option value="предметы">Предметы ({items.length})</option>
             <option value="наследники">Наследники ({heirs.length})</option>
+            <option value="город">Город: здания и знакомства ({city.filter((b) => b.deck).reduce((s, b) => s + b.deck!.length, 0)})</option>
+            <option value="фронт">Фронт ({front.events.length})</option>
           </select>
           <label><input type="checkbox" checked={onlyDoubts} onChange={(e) => setOnlyDoubts(e.target.checked)} /> только спорные</label>
           <input type="search" placeholder="поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -296,7 +345,23 @@ export default function App() {
           <div className="grid">{heirs.map((h) => <HeirView key={h.id} h={h} />)}</div>
         </section>
       )}
-      {shown.length === 0 && shownMeanings.length === 0 && shownItems.length === 0 && deckId !== 'наследники' && <p className="empty">Ничего не найдено.</p>}
+      {deckId === 'город' && (['окраина', 'середина', 'центр', 'за городом'] as const).map((ring) => (
+        <section key={ring} className="deck">
+          <h2>Город: {ring}</h2>
+          {ring === 'окраина' && <p className="legend">Знакомство (▲): здание с колодой в доступном кольце, раз в отрезок; шаг характера к одному из двух полюсов или к нулю по одной из осей; 📇 — d6 4–6 (в Центре 3–6) → «Знакомый». ■▲ — есть большой обмен.</p>}
+          <div className="grid">{city.filter((b) => b.ring === ring && (!query || [b.name, ...(b.deck ?? []).map((c) => c.title + ' ' + c.text)].join(' ').toLowerCase().includes(query.trim().toLowerCase()))).map((b) => <MeetingsView key={b.id} b={b} />)}</div>
+        </section>
+      ))}
+      {deckId === 'фронт' && front.cells.filter((c) => c.cell > -7).map((cell) => {
+        const list = front.events.filter((e) => e.cell === cell.cell && (!query || [e.title, e.text, e.src].join(' ').toLowerCase().includes(query.trim().toLowerCase())))
+        return list.length === 0 ? null : (
+          <section key={cell.cell} className="deck">
+            <h2>Фронт {cell.cell > 0 ? '+' : ''}{String(cell.cell).replace('-', '−')} · {cell.title}</h2>
+            <div className="grid">{list.map((e) => <FrontView key={e.id} ev={e} />)}</div>
+          </section>
+        )
+      })}
+      {shown.length === 0 && shownMeanings.length === 0 && shownItems.length === 0 && !['наследники', 'город', 'фронт'].includes(deckId) && <p className="empty">Ничего не найдено.</p>}
     </main>
   )
 }

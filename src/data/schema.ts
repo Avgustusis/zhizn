@@ -25,7 +25,7 @@ export const IDEOLOGY_GROUPS = {
   'демократии': ['Либеральная демократия', 'Социал-демократия'],
   'диктатуры': ['Военная диктатура', 'Госсоциализм', 'Теократия'],
 } as const satisfies Record<string, readonly (typeof IDEOLOGIES)[number][]>
-export const ITEM_KINDS = ['связь', 'статус', 'козырь', 'антикозырь', 'стигма', 'вещь', 'дело'] as const
+export const ITEM_KINDS = ['связь', 'статус', 'козырь', 'антикозырь', 'стигма', 'вещь', 'дело', 'знакомый'] as const
 export const COUNTRY_POS = ['ядро', 'полупериферия', 'периферия'] as const
 
 /** 11 осей культуры: [первый полюс, второй полюс]. */
@@ -106,7 +106,15 @@ export const RULES = [
   'донос на нейтрала', // донести на нейтрала-игрока: его проверка с −3
   'стать проигравшим', // нейтрал читает строку проигравших
   'люстрация',      // теряются «Значок», «Присяга», «Офицерское звание», «Партбилет» (arg — сколько сохраняется); Армия и Полиция без статуса — класс Народ
-  'итог воспитания', // поправка к «Итогу воспитания» ребёнка (arg — сколько), важно в «Роде»  // потерять одну вещь из Имущества, при нескольких — случайную (d6)
+  'итог воспитания', // поправка к «Итогу воспитания» ребёнка (arg — сколько), важно в «Роде»
+  // Война (концепция, раздел «Война»)
+  'призыв',         // проверка призыва по правилам войны: призванный уходит на «Фронт»
+  'фронт',          // сразу на «Фронт»: страна игрока воюет (карта говорит «вместо этого — Фронт»)
+  'мирный договор', // идёт война — она кончается миром без итога; иначе отношения пары улучшаются (arg)
+  'награда',        // фронт: Положение семьи +1 (не выше +3) — только тому, кто в этот ход шёл «В атаку»
+  'метка фронта',   // фронт: метка на arg клеток к противнику (минус — к своим)
+  'плен',           // фронт: d3 хода по колоде «Тюрьма» без «Судимости», потом домой
+  'отпуск',         // фронт: следующий ход дома — играешь клетку поля, потом возвращаешься
 ] as const
 
 /** События, которых может ждать отложенный эффект (`later`). */
@@ -130,6 +138,8 @@ export const LOG_EVENTS = [
   // институты и долги
   'тюрьма', 'срок отбыт', 'психбольница', 'кабала', 'выход из института', 'повторное попадание в институт',
   'Стаж после выхода', 'микрозайм',
+  // своё дело и война
+  'своё дело открыто', 'дело прогорело', 'жизнь в воюющей стране', 'фронт',
   // предметы
   'козырь получен', 'получен «Компромат»', 'антикозырь сыгран', 'стигма получена', 'стигма снята', 'снят «Долг»',
   // рынок
@@ -178,7 +188,7 @@ export type Cond =
   | { reached: (typeof SEGMENTS)[number] }
   | { clsVsBirth: 'выше' | 'не ниже' }
   | { partnerCls: (typeof CLASSES)[number][] }
-  | { inInst: 'тюрьма' | 'психбольница' | 'кабала' }
+  | { inInst: 'тюрьма' | 'психбольница' | 'кабала' | 'фронт' }
   | { vsStart: 'Положение'; is: 'выше' | 'не ниже' }
   | { mainCulture: (typeof CULTURES)[number][] }
   | { diaspora: boolean }
@@ -208,6 +218,8 @@ export type Cond =
   | { inFashion: boolean }
   | { cultureIs: (typeof CULTURES)[number][] }
   | { ownBusiness: boolean }
+  | { bizAtLeast: 'среднее' | 'крупное' }
+  | { tactic: 'атака' | 'держать' | 'беречь' }
   | { working: boolean }
 
 export const Cond: z.ZodType<Cond> = z.lazy(() =>
@@ -253,7 +265,7 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     /** Класс Партнёра или Супруга(и). */
     z.strictObject({ partnerCls: z.array(Class).min(1) }),
     /** Игрок сейчас в институте. */
-    z.strictObject({ inInst: z.enum(['тюрьма', 'психбольница', 'кабала']) }),
+    z.strictObject({ inInst: z.enum(['тюрьма', 'психбольница', 'кабала', 'фронт']) }),
     /** Шкала семьи относительно значения при вступлении наследника. */
     z.strictObject({ vsStart: z.literal('Положение'), is: z.enum(['выше', 'не ниже']) }),
     /** Основная культура страны проживания. По ней же география: Большое озеро — Карвенцы, Олейцы; болота — Эшвины; ледник — Сарды. */
@@ -311,6 +323,10 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     z.strictObject({ cultureIs: z.array(z.enum(CULTURES)).min(1) }),
     /** У игрока своё дело (лежит карта дела). */
     z.strictObject({ ownBusiness: z.boolean() }),
+    /** Своё дело не меньше этого размера: малое, выросшее до среднего, считается средним; мафиозные дела (бонус +2) — средними. */
+    z.strictObject({ bizAtLeast: z.enum(['среднее', 'крупное']) }),
+    /** Фронт: тактика, выбранная в этот ход. */
+    z.strictObject({ tactic: z.enum(['атака', 'держать', 'беречь']) }),
     /** Работает (в этом отрезке ставил Стаж; подработка не в счёт) или учится (высшее, идёт Молодость). */
     z.strictObject({ working: z.boolean() }),
   ]),
@@ -377,7 +393,7 @@ export type Node =
   | { allowCls: (typeof CLASSES)[number] }
   | { prison: 'лёгкое' | 'тяжёлое' }
   | { check: Check; success: Node[]; failure: Node[] }
-  | { choose: { label: string; if?: Cond; then: Node[] }[] }
+  | { choose: { label: string; if?: Cond; must?: Cond; then: Node[] }[] }
   | { d6: Record<string, Node[]> }
   | { if: Cond; then: Node[]; else?: Node[] }
   | { cases: { if: Cond; then: Node[] }[]; else?: Node[] }
@@ -446,7 +462,11 @@ export const Node: z.ZodType<Node> = z.lazy(() =>
     /** Проверка 3d6 + характеристика ≥ сложность. Теги карты сами дают поправки культуры, характера, предметов. */
     z.strictObject({ check: Check, success: z.array(Node), failure: z.array(Node) }),
     /** Решение игрока. if — вариант доступен только при условии. */
-    z.strictObject({ choose: z.array(z.strictObject({ label: z.string().min(1), if: Cond.optional(), then: z.array(Node) })).min(2) }),
+    /**
+     * Решение игрока. if — вариант доступен только при условии. must — черта характера обязывает
+     * (фронт): у кого условие выполнено, тот выбирает этот вариант; подходят два — выбор из них.
+     */
+    z.strictObject({ choose: z.array(z.strictObject({ label: z.string().min(1), if: Cond.optional(), must: Cond.optional(), then: z.array(Node) })).min(2) }),
     /** Бросок d6 с исходами: { "d6": { "1-2": [...], "6": [...] } }. Пропущенные значения — ничего. */
     z.strictObject({ d6: z.record(Range, z.array(Node)) }),
     z.strictObject({ if: Cond, then: z.array(Node), else: z.array(Node).optional() }),
@@ -640,7 +660,9 @@ export const Item = z.strictObject({
   name: z.string().min(1),
   kind: z.enum(ITEM_KINDS),
   /** Где лежит: открытый каталог, слепые колоды «Верхи» и «Дно», отметка на планшете. */
-  deck: z.enum(['каталог', 'Верхи', 'Дно', 'планшет']),
+  deck: z.enum(['каталог', 'Верхи', 'Дно', 'Знакомые', 'планшет']),
+  /** «Знакомые»: второй экземпляр — тот же эффект под другим именем. */
+  twin: z.string().optional(),
   /** Стопка людей: событие «получи Друга» тянет вслепую из стопки; «есть Друг» — любая карта стопки. */
   group: z.enum(['Партнёр', 'Ребёнок', 'Друг', 'Наставник', 'Покровитель']).optional(),
   copies: z.number().int().nonnegative(),
@@ -673,6 +695,52 @@ export const Item = z.strictObject({
 })
 export type Item = z.infer<typeof Item>
 export const ItemsFile = z.strictObject({ items: z.array(Item) })
+
+// ── Фронт ───────────────────────────────────────────────────────────────
+
+/** Событие фронта: клетка трека (+7…−6 со своего края), d10, эффект; officer — строка «Офицер» вместо общей. */
+export const FrontEvent = z.strictObject({
+  id: z.string().regex(/^фронт\.[+−]?\d\.\d{2}$/),
+  cell: z.number().int().min(-6).max(7),
+  n: z.number().int().min(1).max(10),
+  title: z.string().min(1),
+  text: z.string(),
+  src: z.string(),
+  tags: z.array(Tag).min(1).max(2),
+  effect: z.array(Node),
+  officer: z.array(Node).optional(),
+})
+export type FrontEvent = z.infer<typeof FrontEvent>
+export const FrontFile = z.strictObject({
+  cells: z.array(z.strictObject({ cell: z.number().int(), title: z.string() })).length(15),
+  events: z.array(FrontEvent).length(140),
+})
+export type FrontFile = z.infer<typeof FrontFile>
+
+// ── Город и знакомства ──────────────────────────────────────────────────
+
+/** Встреча в здании: шаг характера к одному из двух полюсов (или к нулю по одной из осей); 📇 — бросок на «Знакомого». */
+export const Meeting = z.strictObject({
+  n: z.number().int().positive(),
+  title: z.string().min(1),
+  text: z.string(),
+  poles: z.tuple([CharPole, CharPole]),
+  acquaintance: z.literal(true).optional(),
+})
+export const Building = z.strictObject({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  ring: z.enum(['окраина', 'середина', 'центр', 'за городом']),
+  /** Точка рынка в здании (имя места рынка). */
+  market: z.string().optional(),
+  /** Есть большой обмен. */
+  big: z.literal(true).optional(),
+  about: z.string().optional(),
+  /** Колода знакомств. */
+  deck: z.array(Meeting).optional(),
+})
+export type Building = z.infer<typeof Building>
+export const CityFile = z.strictObject({ buildings: z.array(Building) })
 
 // ── Наследники ──────────────────────────────────────────────────────────
 

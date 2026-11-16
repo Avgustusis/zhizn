@@ -200,6 +200,7 @@ def exec_text(t, p, w, seg, depth=0):
 
 def exec_plain(t, p, w, seg):
     tot = {}
+    import char as _CH; _CH.text_steps(p, t)
     r6 = d6()
     clauses = re.split(r';\s*|\.\s+(?=[А-ЯЁA-Z0-9d])', t)
     prev_cond = None; choice_done = None

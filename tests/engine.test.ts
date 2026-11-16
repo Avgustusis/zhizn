@@ -339,7 +339,8 @@ describe('исполнитель карт', () => {
     const { e, p } = lab(13)
     expect(capacity(e.g, p, 'козырь')).toBe(0)
     drive(gainItem(e.g, p, 'Старая услуга'))
-    expect(p.items.length).toBe(0)
+    expect(p.items.map((h) => h.temp)).toEqual([true]) // без ячейки — только до конца хода
+    p.items = []
     p.fin = 1
     drive(gainItem(e.g, p, 'Старая услуга'))
     expect(p.items.map((h) => h.name)).toEqual(['Старая услуга'])
@@ -396,7 +397,8 @@ describe('смысл и счастье', () => {
       const e = new Engine(content, { ...config(seed), keepLog: false }, { checkpoints: false })
       autoplay(e, seed)
       for (const p of e.state.players) {
-        if (p.seg < 3) continue
+        // Умерший на самом входе в Зрелость (например, Аппетит при физ. −9) до броска на смысл не дошёл.
+        if (p.seg < 3 || (!p.alive && p.death!.seg === 'Зрелость' && !p.meaning)) continue
         n++
         expect(p.meaning, `партия ${seed}`).toBeTruthy()
         if (p.meaning!.id === 'серость') { grey++; expect(p.happiness).toBeLessThanOrEqual(7) }
@@ -433,9 +435,45 @@ describe('все карты', () => {
         }
       }
     }
-    expect(played).toBe(700 * 4)
+    expect(played).toBe(Object.values(content.decks).flat().length * 4)
     const known = new Set<string>(RULES)
     for (const k of Object.keys(todo)) expect(known.has(k), `неизвестное правило «${k}»`).toBe(true)
     console.log(`особых правил на этап 3: ${Object.keys(todo).length} — ${Object.keys(todo).sort().join(', ')}`)
   }, 120000)
+})
+
+describe('фронт: события', () => {
+  it('все 140 событий и строки «Офицер» исполняются при любых ответах; черта обязывает', () => {
+    let played = 0
+    for (const ev of content.front.events) {
+      for (const officer of [false, true]) {
+        if (officer && !ev.officer) continue
+        for (let seed = 1; seed <= 3; seed++) {
+          const { e, p } = lab(seed, { seg: 2 + (seed % 2) })
+          p.inst = { kind: 'фронт', left: 0, turn: 1, tactic: (['атака', 'держать', 'беречь'] as const)[seed - 1] }
+          p.character = [2 - seed, seed - 2, 0, seed % 2 ? 1 : -2, 0, seed - 2, 0]
+          if (officer) drive(gainItem(e.g, p, 'Офицерское звание'))
+          const c = card(officer ? ev.officer! : ev.effect, { id: 'тест.01', title: ev.title, tags: ev.tags })
+          const r = lcg(seed * 131 + ev.n)
+          const flow = playCard(e.g, p, c, 'фронт')
+          let step = flow.next()
+          while (!step.done) {
+            const open = step.value.options.filter((o) => !o.off)
+            expect(open.length, `${ev.id}: вопрос без открытых вариантов`).toBeGreaterThan(0)
+            step = flow.next(open[Math.floor(r() * open.length)].id)
+          }
+          played++
+        }
+      }
+    }
+    expect(played).toBe((140 + content.front.events.filter((e) => e.officer).length) * 3)
+    // «Горожане» (+7, № 3): у кого Щедрость, тот раздаёт хлеб.
+    const { e, p } = lab(1)
+    p.character = [0, 1, 0, 0, 0, 0, 0]
+    const ev = content.front.events.find((x) => x.title === 'Горожане')!
+    const q = playCard(e.g, p, card(ev.effect, { tags: ev.tags }), 'фронт').next()
+    expect(q.done).toBe(false)
+    const opts = (q.value as { options: { label: string; off?: string }[] }).options
+    expect(opts.filter((o) => !o.off).map((o) => o.label)).toEqual(['раздать свой хлеб'])
+  })
 })

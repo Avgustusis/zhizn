@@ -8,7 +8,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Item, ItemsFile } from '../src/data/schema.ts'
-import { DEFS, DOUBTS, EXTRA } from './item-defs.ts'
+import { ACQ, DEFS, DOUBTS, EXTRA } from './item-defs.ts'
 import { readTable } from './events-md.ts'
 import { compactJson } from './json-compact.ts'
 
@@ -57,8 +57,38 @@ if (missing.length) {
 }
 const unused = Object.keys(DEFS).filter((k) => !items.some((i) => i.name === k))
 if (unused.length) { console.error('в разборе лишнее:', unused); process.exit(1) }
+// ── «Знакомые»: две таблицы (постоянные и с услугой) и строки «Вторые экземпляры» ──
+const zSection = md.slice(md.indexOf('## Колода «Знакомые»'))
+const twins = new Map<string, string>()
+for (const line of zSection.matchAll(/\*\*Вторые экземпляры:\*\* (.*)/g)) {
+  for (const part of line[1].split(' · ')) {
+    const [a, b] = part.split('→').map((x) => x.trim().replace(/\.$/, ''))
+    twins.set(a, b)
+  }
+}
+const acqMissing: string[] = []
+for (const header of ['### Постоянные', '### С услугой']) {
+  for (const row of readTable(zSection, header)) {
+    const name = row['Карта']
+    const src = Object.fromEntries(Object.entries(row).filter(([k, v]) => k !== 'Карта' && v !== '—' && v !== ''))
+    const tag = (row['Эффект'] ?? '').match(/^\+1 (#\S+)$/)?.[1]
+    const def: Record<string, unknown> | undefined = header === '### Постоянные' ? (tag ? { bonus: [{ tags: [tag], add: 1 }] } : undefined) : ACQ[name]
+    if (!def) { acqMissing.push(name); continue }
+    const twin = twins.get(name)
+    if (!twin) { acqMissing.push(`${name} (нет второго экземпляра)`); continue }
+    for (const [n, t] of [[name, twin], [twin, name]]) {
+      items.push(Item.parse({ name: n, kind: 'знакомый', deck: 'Знакомые', copies: 1, twin: t, src, ...def }))
+    }
+  }
+}
+if (acqMissing.length) { console.error(`«Знакомые» без разбора: ${acqMissing.join(', ')}`); process.exit(1) }
+const acqUnused = Object.keys(ACQ).filter((k) => !items.some((i) => i.name === k))
+if (acqUnused.length) { console.error('в разборе «Знакомых» лишнее:', acqUnused); process.exit(1) }
+const names = items.map((i) => i.name)
+const dup = names.filter((n, i) => names.indexOf(n) !== i)
+if (dup.length) { console.error('одно имя у разных карт:', dup); process.exit(1) }
 items.push(...EXTRA.map((x) => Item.parse(x)))
 
 writeFileSync(resolve('src/data/items.json'), compactJson(ItemsFile.parse({ items })) + '\n')
 const by = (f: (i: Item) => boolean) => items.filter(f).reduce((s, i) => s + i.copies, 0)
-console.log(`предметы: ${items.length} видов; каталог ${by((i) => i.deck === 'каталог' && i.kind !== 'дело')} карт, дело ${by((i) => i.kind === 'дело')}, Верхи ${by((i) => i.deck === 'Верхи')}, Дно ${by((i) => i.deck === 'Дно')}; спорных ${items.filter((i) => i.doubts).length}`)
+console.log(`предметы: ${items.length} видов; каталог ${by((i) => i.deck === 'каталог' && i.kind !== 'дело')} карт, дело ${by((i) => i.kind === 'дело')}, Верхи ${by((i) => i.deck === 'Верхи')}, Дно ${by((i) => i.deck === 'Дно')}, Знакомые ${by((i) => i.deck === 'Знакомые')}; спорных ${items.filter((i) => i.doubts).length}`)

@@ -12,6 +12,7 @@ from engine3 import *
 import engine3 as engine
 import meanings as MN
 import biz as BZ
+import char as CH
 
 E = os.environ.get
 CARDS = json.load(open(E('CARDS', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cards_v4.json'))))   # v4: психика в Юности и Старости урезана (8-й прогон)
@@ -169,7 +170,7 @@ class Player:
     def __init__(s, w, i, metr=None, std=None, gen=1, seat=None, born=0):
         s.i = i; s.w = w; s.gen = gen; s.seat = seat if seat is not None else i; s.born = born
         s.heir = 'first' if (metr is None and std is None) else ('child' if metr else 'std')
-        s.biz = None; s.bz = C.Counter()
+        s.biz = None; s.bz = C.Counter(); CH.init(s); s._cardtext = ''
         s.items = C.Counter(); s.itype = {}; s.log = C.Counter(); s.segs = C.defaultdict(set); s.entry = {}
         s.alive = True; s.seg = 0; s.cell = 0; s.turns = 0; s.stazh = 0
         s.inst = None; s.inst_left = 0; s.death = None; s.done = False; s.closed = False
@@ -275,7 +276,7 @@ class Player:
             return True
         return False
 
-    def privilege_mod(s, t): return 0
+    def privilege_mod(s, t): return CH.mod(s, s._cardtext)
     def cap(s, k): return 12 if s.items.get('чудо_' + k) else 10
     def vcap(s):
         if s.cls == 'Олигархи' and any(s.items.get(k, 0) > 0 for k in ('Партбилет', 'Человек из кабинета', 'Офшор')): return 20
@@ -566,7 +567,7 @@ class World:
             s.stats['only_skip'] += 1
         s.stats['draw_' + (deck if isinstance(deck, str) else 'Класс')] += 1
         nm = c.get('Карта', c.get('Развилка', '?'))
-        s.card_count[(deck, nm)] += 1; s.cur_card = str(deck) + ' | ' + str(nm); s.cur_full = ' '.join(str(v) for v in c.values())
+        s.card_count[(deck, nm)] += 1; s.cur_card = str(deck) + ' | ' + str(nm); s.cur_full = ' '.join(str(v) for v in c.values()); p._cardtext = s.cur_full
         ps0, ph0 = p.psy, p.phys
         s.last_fail = False
         if nm == 'Вернуться домой':   # развилка: вернуться без проверки границы или остаться
@@ -641,7 +642,7 @@ class World:
         home = p.cidx; rel = s.relation(home, dest); c = s.countries[dest]
         back = dest == p.birth_c
         keep_cls = p.cls == 'Олигархи' or p.vozm >= 15
-        p.cidx = dest; s.stats['emig_' + kind] += 1; s.stats['emig_motive_' + motive] += 1
+        CH.emigrate(p); p.cidx = dest; s.stats['emig_' + kind] += 1; s.stats['emig_motive_' + motive] += 1
         if back:
             p.log['returned'] += 1; p.minority = p.minority0; p.acc = 0; p.acc_pen = 0
         else:
@@ -883,7 +884,7 @@ class World:
         if (p.psy <= -6 or (p.habit and p.psy <= -1 and p.vozm >= (pb or 99) + 2)) and pb is not None and p.vozm >= pb:
             s.do(p, 'Психолог+', vozm=-pb, psy=2); return s.after(p)
         s.work(p, c)
-        s.small(p, c)
+        if not (CH.want(s, p) and CH.acq(s, p)): s.small(p, c)
         s.after(p)
 
     def after(s, p):
@@ -986,11 +987,13 @@ class World:
                 s.do(p, 'Психолог', vozm=-pp, psy=1); return
         r = random.random()
         if p.psy <= -3 and p.vozm < 1 and r < 0.5:
-            if random.random() < 0.5: s.do(p, 'Обжорство', psy=1, phys=-1 if d6() <= 2 else 0)
+            if ideo != 'Клептократия' and ('yard', seg) not in p.used_seg:   # «Двор»: даром, раз в отрезок
+                p.used_seg.add(('yard', seg)); s.do(p, 'Двор', psy=2 if ideo == 'Теократия' else 1)
+                if random.randint(1, 10) == 10: p.add_item('Друг', 'связь')
             else: s.do(p, 'Микрозаймы', vozm=4); p.micro += 1
             return
         if p.psy <= -2 and r < 0.10 and p.vozm >= 1:
-            t = random.choice(['Бар', 'Казино', 'Лотерея', 'Бордель'])
+            t = random.choice(['Бар', 'Казино', 'Лотерея', 'Бордель', 'Обжорство'])
             return s.trap(p, t)
         # игра на смысл: точечные шаги, которых требует карта
         if wn and p.psy > -5:
@@ -1061,6 +1064,9 @@ class World:
 
     def trap(s, p, t):
         if t == 'Бар': s.do(p, 'Бар', vozm=-1, psy=2, phys=-1 if d6() <= 2 else 0)
+        elif t == 'Обжорство' and p.vozm >= 3:   # дорогой ресторан
+            r = d6(); s.do(p, 'Обжорство', vozm=-3, psy=2, phys=-1 if r <= 2 else 0)
+            if r == 6: p.add_item('Покровитель' if p.pos_ >= 2 else 'Друг', 'связь')
         elif t == 'Бордель' and p.vozm >= 2:
             s.do(p, 'Бордель', vozm=-2, psy=3)
             if BROTHEL_KID and random.randint(1, 12) == 1:
@@ -1102,7 +1108,7 @@ class World:
         elif p.fin <= -2: p.st['Красота'] = max(0, p.st['Красота'] - 1)
 
     def seg_enter(s, p, seg):
-        p.maxseg = max(p.maxseg, seg)
+        p.maxseg = max(p.maxseg, seg); CH.seg_enter(p, seg)
         if BZ.BIZ: BZ.seg_enter(s, p, seg)
         if seg == 1 or (seg == 2 and not p.upb2): s.upbringing(p, seg)
         if seg == 2 and not FORKS:
@@ -1397,7 +1403,7 @@ if __name__ == '__main__':
             c = w.countries[p.cidx]
             rows.append(dict(g=g, seat=p.seat, gen=p.gen, heir=p.heir, pos=c['pos'], pos_birth=p.pos_c, ideo0=p.ideo0, ideo=c['ideo'], edu_ideo=p.edu_ideo,
                              cls0=p.cls0, cls=p.cls, fin0=p.fin0, pos0=p.pos0, coh0=p.coh0, coh=p.coh, alive=p.alive, done=p.done, end_alive=p.end_alive,
-                             seg=p.seg, maxseg=p.maxseg, death=p.death, happy=p.happy, card=p.card['id'] if p.card else None,
+                             seg=p.seg, maxseg=p.maxseg, death=p.death, happy=p.happy, char=list(p.char), zn=sum(1 for k, v in p.items.items() if v > 0 and k.startswith('Знакомый:')), card=p.card['id'] if p.card else None,
                              cname=p.card['name'] if p.card else None, deck=p.card['deck'] if p.card else None, kind=p.card['kind'] if p.card else None,
                              src=p.card_src, grey=p.grey, swapped=p.swapped, dyn=p.dyn, ref_try=p.ref_try, got=p.got,
                              unreach=p.card['unreach_pts'] if p.card else 0, scoreZ=p.score_Z, cardZ=p.card_Z,

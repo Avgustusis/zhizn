@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { loadContent } from '../src/data/content.ts'
 import { CLASSES, type Card, type Meaning, type Node } from '../src/data/schema.ts'
-import { enterInst } from '../src/engine/change.ts'
-import { runCheck } from '../src/engine/checks.ts'
-import { newCtx } from '../src/engine/cond.ts'
+import { enterInst, gainItem } from '../src/engine/change.ts'
+import { runCheck, situational } from '../src/engine/checks.ts'
+import { cond, newCtx, privilege } from '../src/engine/cond.ts'
 import type { Flow } from '../src/engine/core.ts'
 import { Engine } from '../src/engine/engine.ts'
 import { run } from '../src/engine/exec.ts'
@@ -27,9 +27,14 @@ function quiet(over: Partial<Content> = {}): Content {
 }
 
 const config = (seed: number): GameConfig => ({ mode: 'поколение', seed, seats: [{ name: 'Опыт' }] })
+/** Выполнить шаг правил, отвечая по списку. Ответ не из открытых вариантов — ошибка, как в настоящем движке. */
 function drive<T>(flow: Flow<T>, answers: string[] = []): T {
   let r = flow.next()
-  while (!r.done) r = flow.next(answers.shift() ?? r.value.options.find((o) => !o.off)!.id)
+  while (!r.done) {
+    const open = r.value.options.filter((o) => !o.off).map((o) => o.id)
+    const a = answers.length && open.includes(answers[0]) ? answers.shift()! : open[0]
+    r = flow.next(a)
+  }
   return r.value
 }
 /** Один игрок на «тихом» содержании: обычная семья, здоров, без предметов и без смысла. */
@@ -333,5 +338,84 @@ describe('сохранение', () => {
       return
     }
     throw new Error('ни в одной из партий не было вопроса при рождении')
+  })
+})
+
+describe('правки ядра 13–16.11', () => {
+  it('классы по таблице «Идеологии и классы»; меньшинства d4−1, в мультикультурной — только культурные', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const e = new Engine(real, config(seed), { checkpoints: false })
+      for (const c of e.state.world.countries) {
+        const row = real.tables.world.ideologyClasses[c.ideology]
+        expect(row.dom.map(([, k]) => k)).toContain(c.dominant)
+        expect(row.ali.map(([, k]) => k)).toContain(c.alienated)
+        expect(c.alienated).not.toBe(c.dominant)
+        expect(c.minorityRaces.length + c.minorityCultures.length).toBeLessThanOrEqual(3)
+        if (c.multicultural) expect(c.minorityRaces).toEqual([])
+      }
+    }
+  })
+
+  it('правило привилегий: порог и бросок с тегами #сделка #связи #бюрократия #закон #карьера', () => {
+    const { e, p } = lab(20, { fin: 3, pos: 0 })
+    p.ownProfile = Array(11).fill(0)
+    p.stats = { ...p.stats, 'Смекалка': 4 }
+    const g = e.g
+    const cardCtx = (tags: Card['tags']) => newCtx('карта', { tags })
+    expect(cond(g, p, { p: 'Смекалка', gte: 7 }, cardCtx(['#сделка']))).toBe(true)   // 7+ → 4+
+    expect(cond(g, p, { p: 'Смекалка', gte: 7 }, cardCtx(['#семья']))).toBe(false)
+    expect(privilege(g, p)).toBe(3)
+    p.ownProfile[1] = -1                                    // Иерархия: высоким ещё 1
+    expect(privilege(g, p)).toBe(4)
+    p.ownProfile[1] = 1                                     // Равенство: вдвое слабее
+    expect(privilege(g, p)).toBe(2)
+    Object.assign(p, { fin: -2, pos: -3 })
+    expect(privilege(g, p)).toBe(0)                         // Равенство: низким ничего
+    p.ownProfile[1] = -2
+    expect(privilege(g, p)).toBe(-1)                        // Иерархия: низким порог +1
+    expect(situational(g, p, 'Смекалка', cardCtx(['#карьера'])).add).toBeLessThanOrEqual(3)
+  })
+
+  it('Аппетит: на входе в отрезок −1 физ. и +1 псих.', () => {
+    const last = real.board.segments[2].cells.length - 1
+    const { e, p } = lab(21, { seg: 2, cell: last, phys: 2, psy: 2, character: [0, 0, 0, 0, -1, 0, 0] })
+    turn(e, p)
+    expect([p.seg, p.phys, p.psy]).toEqual([3, 1, 3])
+  })
+
+  it('мезальянс: разные классы — проверка при свадьбе, провал — родня против', () => {
+    let failed = 0, checks = 0
+    for (let seed = 1; seed <= 40; seed++) {
+      const { e, p } = lab(seed, { cls: 'Народ', coh: 0, psy: 0 })
+      p.stats = { ...p.stats, 'Харизма': 0 }
+      p.items.push({ uid: 999, name: 'Надёжный', person: { cls: 'Олигархи', culture: p.culture, race: p.race } })
+      const mark = e.state.log.length
+      drive(run(e.g, p, [{ rule: 'свадьба' }], newCtx('карта')))
+      const ev = e.state.log.slice(mark).find((x) => x.t === 'проверка')
+      expect(ev && ev.t === 'проверка' && ev.dc).toBe(12)
+      checks++
+      if (ev && ev.t === 'проверка' && !ev.ok) { failed++; expect(p.coh).toBe(-1) } // −2 и +1 от «Надёжного»
+      expect(p.items.some((h) => h.spouse)).toBe(true)
+    }
+    expect(checks).toBe(40); expect(failed).toBeGreaterThan(0)
+  })
+
+  it('козырь без ячейки можно сыграть только до конца хода', () => {
+    const { e, p } = lab(22, { fin: 0, pos: 0 })
+    drive(gainItem(e.g, p, 'Старая услуга'))
+    expect(p.items.map((h) => [h.name, h.temp])).toEqual([['Старая услуга', true]])
+    turn(e, p)
+    expect(p.items).toEqual([])
+  })
+
+  it('жетоны ◆: три на входе в Молодость, сгорают на выходе', () => {
+    const lastY = real.board.segments[1].cells.length - 1
+    const a = lab(23, { seg: 1, cell: lastY })
+    turn(a.e, a.p)
+    expect([a.p.seg, a.p.youthTokens]).toEqual([2, 3])
+    const lastM = real.board.segments[2].cells.length - 1
+    const b = lab(23, { seg: 2, cell: lastM, youthTokens: 2 })
+    turn(b.e, b.p)
+    expect([b.p.seg, b.p.youthTokens]).toEqual([3, 0])
   })
 })

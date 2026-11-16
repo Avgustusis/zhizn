@@ -3,7 +3,7 @@ import type { Check, Cond } from '../data/schema.ts'
 import type { PoleTag } from '../data/tables.ts'
 import { CHAR_AXES, CULTURE_AXES } from '../data/schema.ts'
 import { ask, clamp, countryOf, emit, roll3, type Flow, type G } from './core.ts'
-import { cond, countryProfile, cultureLean, effStat, isMinority, kindOf, pairOf, profileOf, sexStanding, type Ctx } from './cond.ts'
+import { cond, countryProfile, cultureLean, effStat, isMinority, kindOf, pairOf, privilege, profileOf, sexStanding, type Ctx } from './cond.ts'
 import { count, removeHeld, rollDie } from './change.ts'
 import { run } from './exec.ts'
 import type { Held, Player, Stat, Tag } from './types.ts'
@@ -81,6 +81,10 @@ export function situational(g: G, p: Player, stat: Stat, ctx: Ctx): Mods {
     if (c.dominant === p.cls) { out.adv = true; out.parts.push('класс доминирует: преимущество') }
     if (c.alienated === p.cls) { out.dis = true; out.parts.push('класс отчуждён: помеха') }
   }
+  if (tags.some((x) => t.privilege.tags.includes(x))) {
+    const priv = privilege(g, p)
+    if (priv) { out.add += priv; out.parts.push(`привилегии ${priv > 0 ? '+' : ''}${priv}`) }
+  }
   for (const e of t.ideologyTags[c.ideology]) {
     if (!tags.includes(e.tag)) continue
     if (e.who === 'большинство' && isMinority(g, p)) continue
@@ -92,6 +96,10 @@ export function situational(g: G, p: Player, stat: Stat, ctx: Ctx): Mods {
   if (t.beauty.fashionTags.some((x) => tags.includes(x))) {
     if (c.fashionIn === p.race) { out.add += 1; out.parts.push('раса в моде +1') }
     if (c.fashionOut === p.race) { out.add -= 1; out.parts.push('раса не в моде −1') }
+  }
+  // Сильно открытая культура страны: любая раса не большинства даёт +1 в #любовь.
+  if (tags.includes(t.beauty.exoticTag) && !c.mainRaces.includes(p.race) && countryProfile(g, c)[10] === 2) {
+    out.add += 1; out.parts.push('экзотика +1')
   }
   for (const m of p.mods) {
     if (!modApplies(g, m, ctx)) continue
