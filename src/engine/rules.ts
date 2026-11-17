@@ -8,6 +8,8 @@ import { kindOf } from './cond.ts'
 import { addParam, charStep, gainItem, removeHeld, wed } from './change.ts'
 import { acquaintance, burn, lawTrap, partnerClass, rite, work } from './market.ts'
 import { foundNow, searchNow } from './meaning.ts'
+import { crisisCheck, flight, turmoilRule } from './world.ts'
+import { emigrationRule } from './emigration.ts'
 import { newCtx } from './cond.ts'
 import type { Player } from './types.ts'
 
@@ -31,6 +33,9 @@ const RULES: Record<string, Rule> = {
   'дело в сброс'(g, p) { for (const h of p.items.filter((x) => kindOf(g, x) === 'дело')) removeHeld(g, p, h) },
   'стабильность'(g, p, arg, ctx) {
     const c = ctx.target !== undefined ? g.s.world.countries[ctx.target] : countryOf(g, p)
+    // «Становится 5, а не 4» (Смута): значение, а не сдвиг.
+    const set = (arg ?? '').match(/становится (\d+)/)
+    if (set) { c.stability = Number(set[1]); return }
     const n = Number((arg ?? '').replace('−', '-').match(/[+-]?\d+/)?.[0] ?? 0)
     const w = g.c.tables.world.stability
     c.stability = clamp(c.stability + n, w.min, w.max)
@@ -65,6 +70,28 @@ const RULES: Record<string, Rule> = {
   'смысл найден'(g, p) { foundNow(g, p) },
   *'переход в класс партнёра'(g, p) { yield* partnerClass(g, p) },
   *'дело прогорело'(g, p) { yield* burn(g, p) },
+  // ── Мир, Смута, эмиграция (этап 3б) ──
+  'смута'(_g, p, arg) { p.rules['смута'] = { ...(arg ? { arg } : {}) } },
+  *'бегство'(g, p) { yield* flight(g, p) },
+  *'эмиграция'(g, p, arg) { yield* emigrationRule(g, p, arg) },
+  'гражданство'(g, p) {
+    const others = g.s.world.countries.filter((c) => !p.citizenship.includes(c.id))
+    if (!others.length) return
+    const c = pick(g, others)
+    p.citizenship.push(c.id)
+    say(g, p, `гражданство: ${c.name}`)
+  },
+  'до мирового хода'(_g, p, arg) { p.rules[`мир: ${arg ?? ''}`] = {} },
+  'карантин'(_g, p) { p.rules['карантин'] = { arg: String(p.turns + 1) } },
+  'срок стигмы'(_g, p, arg) { p.rules['срок стигмы'] = { ...(arg ? { arg } : {}) } },
+  'отношения'(g, p, arg) { say(g, p, `отношения: ${arg ?? ''}`) },
+  *'правило тюрьмы'(g, p, arg) { yield* turmoilRule(g, p, 'правило тюрьмы', arg) },
+  *'выбрать сторону'(g, p, arg) { yield* turmoilRule(g, p, 'выбрать сторону', arg) },
+  *'стать нейтралом'(g, p, arg) { yield* turmoilRule(g, p, 'стать нейтралом', arg) },
+  *'стать проигравшим'(g, p, arg) { yield* turmoilRule(g, p, 'стать проигравшим', arg) },
+  *'донос на нейтрала'(g, p, arg) { yield* turmoilRule(g, p, 'донос на нейтрала', arg) },
+  *'люстрация'(g, p, arg) { yield* turmoilRule(g, p, 'люстрация', arg) },
+  *'проверка кризиса'(g, p, _arg, ctx) { yield* crisisCheck(g, g.s.world.countries[ctx.target ?? p.country], true) },
 }
 
 export function* runRule(g: G, p: Player, rule: string, arg: string | undefined, ctx: Ctx): Flow {

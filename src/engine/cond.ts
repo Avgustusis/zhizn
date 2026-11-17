@@ -20,8 +20,12 @@ export interface Ctx {
   strong?: boolean
   /** Потолок характеристик для шага `add` (рынок: 7 или 8). */
   cap?: number
-  /** Мир и Смута. */
+  /** Мир и Смута: страна-цель (или пара стран — targets). */
   target?: number
+  targets?: number[]
+  /** Смута без гражданства: помеха на все проверки карты; донос — поправка ко всем проверкам. */
+  dis?: boolean
+  penalty?: number
   side?: 'победители' | 'проигравшие' | 'нейтралы'
   formerDominant?: boolean
 }
@@ -202,7 +206,7 @@ export function cond(g: G, p: Player, c: Cond | undefined, ctx?: Ctx): boolean {
   if ('hasKind' in c) return p.items.some((h) => kindOf(g, h) === c.hasKind)
   if ('visited' in c) return (p.visits[c.visited] ?? []).includes(p.seg)
   if ('draft' in c) return drafted(g, p, ctx) === c.draft
-  if ('inTarget' in c) return (ctx?.target === p.country) === c.inTarget
+  if ('inTarget' in c) return (ctx?.target === p.country || !!ctx?.targets?.includes(p.country)) === c.inTarget
   if ('draftable' in c) return ((p.seg === 2 || p.seg === 3) && sexCalled(g, p)) === c.draftable
   if ('formerDominant' in c) return !!ctx?.formerDominant === c.formerDominant
   if ('side' in c) return ctx?.side === c.side

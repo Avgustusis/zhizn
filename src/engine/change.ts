@@ -48,6 +48,7 @@ export function addParam(g: G, p: Player, param: string, delta: number, ctx: Ctx
   if (to === from) return
   write(p, param, to)
   emit(g, { t: 'число', p: p.seat, param, from, to, delta: to - from })
+  if (param === 'Пожертвования') p.counters[`пожертвования:${p.seg}`] = (p.counters[`пожертвования:${p.seg}`] ?? 0) + (to - from)
   if (param === 'Стаж') {
     p.stazhHire += to - from
     visit(p, 'Стаж')
@@ -196,6 +197,7 @@ export function enterInst(g: G, p: Player, kind: InstKind, turns: number, tag?: 
   if (!p.alive) return
   if (p.counters['выход из института']) count(p, 'повторное попадание в институт')
   p.inst = { kind, left: turns, turn: 0 }
+  visit(p, kind)
   if (tag) p.inst.tag = tag
   count(p, kind)
   emit(g, { t: 'институт', p: p.seat, kind, how: 'вход', turns })
@@ -314,6 +316,18 @@ export function* gainItem(g: G, p: Player, name: string, opts: { adopted?: true 
     }
   }
   const h: Held = { uid: ++g.s.uid, name: item.name }
+  if (item.kind === 'стигма') {
+    h.seg = p.seg
+    visit(p, 'стигма получена')
+    // «Срок стигмы» с карты: «через один ход», «через один отрезок», «вдвое дольше».
+    const special = p.rules['срок стигмы']?.arg ?? ''
+    if (special.includes(item.name)) {
+      const base = g.c.tables.stigmaDecay[item.name] ?? 1
+      if (/через один ход/.test(special)) { h.decay = 0; h.seg = -1 } else if (/через один отрезок/.test(special)) h.decay = 0
+      else if (/вдвое/.test(special)) h.decay = base * 2
+      delete p.rules['срок стигмы']
+    }
+  }
   if (opts.adopted) h.adopted = true
   if (item.uses) h.uses = item.uses
   if (item.group === 'Партнёр') h.person = person(g, p)

@@ -10,6 +10,7 @@ import { markEntry, meaningAtEntry, settle } from './meaning.ts'
 import { rollFashion } from './setup.ts'
 import { businessAtEntry, money } from './market.ts'
 import { whyNot } from './explain.ts'
+import { acculturate, decayStigmas, deportRisk, emigrate, naturalize } from './emigration.ts'
 import type { Action, Player } from './types.ts'
 
 const cellsOf = (g: G, seg: number): BoardCell[] => g.c.board.segments[seg].cells
@@ -61,6 +62,8 @@ export function* playCard(g: G, p: Player, card: Card, deck: string): Flow<'по
   // #закон: проваленная проверка в «жёсткой» стране — на d6 = 1 тюрьма («Тотальные институты»).
   const t = g.c.tables.inst
   const c = countryOf(g, p)
+  // «Без документов»: любая карта #закон — риск высылки.
+  if (card.tags.includes('#закон')) yield* deportRisk(g, p)
   if (p.alive && !p.inst && p.seg >= 1 && ctx.shared.failed && card.tags.includes('#закон') && (c.pos === 'периферия' || t.harshIdeologies.includes(c.ideology))) {
     if (rollDie(g, p, 6, '#закон: тюрьма на 1') <= t.lawPrisonUpTo) enterInst(g, p, 'тюрьма', rollDie(g, p, t.prison.light, 'срок'), '#закон')
   }
@@ -134,6 +137,8 @@ function* enterSegment(g: G, p: Player): Flow {
   rollFashion(g, countryOf(g, p))
   yield* itemsPerSeg(g, p)
   yield* businessAtEntry(g, p)
+  decayStigmas(g, p)
+  if (seg !== 'Детство') { yield* acculturate(g, p); naturalize(g, p) }
   for (const nodes of p.everySeg) yield* run(g, p, nodes, ctx)
   fire(g, p, 'вход в следующий отрезок')
   if (seg === 'Зрелость') fire(g, p, 'вход в Зрелость')
@@ -283,35 +288,40 @@ function* actions(g: G, p: Player): Flow {
       const gate = gateOf(g, p, a)
       const off = a.perSeg !== undefined && (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) >= a.perSeg ? 'уже было в этом отрезке'
         : whyNot(g, p, a.requires) ?? gate.closed ?? (price > 0 && p.vozm < price ? 'нет денег' : undefined)
-      return [{ a, price, gate, off }]
+      const row = { a, price, gate, off, via: false }
+      // Клептократия: незаконное можно сделать «по знакомству» — −1 возм. сверху, зато без риска.
+      const klepto = a.illegal && countryOf(g, p).ideology === 'Клептократия'
+      return klepto ? [row, { ...row, price: price + 1, via: true, off: off ?? (p.vozm < price + 1 ? 'нет денег' : undefined) }] : [row]
     })
     if (!shown.some((x) => !x.off)) return
     const id = yield* ask(g, p, 'действие', `Что делаешь? Действий осталось: ${left.acts}${left.acts && !left.work ? ' (работа уже была)' : ''}${left.youth ? '; ещё ◆ рынок молодости' : ''}`, [
-      ...shown.map(({ a, price, gate, off }) => ({
-        id: a.id, label: a.label, effect: a.effect, ...(off ? { off } : {}),
+      ...shown.map(({ a, price, gate, off, via }) => ({
+        id: via ? `${a.id}@знакомство` : a.id, label: via ? `${a.label} — по знакомству, без риска` : a.label, effect: a.effect, ...(off ? { off } : {}),
         note: [a.slots.join(''), price ? `${price} возм.` : '', gate.need ? `характер (${a.gate!.pole}): d6 ${gate.need}–6, ${Math.round(((7 - gate.need) / 6) * 100)}%` : '', a.note ?? ''].filter(Boolean).join(' · '),
       })),
       { id: 'конец', label: 'закончить ход' },
     ], { force: true })
     if (id === 'конец') return
-    const { a, gate } = shown.find((x) => x.a.id === id)!
+    const { a, gate, via } = shown.find((x) => (x.via ? `${x.a.id}@знакомство` : x.a.id) === id)!
     spendSlots(a)
     // Проверка характера: провал — действие потрачено, деньги не списываются.
     if (gate.need && rollDie(g, p, 6, `характер: ${a.gate!.pole}`) < gate.need) { say(g, p, 'дошёл до двери и раздумал'); continue }
-    yield* perform(g, p, a)
+    yield* perform(g, p, a, via)
   }
 }
 
 /** Выполнить действие: цена, отметки, шаги. */
-function* perform(g: G, p: Player, a: Action): Flow {
+function* perform(g: G, p: Player, a: Action, via = false): Flow {
   p.counters[`действие:${a.id}:${p.seg}`] = (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) + 1
   p.counters[`действие:${a.id}`] = (p.counters[`действие:${a.id}`] ?? 0) + 1
   if (a.place) visit(p, a.place)
   for (const l of a.log ?? []) p.counters[l] = (p.counters[l] ?? 0) + 1
   const ctx = newCtx('действие', { card: a.id, tags: a.tags ?? [], ...(a.cap ? { cap: a.cap } : {}) })
-  const price = priceOf(g, p, a)
+  const price = priceOf(g, p, a) + (via ? 1 : 0)
   if (price) addParam(g, p, 'возм', -price, ctx)
+  if (via) p.rules['по знакомству'] = {}
   yield* run(g, p, a.effect, ctx)
+  delete p.rules['по знакомству']
   settle(g, p)
   yield* runDue(g, p)
 }
@@ -327,12 +337,21 @@ export function* playerTurn(g: G, p: Player): Flow {
     p.skip -= 1
     say(g, p, 'ход пропущен')
   } else {
-    yield* ask(g, p, 'ход', `${p.name}: твой ход`, [{ id: 'бросок', label: 'бросить кубик' }], { force: true })
-    const steps = rollDie(g, p, t.moveDie, 'ход')
-    const wasInst = !!p.inst
-    const cell = yield* move(g, p, steps)
-    if (p.alive && !p.finished) {
-      if (p.inst) { if (wasInst) yield* instTurn(g, p) } else if (cell) yield* resolveCell(g, p, cell)
+    // С Молодости можно эмигрировать вместо движения (концепция, «Виды отъезда»).
+    const canLeave = !p.inst && p.seg >= SEGMENTS.indexOf('Молодость')
+    const how = yield* ask(g, p, 'ход', `${p.name}: твой ход`, [
+      { id: 'бросок', label: 'бросить кубик' },
+      ...(canLeave ? [{ id: 'эмиграция', label: 'эмигрировать вместо хода' }] : []),
+    ], { force: true })
+    if (how === 'эмиграция' && (yield* emigrate(g, p, { optional: true }))) {
+      // Переезд занял ход: ни движения, ни клетки.
+    } else {
+      const steps = rollDie(g, p, t.moveDie, 'ход')
+      const wasInst = !!p.inst
+      const cell = yield* move(g, p, steps)
+      if (p.alive && !p.finished) {
+        if (p.inst) { if (wasInst) yield* instTurn(g, p) } else if (cell) yield* resolveCell(g, p, cell)
+      }
     }
     if (p.alive && !p.finished && !p.inst && p.skip === 0) money(g, p)
     if (p.alive && !p.finished) yield* actions(g, p)
@@ -355,6 +374,11 @@ function* endTurn(g: G, p: Player): Flow {
     }
   }
   if (p.alive && !p.inst && p.seg >= SEGMENTS.indexOf('Молодость') && p.vozm <= t.caps.bondage) enterInst(g, p, 'кабала', 0)
+  // Для угасания «Долга»: отрезок, когда Возможности были ниже нуля.
+  if (p.vozm < 0) visit(p, 'в минусе')
+  // Карантин — только на этот ход; «Судимость гаснет через один ход» — тоже.
+  if (p.rules['карантин'] && Number(p.rules['карантин'].arg) <= p.turns) delete p.rules['карантин']
+  for (const h of p.items.filter((x) => x.decay === 0 && x.seg !== undefined && x.seg < 0)) removeHeld(g, p, h)
   // Козырь без ячейки, не сыгранный в этот ход, уходит.
   for (const h of p.items.filter((x) => x.temp)) removeHeld(g, p, h)
   if (p.alive) { settle(g, p); yield* runDue(g, p) }

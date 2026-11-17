@@ -169,7 +169,7 @@ export function* runCheck(g: G, p: Player, check: Check, ctx: Ctx, askStat = fal
   const options = [...(Array.isArray(check.stat) ? check.stat : [check.stat]).map((stat) => ({ stat, dc: dcBase })), ...(check.or ?? [])]
   const rate = (o: { stat: Stat; dc: number }) => {
     const s = situational(g, p, o.stat, ctx)
-    const a = net(adv || s.adv || p.predisp === o.stat, dis || s.dis)
+    const a = net(adv || s.adv || p.predisp === o.stat, dis || s.dis || !!ctx.dis)
     return { ...o, s, a, chance: chance(o.dc - effStat(g, p, o.stat) - add - s.add, a) }
   }
   const rated = options.map(rate)
@@ -180,7 +180,7 @@ export function* runCheck(g: G, p: Player, check: Check, ctx: Ctx, askStat = fal
   }
   const stat = best.stat
   const value = effStat(g, p, stat)
-  const mod = add + best.s.add
+  const mod = add + best.s.add + (ctx.penalty ?? 0)
   ctx.shared.used = stat
 
   // Козырь — до броска и сверх потолка ±3.
@@ -264,12 +264,12 @@ export function previewCheck(g: G, p: Player, check: Check, ctx: Ctx): CheckPrev
   const options = [...(Array.isArray(check.stat) ? check.stat : [check.stat]).map((stat) => ({ stat, dc: dcBase })), ...(check.or ?? [])]
   const rated = options.map((o) => {
     const s = situational(g, p, o.stat, ctx)
-    const a = net(adv || s.adv || p.predisp === o.stat, dis || s.dis)
-    return { ...o, s, a, chance: auto ? 1 : chance(o.dc - effStat(g, p, o.stat) - add - s.add, a) }
+    const a = net(adv || s.adv || p.predisp === o.stat, dis || s.dis || !!ctx.dis)
+    return { ...o, s, a, chance: auto ? 1 : chance(o.dc - effStat(g, p, o.stat) - add - s.add - (ctx.penalty ?? 0), a) }
   })
   const best = rated.reduce((x, y) => (y.chance > x.chance ? y : x))
   return {
-    stat: best.stat, dc: best.dc, value: effStat(g, p, best.stat), mod: add + best.s.add, parts: [...parts, ...best.s.parts],
+    stat: best.stat, dc: best.dc, value: effStat(g, p, best.stat), mod: add + best.s.add + (ctx.penalty ?? 0), parts: [...parts, ...best.s.parts],
     adv: best.a, chance: best.chance, auto, tags: ctx.tags,
   }
 }

@@ -8,6 +8,7 @@ import { ask, countryOf, die, say, segName, shuffle, step, type Flow, type G } f
 import { charAxisOf, has, isMinority, kindOf, newCtx, pairOf, type Ctx } from './cond.ts'
 import { addParam, charStep, count, enterInst, gainItem, removeHeld, rollDie, setClass, visit } from './change.ts'
 import { run } from './exec.ts'
+import { legalize } from './emigration.ts'
 import type { CharPole, Cls, Held, Player } from './types.ts'
 
 // ── Доход ───────────────────────────────────────────────────────────────
@@ -28,6 +29,7 @@ export function income(g: G, p: Player): number {
   if (byCls?.cls.includes(p.cls)) d += byCls.add
   if (c.ideology === 'Национализм') d += isMinority(g, p) ? -t.ideologyIncome.nationalism : t.ideologyIncome.nationalism
   for (const i of p.income) d += i.add
+  if (p.rules['мир: доход −1']) d -= 1
   return Math.max(w.min, d)
 }
 
@@ -65,6 +67,7 @@ export function* work(g: G, p: Player, kind: string): Flow {
   }
   if (kind === 'подработка' || weak) {
     addParam(g, p, 'возм', Math.ceil(D / 2), ctx)
+    if (kind === 'подработка') legalize(g, p)
     if (rollDie(g, p, 6, 'износ') <= 4) hit(g, p, p.phys >= p.psy ? 'физ' : 'псих', 1, ctx)
     if (kind === 'работа') say(g, p, 'психика на исходе: работа приносит только доход подработки')
     return
@@ -247,6 +250,7 @@ export function* partnerClass(g: G, p: Player): Flow {
 
 /** Незаконная ловушка: −3 возм. (штраф или взятка); второй раз за отрезок — тюрьма. */
 export function lawTrap(g: G, p: Player): void {
+  if (p.rules['по знакомству']) return void say(g, p, 'по знакомству: облава прошла мимо')
   say(g, p, '#закон: облава')
   addParam(g, p, 'возм', -3, newCtx('действие'))
   const key = `закон ловушки:${p.seg}`

@@ -4,10 +4,10 @@
  * сохранение — снимок на начало шага и ответы внутри шага.
  */
 import { emit, makeG, type Flow, type G } from './core.ts'
-import { fire, runDue } from './change.ts'
 import { settle } from './meaning.ts'
 import { newState, setup } from './setup.ts'
 import { playerTurn } from './turn.ts'
+import { foresight, worldTurn } from './world.ts'
 import type { Content, GameConfig, GameState, Player, Request, SaveFile } from './types.ts'
 
 export interface EngineOptions {
@@ -101,7 +101,10 @@ export class Engine {
       if (seat >= n) {
         seat = 0
         s.round += 1
-        if (s.round % this.g.c.tables.world.roundsPerWorldTurn === 0) s.worldDue = true
+        const per = this.g.c.tables.world.roundsPerWorldTurn
+        if (s.round % per === 0) s.worldDue = true
+        // Предчувствие — за круг до мирового хода.
+        if ((s.round + 1) % per === 0) foresight(this.g)
       }
       if (active(s.players[seat])) break
     }
@@ -128,11 +131,4 @@ export class Engine {
     for (const p of s.players) settle(this.g, p)
     emit(this.g, { t: 'мир', text: 'партия окончена' })
   }
-}
-
-/** Мировой ход. Кризисы, колода «Мир» и «Смута» — этап 3; сейчас часы идут и срабатывают отложенные эффекты. */
-function* worldTurn(g: G): Flow {
-  g.s.worldTurns += 1
-  emit(g, { t: 'мир', text: `мировой ход ${g.s.worldTurns}` })
-  for (const p of g.s.players) if (active(p)) { fire(g, p, 'следующий мировой ход'); yield* runDue(g, p) }
 }

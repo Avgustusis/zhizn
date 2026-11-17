@@ -77,6 +77,8 @@ function marketPick(g: G, p: Player, ids: string[], price: (id: string) => numbe
   return first('знакомство', 'двор') ?? 'конец'
 }
 
+const rankOf = (pos: string): number => ({ 'ядро': 2, 'полупериферия': 1, 'периферия': 0 } as Record<string, number>)[pos]
+
 /** Ответ ИИ на вопрос движка. */
 export function answer(g: G, req: Request): string {
   const p = g.s.players[req.player]
@@ -99,6 +101,31 @@ export function answer(g: G, req: Request): string {
       return target && ladder[target] > ladder[p.cls] ? 'да' : 'нет'
     }
     case 'смысл': return ids.includes('принять') ? 'принять' : ids.includes('оставить') ? 'оставить' : ids[0]
+    case 'кризис': {
+      // Сторона — как у ИИ симуляции: «за», «против» и «в стороне» в пропорции 1 : 1 : 2 (без генератора движка).
+      if (ids.includes('в стороне')) return ['за', 'против', 'в стороне', 'в стороне'][(p.turns * 7 + p.seat * 3 + g.s.worldTurns) % 4]
+      return ids.includes('нет') ? 'нет' : ids[0]
+    }
+    case 'эмиграция': {
+      // Уезжать — изредка, как ИИ симуляции: беженцем — 5% (проигравшему в Смуте при суровой власти — 30%);
+      // по своей воле с периферии в страну получше — 15%. Случайность — из номера хода, не из генератора движка.
+      if (ids.includes('нет')) {
+        const roll = (p.turns * 37 + p.seat * 11 + g.s.worldTurns * 5) % 100
+        const home = g.s.world.countries[p.country]
+        const better = open.filter((o) => /^\d+$/.test(o.id) && rankOf(g.s.world.countries[Number(o.id)].pos) > rankOf(home.pos) && !/легально нельзя/.test(o.note ?? ''))
+        if (req.text.startsWith('Бежать')) {
+          const lost = (p.counters['поражение в Смуте'] ?? 0) > 0 && ['Военная диктатура', 'Госсоциализм', 'Теократия', 'Национализм'].includes(home.ideology)
+          return roll < (lost ? 30 : 5) && better.length ? better[0].id : 'нет'
+        }
+        return home.pos === 'периферия' && better.length && roll < 15 ? better[0].id : 'нет'
+      }
+      if (ids.includes('назад')) return 'назад'
+      if (ids.includes('мафия')) return 'мафия'
+      if (ids.includes('би')) return 'би'
+      if (ids.includes('да')) return 'да'
+      // Обязательный переезд: страна с позицией повыше.
+      return best((o) => (/^\d+$/.test(o.id) ? rankOf(g.s.world.countries[Number(o.id)].pos) : -1))
+    }
     case 'предмет': return ids[0]
     default: return ids[0]
   }
