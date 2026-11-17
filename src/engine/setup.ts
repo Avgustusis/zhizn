@@ -48,13 +48,12 @@ function makeCountry(g: G, id: number, pos: Country['pos']): Country {
   const ideology = pick(g, IDEOLOGIES)
   const { dominant, alienated } = classesFor(g, ideology)
   // Идеология тянет против культуры большинства: её полюс противоположен положению основной культуры.
-  const pole = t.ideologyShift[ideology]
-  const against = !!pole && g.s.world.cultures[mainCultures[0]][cultureAxisOf(pole)[0]] * cultureAxisOf(pole)[1] < 0
+  const against = againstCulture(g, ideology, mainCultures[0])
   const stability = t.stability.start + (pos === 'ядро' ? t.stability['ядро'] : pos === 'периферия' ? t.stability['периферия'] : 0)
     + (against ? t.stability.ideologyVsCulture : 0) + (alienated === 'Народ' ? t.stability.alienatedPeople : 0)
   const country: Country = {
     id, name: t.countries[id].name, pos, multicultural, mainRaces, mainCultures, minorityRaces, minorityCultures,
-    ideology, dominant, alienated, stability: Math.max(t.stability.min, stability), fashionIn: mainRaces[0], fashionOut: mainRaces[0], war: false, powerChanges: 0,
+    ideology, dominant, alienated, stability: Math.min(t.stabilityCap[ideology] ?? t.stability.max, Math.max(t.stability.min, stability)), fashionIn: mainRaces[0], fashionOut: mainRaces[0], war: false, powerChanges: 0,
   }
   rollFashion(g, country)
   return country
@@ -65,6 +64,15 @@ export function rollFashion(g: G, c: Country): void {
   const ethno = g.s.world.cultures[c.mainCultures[0]][cultureAxisOf('Этноцентризм')[0]] === -2
   c.fashionIn = ethno ? c.mainRaces[0] : pick(g, RACES)
   c.fashionOut = pick(g, RACES.filter((r) => r !== c.fashionIn))
+}
+
+/**
+ * Идеология против культуры (решено 17.11): у культуры большинства сильное (±2) положение на полюсе из таблицы.
+ * Смотрят на саму культуру, без сдвига от идеологии.
+ */
+export function againstCulture(g: G, ideology: Country['ideology'], culture: Culture): boolean {
+  const [axis, sign] = cultureAxisOf(g.c.tables.world.against[ideology])
+  return g.s.world.cultures[culture][axis] === 2 * sign
 }
 
 /** Доминирующий и отчуждённый класс по таблице «Идеологии и классы»; совпали — перебросить отчуждённый. */

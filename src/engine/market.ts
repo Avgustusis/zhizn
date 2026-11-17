@@ -27,6 +27,7 @@ export function income(g: G, p: Player): number {
   if (minus) d = Math.max(minus.min, d + minus.add)
   const byCls = t.ideologyIncome.classes[c.ideology]
   if (byCls?.cls.includes(p.cls)) d += byCls.add
+  d += t.ideologyIncome.everyone[c.ideology] ?? 0
   if (c.ideology === 'Национализм') d += isMinority(g, p) ? -t.ideologyIncome.nationalism : t.ideologyIncome.nationalism
   for (const i of p.income) d += i.add
   if (p.rules['мир: доход −1']) d -= 1
@@ -143,7 +144,7 @@ export function* businessAtEntry(g: G, p: Player): Flow {
   }
   if (!t.riskSegs.includes(seg)) return
   const c = countryOf(g, p)
-  const wide = (c.ideology === 'Госсоциализм' && h.name !== t.coop) || (c.ideology === 'Национализм' && isMinority(g, p))
+  const wide = (c.ideology === 'Госсоциализм' && h.name !== t.coop) || (c.ideology === 'Национализм' && isMinority(g, p)) || t.riskWideIdeo.includes(c.ideology)
   const r = rollDie(g, p, 6, `риск дела «${h.name}»`)
   if (r <= (wide ? t.riskWide : 1)) yield* burn(g, p, h)
   else if (r === 6 && item.biz.size === 'малое' && !h.grown) { h.grown = true; say(g, p, `малое дело «${h.name}» выросло до среднего`) }

@@ -10,7 +10,7 @@ import { cond, has, newCtx, relation, type Ctx } from './cond.ts'
 import { addParam, count, enterInst, fire, gainItem, removeHeld, rollDie, runDue, setClass, visit } from './change.ts'
 import { run } from './exec.ts'
 import { settle } from './meaning.ts'
-import { classesFor } from './setup.ts'
+import { againstCulture, classesFor } from './setup.ts'
 import { emigrate } from './emigration.ts'
 import type { Cls, Country, Player, Relation } from './types.ts'
 
@@ -21,17 +21,13 @@ const STEPS: Relation[] = ['вражда', 'нейтралитет', 'союз']
 
 /** Идеология против основной культуры страны: её полюс противоположен положению культуры. */
 export function ideologyAgainstCulture(g: G, c: Country): boolean {
-  const pole = g.c.tables.world.ideologyShift[c.ideology]
-  if (!pole) return false
-  const i = CULTURE_AXES.findIndex(([a, b]) => a === pole || b === pole)
-  const sign = CULTURE_AXES[i][0] === pole ? -1 : 1
-  return g.s.world.cultures[c.mainCultures[0]][i] * sign < 0
+  return againstCulture(g, c.ideology, c.mainCultures[0])
 }
 
 /** Стабильность ±n в пределах 0…10. */
 export function stab(g: G, c: Country, n: number): void {
   const w = g.c.tables.world.stability
-  c.stability = clamp(c.stability + n, w.min, w.max)
+  c.stability = clamp(c.stability + n, w.min, g.c.tables.world.stabilityCap[c.ideology] ?? w.max)
 }
 
 /** Сдвинуть отношения пары на шаг: −1 хуже, +1 лучше. */
@@ -142,7 +138,7 @@ export function* powerChange(g: G, c: Country, sides = new Map<number, Side>()):
   c.dominant = t.close[c.ideology].includes(oldAli) ? oldAli : classesFor(g, c.ideology).dominant
   if (die(g, 6) <= t.oldDominantUpTo && oldDom !== c.dominant) c.alienated = oldDom
   else { let a = classesFor(g, c.ideology).alienated; while (a === c.dominant) a = classesFor(g, c.ideology).alienated; c.alienated = a }
-  c.stability = t.after
+  c.stability = Math.min(t.after, g.c.tables.world.stabilityCap[c.ideology] ?? t.after)
   c.powerChanges += 1
   emit(g, { t: 'мир', text: `${c.name}: смена власти — ${c.ideology}; правит ${c.dominant}, отчуждён ${c.alienated}` })
   // Отношения с каждой страной: d6 1 — хуже, 6 — лучше.

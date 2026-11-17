@@ -81,6 +81,10 @@ export function situational(g: G, p: Player, stat: Stat, ctx: Ctx): Mods {
     if (c.dominant === p.cls) { out.adv = true; out.parts.push('класс доминирует: преимущество') }
     if (c.alienated === p.cls) { out.dis = true; out.parts.push('класс отчуждён: помеха') }
   }
+  // Кризис подавлен: до следующего мирового хода отчуждённому классу помеха в #политика и #закон (репрессии; решено 17.11).
+  if (c.suppressed && c.alienated === p.cls && tags.some((x) => x === '#политика' || x === '#закон')) { out.dis = true; out.parts.push('репрессии после кризиса: помеха') }
+  // Сепарация: держишься своих — +1 к #община, если в стране есть диаспора твоей культуры.
+  if (p.rules['сепарация'] && tags.includes('#община') && c.minorityCultures.includes(p.culture)) { out.add += 1; out.parts.push('диаспора +1') }
   if (tags.some((x) => t.privilege.tags.includes(x))) {
     const priv = privilege(g, p)
     if (priv) { out.add += priv; out.parts.push(`привилегии ${priv > 0 ? '+' : ''}${priv}`) }

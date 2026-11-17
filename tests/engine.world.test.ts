@@ -52,7 +52,7 @@ describe('кризис и смена власти', () => {
       const c = e.state.world.countries[p.country]
       Object.assign(c, { ideology: 'Либеральная демократия', dominant: 'Олигархи', alienated: 'Народ', stability: 2 })
       drive(powerChange(e.g, c), { 'Твоя сторона': 'в стороне', 'Перейти': 'нет' })
-      expect(['Госсоциализм', 'Социал-демократия', 'Национализм', 'Теократия']).toContain(c.ideology)
+      expect(['Госсоциализм', 'Социал-демократия', 'Национализм', 'Вольница', 'Теократия']).toContain(c.ideology)
       expect(c.dominant).not.toBe(c.alienated)
       if (real.tables.crisis.close[c.ideology].includes('Народ')) expect(c.dominant).toBe('Народ')
       expect(c.powerChanges).toBe(1)
@@ -216,4 +216,45 @@ describe('партии с мировым ходом', () => {
     expect(turmoil).toBeGreaterThan(0)
     console.log(`смен власти на партию ${(changes / 100).toFixed(1)}; Смут на жизнь ${(turmoil / lives).toFixed(2)}; эмиграций на жизнь ${(emig / lives).toFixed(2)}`)
   }, 300000)
+})
+
+describe('десять идеологий (17.11)', () => {
+  it('идеология против культуры — только при сильном положении культуры на полюсе из таблицы', async () => {
+    const { againstCulture } = await import('../src/engine/setup.ts')
+    const { e } = lab(40)
+    const cult = 'Карвенцы' as const
+    e.state.world.cultures[cult] = [0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 0] // сильная Иерархия
+    expect(againstCulture(e.g, 'Либеральная демократия', cult)).toBe(true)
+    e.state.world.cultures[cult] = [0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0] // умеренная — не против
+    expect(againstCulture(e.g, 'Либеральная демократия', cult)).toBe(false)
+    e.state.world.cultures[cult] = [0, 0, 0, -2, 0, 0, 0, 0, 0, 0, 0] // сильный Порядок
+    expect(againstCulture(e.g, 'Вольница', cult)).toBe(true)
+  })
+
+  it('вольница: тюрем нет — «суд круга»; стабильность не выше 6', () => {
+    const { e, p } = lab(41, { phys: 3, vozm: 5 })
+    const c = e.state.world.countries[p.country]
+    c.ideology = 'Вольница'
+    enterInst(e.g, p, 'тюрьма', 3)
+    expect(p.inst).toBeUndefined()
+    expect([p.phys, p.vozm]).toEqual([1, 3])
+    c.stability = 5
+    drive(crisisCheck(e.g, { ...c, stability: 5 }, false))
+    for (let i = 0; i < 10; i++) drive(crisisCheck(e.g, c, false))
+    expect(c.stability).toBeLessThanOrEqual(6)
+  })
+
+  it('при подготовке у каждой страны одна из десяти идеологий, классы по её таблице', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 60; seed++) {
+      const { e } = lab(seed)
+      for (const c of e.state.world.countries) {
+        seen.add(c.ideology)
+        const row = real.tables.world.ideologyClasses[c.ideology]
+        expect(row.dom.map(([, k]) => k)).toContain(c.dominant)
+        if (c.ideology === 'Вольница') expect(c.stability).toBeLessThanOrEqual(6)
+      }
+    }
+    expect(seen.size).toBe(10)
+  })
 })

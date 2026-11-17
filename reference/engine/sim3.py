@@ -65,6 +65,15 @@ GATES = {'Больница': (6, 1, 'need'), 'Больница+': (6, 1, 'need')
          'Бордель': (2, -1, 'lux'), 'Бар': (4, -1, 'lux'), 'Обжорство': (4, -1, 'lux'), 'Казино': (5, -1, 'lux'), 'Знакомство': (0, -1, 'lux'), 'Хобби': (6, -1, 'lux')}
 PLACE_OF = lambda k: 'Салон' if k == 'Красота' else 'Спортзал' if k in ('Сила', 'Выносливость', 'Ловкость') else 'Курсы'
 IDEOS = ['Либеральная демократия', 'Социал-демократия', 'Теократия', 'Национализм', 'Госсоциализм', 'Военная диктатура', 'Клептократия']
+IDEO10 = E('IDEO10', '1') == '1'          # 17.11: + технократия, полицейское государство, вольница
+CONF_RULE = E('CONF_RULE', '1') == '1'    # 17.11: «против культуры» по правилу (иначе — случайно 30%)
+if IDEO10: IDEOS = IDEOS + ['Технократия', 'Полицейское государство', 'Вольница']
+DICT_I = {'Военная диктатура', 'Госсоциализм', 'Теократия', 'Полицейское государство'}       # «диктатуры» в текстах карт
+HARSH_I = DICT_I | {'Национализм'}                                                             # суровая власть: тюрьма проигравшим в Смуте и т. п.
+# «против культуры»: ось (как в p.axes, левый полюс <0) и знак сильного полюса, который идёт против идеологии
+AGAINST = {'Либеральная демократия': (1, -2), 'Социал-демократия': (0, 2), 'Теократия': (4, 2), 'Национализм': (10, 2), 'Госсоциализм': (3, 2),
+           'Военная диктатура': (8, 2), 'Клептократия': (7, -2), 'Технократия': (4, -2), 'Полицейское государство': (5, 2), 'Вольница': (3, -2)}
+STAB_CAP = {'Вольница': 6}
 FIN_DIST = {'ядро': [0.4, 2.4, 7.7, 40.7, 25.6, 17.4, 5.8], 'полупериферия': [1.9, 7.4, 16.7, 48.1, 16.7, 7.4, 1.9], 'периферия': [5.8, 17.4, 25.6, 40.7, 7.7, 2.4, 0.4]}
 NARROW = [1.9, 7.4, 16.7, 48.1, 16.7, 7.4, 1.9]; WIDE = [4.6, 11.6, 21.3, 25, 21.3, 11.6, 4.6]
 SCALE5 = {-3: -5, -2: -3, -1: -1, 0: 0, 1: 1, 2: 3, 3: 5}
@@ -419,6 +428,8 @@ class Player:
         s.cls = new; s.clampv()
 
     def enter(s, inst, turns):
+        if inst == 'Тюрьма' and IDEO10 and s.w.country(s)['ideo'] == 'Вольница':   # 17.11: тюрем нет — «суд круга»
+            s.phys -= 2; s.vozm -= 2; s.w.stats['krug'] += 1; s.check_death('суд круга'); return
         if s.log['out_ever'] > 0: s.log['reentered'] += 1
         s.inst = inst; s.inst_left = turns; s.w.stats['inst_' + inst] += 1
         if inst == 'Тюрьма':
@@ -463,16 +474,27 @@ class Blocked(Exception): pass
 
 
 class World:
+    def against(s, ideo, cult):
+        """Идеология против культуры большинства: у культуры (без сдвига идеологии) сильный полюс, который ей противоречит."""
+        a, v = AGAINST[ideo]
+        return s.cprof[cult][a] == v
+
     def __init__(s, rounds):
         s.stats = C.Counter(); s.trans = C.Counter(); s.gstat = C.Counter(); s.wt = 0; s.round = 0; s.rounds = rounds
         poss = ['ядро', 'полупериферия', 'полупериферия', 'периферия', 'периферия']; random.shuffle(poss)
+        s.cprof = {}
+        for cu in CULTS:   # профили культур на партию: колода 11 осей — 3 сильно, 3 умеренно
+            ax = list(range(11)); random.shuffle(ax); pr = [0] * 11
+            for j, a in enumerate(ax[:6]): pr[a] = (2 if j < 3 else 1) * random.choice([-1, 1])
+            s.cprof[cu] = pr
         s.countries = []
         for pos in poss:
             ideo = random.choice(IDEOS); dom = random.choice(CLASSES); ali = random.choice([c for c in CLASSES if c != dom])
-            conflict = random.random() < 0.3
+            cult = random.choice(CULTS)
+            conflict = s.against(ideo, cult) if CONF_RULE else random.random() < 0.3
             stab = 5 + (1 if pos == 'ядро' else -1 if pos == 'периферия' else 0) - (2 if conflict else 0) - (2 if ali == 'Народ' else 0)
-            s.countries.append(dict(pos=pos, ideo=ideo, dom=dom, ali=ali, stab=stab, conflict=conflict, crises=0, changes=0, war=False,
-                                    cult=random.choice(CULTS), purge=False))
+            s.countries.append(dict(pos=pos, ideo=ideo, dom=dom, ali=ali, stab=min(STAB_CAP.get(ideo, 10), stab), conflict=conflict, crises=0, changes=0, war=False,
+                                    cult=cult, purge=False))
         s.rel = {}
         for i in range(5):
             for j in range(i + 1, 5):
@@ -525,6 +547,9 @@ class World:
         if c['ideo'] == 'Военная диктатура' and cls in ('Армия', 'Полиция'): d += 2
         if c['ideo'] == 'Клептократия' and cls in ('Мафия', 'Олигархи'): d += 2
         if c['ideo'] == 'Национализм': d += -1 if p.minority else 1
+        if c['ideo'] == 'Технократия' and cls == 'Интеллигенция': d += 2
+        if c['ideo'] == 'Полицейское государство' and cls == 'Полиция': d += 2
+        if c['ideo'] == 'Вольница': d += 1
         if p.uchil and p.seg == 2: d += 1
         return max(1, d)
 
@@ -553,7 +578,7 @@ class World:
             res = res and (ideo == 'Госсоциализм' or ('военной диктатур' in q and ideo == 'Военная диктатура') or ('социал-демократ' in q and ideo == 'Социал-демократия') or ('национализм' in q and ideo == 'Национализм'))
         elif 'теократи' in q: res = res and ideo == 'Теократия'
         elif 'национализм' in q: res = res and ideo == 'Национализм'
-        elif 'в диктатурах' in q: res = res and (ideo in ('Военная диктатура', 'Госсоциализм', 'Теократия') or ('клептократ' in q and ideo == 'Клептократия'))
+        elif 'в диктатурах' in q: res = res and (ideo in DICT_I or ('клептократ' in q and ideo == 'Клептократия'))
         if 'периферии' in q and 'ядр' not in q: res = res and cc['pos'] != 'ядро'
         if 'доминирующего класса' in q: res = res and cc['dom'] == p.cls
         if 'отчужд' in q:
@@ -598,8 +623,9 @@ class World:
             p.drop_item('Без документов'); s.stats['deported'] += 1; s.arrive(p, p.birth_c, True, 'deport', 'депортация')
             if hostile: p.enter('Тюрьма', random.randint(1, 3))
         if s.last_fail and '#закон' in (c.get('Теги', '') or '') and p.inst is None and p.alive and seg >= 1:
-            cc = s.country(p); harsh = cc['pos'] == 'периферия' or cc['ideo'] in ('Военная диктатура', 'Госсоциализм', 'Теократия', 'Национализм')
-            if d6() <= (LAW_H if harsh else LAW_S): p.enter('Тюрьма', random.randint(1, 3)); s.stats['prison_law'] += 1
+            cc = s.country(p); harsh = cc['pos'] == 'периферия' or cc['ideo'] in HARSH_I
+            lim = 2 if (IDEO10 and cc['ideo'] == 'Полицейское государство') else (LAW_H if harsh else LAW_S)   # 17.11: полицейское государство — d6 1–2
+            if d6() <= lim: p.enter('Тюрьма', random.randint(1, 3)); s.stats['prison_law'] += 1
         key = (deck if isinstance(deck, str) else 'Класс:' + deck[1]) + ' | ' + str(nm)
         s.card_psy[key] += p.psy - ps0; s.card_phy[key] += p.phys - ph0
         if '✨' in str(nm): p.miracles += 1
@@ -608,7 +634,7 @@ class World:
     # ---------- эмиграция ----------
     def relation(s, a, b): return 'свои' if a == b else s.rel[(min(a, b), max(a, b))]
 
-    def legal_exit(s, p): return s.countries[p.cidx]['ideo'] not in ('Госсоциализм', 'Военная диктатура')
+    def legal_exit(s, p): return s.countries[p.cidx]['ideo'] not in ('Госсоциализм', 'Военная диктатура', 'Полицейское государство')
 
     def pick_dest(s, p, kind):
         opts = [ci for ci in range(5) if ci != p.cidx]
@@ -733,7 +759,7 @@ class World:
             want = ('flight' in fl or 'emig' in fl) and p.log['emig'] == 0
             if not want:
                 base = {'war': 0.03, 'purge': 0.08 if p.minority else 0.02, 'power': 0.0}[why] * EMIG_ECON
-                if why == 'power' and getattr(p, 'smuta_lost', False) and s.countries[ci]['ideo'] in ('Военная диктатура', 'Госсоциализм', 'Теократия', 'Национализм'):
+                if why == 'power' and getattr(p, 'smuta_lost', False) and s.countries[ci]['ideo'] in HARSH_I:
                     base = 0.3 * EMIG_ECON
                 want = random.random() < base
             if want: s.emigrate(p, 'flight', motive='бегство:' + why)
@@ -832,7 +858,9 @@ class World:
         pos, ideo = c['pos'], c['ideo']
         if big:
             if pos == 'периферия': return None
-            if HIDEO and ideo == 'Теократия': return None   # 17.11: лечат верой, без хирургии
+            if HIDEO and ideo == 'Вольница': return None   # 17.11: фельдшер, без хирургии
+            if HIDEO and ideo == 'Теократия':   # 17.11: большой обмен — за вещь (пожертвование общине; в модели вещей нет) или даром мудрым старикам
+                return 0 if p.seg >= 4 and p.st['Мудрость'] >= 7 else None
             pr = 3 if pos == 'ядро' else 4
         else:
             pr = PERI_HOSP if pos == 'периферия' else 1
@@ -853,6 +881,8 @@ class World:
         elif ideo == 'Госсоциализм': good = p.cls in ('Полиция', 'Армия')
         elif ideo == 'Военная диктатура': good = p.cls == 'Армия'
         elif ideo == 'Клептократия': good = p.cls in ('Полиция', 'Олигархи')
+        elif ideo == 'Технократия': good = True
+        elif ideo == 'Полицейское государство': good = p.cls == 'Полиция'
         e = 3 if good else 1 if bad else 2
         return e + 2 if big else e
 
@@ -903,13 +933,13 @@ class World:
 
     def psy_price(s, p, c, big=False):
         pos, ideo = c['pos'], c['ideo']
-        if ideo == 'Теократия': return None
+        if ideo == 'Теократия' or (IDEO10 and ideo == 'Вольница'): return None
         if big:
             if pos == 'периферия' or ideo == 'Военная диктатура': return None
             pr = 3 if pos == 'ядро' else 4
         else:
             pr = 2 if pos == 'периферия' else 1
-            if ideo == 'Социал-демократия' and ('freep', p.seg) not in p.used_seg and p.cidx in p.citizen: return 0
+            if ideo in ('Социал-демократия', 'Технократия') and ('freep', p.seg) not in p.used_seg and p.cidx in p.citizen: return 0
         if ideo == 'Либеральная демократия': pr += 1
         return pr
 
@@ -922,6 +952,9 @@ class World:
             if p.seg == 5: return True
             ok = roll3(1 if p.predisp == 'Мудрость' else 0) + p.st['Мудрость'] >= 12; s.stats['chk_Мудрость_старцы'] += 1; return ok
         if ideo == 'Клептократия': return p.cls in ('Полиция', 'Олигархи')
+        if ideo == 'Технократия': return p.stazh >= 7
+        if ideo == 'Полицейское государство': return p.cls == 'Полиция' or p.stazh >= 5
+        if ideo == 'Вольница': return p.seg == 5
         return False
 
     def do(s, p, name, **d):
@@ -932,7 +965,9 @@ class World:
             elif k == 'phys': p.phys = min(10, p.phys + v)
             elif k == 'psy': p.psy = min(10, p.psy + v)
             else: p.st[k] = min(p.cap(k), p.st[k] + v)
-        if name in ('Психолог', 'Психолог+'): p.n_psy += 1
+        if name in ('Психолог', 'Психолог+'):
+            p.n_psy += 1
+            if IDEO10 and s.country(p)['ideo'] == 'Полицейское государство' and d6() == 1: p.add_item('Учёт', 'стигма'); s.stats['polstate_uchet'] += 1
         if name.startswith('Больница'): p.n_hosp += 1
         if name in ('Психолог+', 'Больница+') and p.habit: p.habit = False; s.stats['habit_off'] += 1
         if name in ('Бар', 'Бордель'):
@@ -1066,7 +1101,7 @@ class World:
         r = random.random()
         if p.psy <= -3 and p.vozm < 1 and r < 0.5:
             if ideo != 'Клептократия' and ('yard', seg) not in p.used_seg:   # «Двор»: даром, раз в отрезок
-                p.used_seg.add(('yard', seg)); s.do(p, 'Двор', psy=2 if ideo == 'Теократия' else 1)
+                p.used_seg.add(('yard', seg)); s.do(p, 'Двор', psy=2 if ideo in ('Теократия', 'Вольница') else 1)
                 if random.randint(1, 10) == 10: p.add_item('Друг', 'связь')
             else: s.do(p, 'Микрозаймы', vozm=4); p.micro += 1
             return
@@ -1092,7 +1127,7 @@ class World:
         if p.coh >= 1 and ('fam', seg) not in p.used_seg and (p.vozm < 0 or p.psy < 0):
             amt = 1 if p.cidx != p.birth_c else 2
             p.used_seg.add(('fam', seg)); s.do(p, 'Семья', **({'vozm': amt} if p.vozm < 0 else {'psy': amt})); return
-        if p.vozm < -3 and p.psy > -5 and not p.items.get('Долг') and not p.items.get('Судимость') and ideo != 'Госсоциализм' and random.random() < 0.3:
+        if p.vozm < -3 and p.psy > -5 and not p.items.get('Долг') and not p.items.get('Судимость') and ideo not in ('Госсоциализм', 'Вольница') and random.random() < 0.3:
             s.do(p, 'Банк', vozm=4 if pos == 'ядро' else 3); p.debts += 5 if pos == 'ядро' else 4; return
         if p.vozm >= 5 and p.psy > -5:
             pr = MKT_PRICE + (PERI_SHOP if pos == 'периферия' else 0)
@@ -1109,9 +1144,10 @@ class World:
             if want and p.vozm >= pr + 2 and random.random() < 0.7 and s.G(p, PLACE_OF(want[0])):
                 k = want[0]
                 if k in cand2 and ideo == 'Национализм' and p.minority: pr += 1
+                if k in cand2 and ideo == 'Технократия': pr = max(1, pr - 1)
                 if k == 'Красота': s.do(p, 'Салон', vozm=-pr, Красота=2 if pos == 'полупериферия' else 1); s.salon6(p); return
                 if k in ('Сила', 'Выносливость', 'Ловкость'):
-                    if GYM_CHEAP and ideo in ('Военная диктатура', 'Госсоциализм'): pr = max(1, pr - 1)
+                    if GYM_CHEAP and ideo in ('Военная диктатура', 'Госсоциализм', 'Полицейское государство'): pr = max(1, pr - 1)
                     s.do(p, 'Спортзал', vozm=-pr, **{k: 1})
                     if d6() == 6: p.phys = min(10, p.phys + 1)
                 else:
@@ -1322,7 +1358,11 @@ class World:
                     old = c['dom']; c['dom'] = c['ali']; c['ali'] = old
                     opts = {'Народ': ['Госсоциализм', 'Социал-демократия', 'Национализм'], 'Армия': ['Военная диктатура'], 'Полиция': ['Национализм', 'Военная диктатура'],
                             'Олигархи': ['Клептократия', 'Либеральная демократия'], 'Интеллигенция': ['Либеральная демократия', 'Социал-демократия'], 'Мафия': ['Клептократия']}
+                    if IDEO10:
+                        opts['Народ'] = opts['Народ'] + ['Вольница']; opts['Мафия'] = opts['Мафия'] + ['Вольница']
+                        opts['Интеллигенция'] = opts['Интеллигенция'] + ['Технократия']; opts['Полиция'] = opts['Полиция'] + ['Полицейское государство']
                     c['ideo'] = random.choice(opts[c['dom']]); c['stab'] = 4
+                    if CONF_RULE: c['conflict'] = s.against(c['ideo'], c['cult'])
                     for p in s.players:
                         if p and p.alive and not p.done and p.cidx == ci:
                             card = random.choice(DECK['Смута']); s.stats['smuta_card'] += 1; s.cur_card = 'Смута | ' + str(card.get('Карта')); s.cur_full = ''
@@ -1332,7 +1372,7 @@ class World:
                             cls0 = p.cls; keep = {k: p.items.get(k, 0) > 0 for k in ('Присяга', 'Значок')}
                             exec_text(card.get('Для всех', ''), p, s, p.seg); exec_text(card.get(side, ''), p, s, p.seg)
                             txt = ' '.join(str(v) for v in card.values())
-                            if c['ideo'] in ('Военная диктатура', 'Госсоциализм', 'Теократия', 'Национализм') and 'не действует' not in txt and p.inst is None and p.alive:
+                            if c['ideo'] in HARSH_I and 'не действует' not in txt and p.inst is None and p.alive:
                                 lose = side == 'Проигравшие' or (side == 'Нейтралы' and (SMUTA_N == 'all' or c['ideo'] == 'Военная диктатура') and roll3() + p.st['Смекалка'] < 12)
                                 if lose: p.enter('Тюрьма', random.randint(1, 3)); s.stats['prison_smuta'] += 1
                             p.smuta_lost = side == 'Проигравшие'
@@ -1347,9 +1387,9 @@ class World:
                                     if v and p.items.get(k, 0) > 0: p.log['pc_keep_' + k] += 1
                     s.flight_chance(ci, 'power')
                 else:
-                    c['stab'] = min(10, c['stab'] + 2)
+                    c['stab'] = min(STAB_CAP.get(c['ideo'], 10), c['stab'] + 2)
             else:
-                c['stab'] = min(10, c['stab'] + 1 - (1 if c['conflict'] else 0) - (1 if c['ali'] == 'Народ' else 0))
+                c['stab'] = min(STAB_CAP.get(c['ideo'], 10), c['stab'] + 1 - (1 if c['conflict'] else 0) - (1 if c['ali'] == 'Народ' else 0))
         card = random.choice([x for x in DECK['Мир'] if x.get('Карта') not in THAW]); nm = card.get('Карта'); s.gstat[nm] += 1; s.stats['world_' + card.get('Охват', '?')] += 1
         ci = random.randrange(5)
         if nm == 'Война': s.countries[ci]['war'] = True

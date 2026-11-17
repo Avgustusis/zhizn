@@ -18,7 +18,7 @@
 import os, sys, random, re, statistics as S, collections as C
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import sim3
-from sim3 import World, Player, d6, roll3, DECK, THAW, exec_text, SEGS, PRANK
+from sim3 import World, Player, d6, roll3, DECK, THAW, exec_text, SEGS, PRANK, STAB_CAP, HARSH_I
 import char as CH
 import war_sim as WS
 
@@ -38,20 +38,30 @@ DOM = {'Либеральная демократия': [(4, 'Олигархи'), 
        'Национализм': [(3, 'Армия'), (6, 'Полиция')],
        'Госсоциализм': [(3, 'Полиция'), (6, 'Народ')],
        'Военная диктатура': [(6, 'Армия')],
-       'Клептократия': [(3, 'Олигархи'), (6, 'Мафия')]}
+       'Клептократия': [(3, 'Олигархи'), (6, 'Мафия')],
+       'Технократия': [(4, 'Интеллигенция'), (6, 'Олигархи')],
+       'Полицейское государство': [(4, 'Полиция'), (6, 'Армия')],
+       'Вольница': [(3, 'Народ'), (6, 'Мафия')]}
 ALI = {'Либеральная демократия': [(2, 'Народ'), (4, 'Армия'), (5, 'Мафия'), (6, 'Интеллигенция')],
        'Социал-демократия': [(2, 'Олигархи'), (4, 'Армия'), (5, 'Мафия'), (6, 'Полиция')],
        'Теократия': [(3, 'Интеллигенция'), (4, 'Мафия'), (5, 'Олигархи'), (6, 'Армия')],
        'Национализм': [(2, 'Интеллигенция'), (4, 'Народ'), (5, 'Олигархи'), (6, 'Мафия')],
        'Госсоциализм': [(2, 'Интеллигенция'), (4, 'Олигархи'), (5, 'Армия'), (6, 'Мафия')],
        'Военная диктатура': [(3, 'Народ'), (5, 'Интеллигенция'), (6, 'Мафия')],
-       'Клептократия': [(3, 'Народ'), (4, 'Интеллигенция'), (5, 'Армия'), (6, 'Полиция')]}
+       'Клептократия': [(3, 'Народ'), (4, 'Интеллигенция'), (5, 'Армия'), (6, 'Полиция')],
+       'Технократия': [(3, 'Народ'), (5, 'Мафия'), (6, 'Армия')],
+       'Полицейское государство': [(3, 'Мафия'), (5, 'Интеллигенция'), (6, 'Народ')],
+       'Вольница': [(3, 'Полиция'), (5, 'Армия'), (6, 'Олигархи')]}
 CLOSE = {'Либеральная демократия': {'Олигархи', 'Интеллигенция'}, 'Социал-демократия': {'Народ', 'Интеллигенция'},
          'Теократия': {'Народ', 'Полиция'}, 'Национализм': {'Армия', 'Полиция'}, 'Госсоциализм': {'Народ', 'Полиция'},
-         'Военная диктатура': {'Армия'}, 'Клептократия': {'Олигархи', 'Мафия'}}
+         'Военная диктатура': {'Армия'}, 'Клептократия': {'Олигархи', 'Мафия'},
+         'Технократия': {'Интеллигенция', 'Олигархи'}, 'Полицейское государство': {'Полиция', 'Армия'}, 'Вольница': {'Народ', 'Мафия'}}
 COUP = {'Народ': ['Госсоциализм', 'Социал-демократия', 'Национализм'], 'Армия': ['Военная диктатура'],
         'Полиция': ['Национализм', 'Военная диктатура'], 'Олигархи': ['Клептократия', 'Либеральная демократия'],
         'Интеллигенция': ['Либеральная демократия', 'Социал-демократия'], 'Мафия': ['Клептократия']}
+if sim3.IDEO10:
+    COUP['Народ'] = COUP['Народ'] + ['Вольница']; COUP['Мафия'] = COUP['Мафия'] + ['Вольница']
+    COUP['Интеллигенция'] = COUP['Интеллигенция'] + ['Технократия']; COUP['Полиция'] = COUP['Полиция'] + ['Полицейское государство']
 
 def by_tab(tab):
     r = d6()
@@ -66,11 +76,13 @@ def roll_ali(ideo, dom):
 
 # ---------- война: константы правил ----------
 WIDE = {'Военная диктатура', 'Госсоциализм', 'Национализм'}          # призыв шире
-PAID = {'Либеральная демократия', 'Социал-демократия', 'Клептократия'}  # жалованье +1 возм. за ход
+PAID = {'Либеральная демократия', 'Социал-демократия', 'Клептократия', 'Технократия'}  # жалованье +1 возм. за ход
 TREAT = {'Либеральная демократия': (1, 1), 'Социал-демократия': (2, 2), 'Теократия': (1, 1), 'Национализм': (2, 0),
-         'Госсоциализм': (2, 'ward'), 'Военная диктатура': (2, 0), 'Клептократия': (0, 0)}
+         'Госсоциализм': (2, 'ward'), 'Военная диктатура': (2, 0), 'Клептократия': (0, 0),
+         'Технократия': (2, 1), 'Полицейское государство': (2, 'ward'), 'Вольница': (1, 1)}
 DEATH_BEN = {'Военная диктатура': dict(pos=1), 'Национализм': dict(pos=1, v=2), 'Госсоциализм': dict(v=3, coh=1),
-             'Теократия': dict(coh=1), 'Социал-демократия': dict(v=3), 'Либеральная демократия': dict(v=4), 'Клептократия': {}}
+             'Теократия': dict(coh=1), 'Социал-демократия': dict(v=3), 'Либеральная демократия': dict(v=4), 'Клептократия': {},
+             'Технократия': dict(v=3), 'Полицейское государство': dict(pos=1), 'Вольница': dict(coh=1)}
 POS_ORDER = ['периферия', 'полупериферия', 'ядро']
 _pr = random.Random(4242)
 PATR = {c: _pr.choice([-2, -1, -1, 0, 1, 1, 2]) for c in sim3.CULTS}   # допущение: позиция культур по оси «Патриархат ↔ Матриархат»
@@ -404,7 +416,7 @@ class World2(World):
             if (pt > 0 and p.female) or (pt < 0 and not p.female): continue
             cls, ideo = p.cls, c['ideo']
             if cls == 'Олигархи': continue
-            if ideo == 'Либеральная демократия' and cls != 'Армия' and fr.W.cell(side) > -3: continue
+            if ideo in ('Либеральная демократия', 'Вольница') and cls != 'Армия' and fr.W.cell(side) > -3: continue
             if cls == 'Армия': go = True
             elif cls == 'Народ': go = d6() <= (5 if ideo in WIDE else 4)
             else: go = d6() <= (3 if ideo in WIDE else 2)
@@ -476,6 +488,7 @@ class World2(World):
         elif res == 'regime':
             old_dom = L['dom']
             L['ideo'] = W_['ideo']; L['dom'] = W_['dom']
+            if sim3.CONF_RULE: L['conflict'] = s.against(L['ideo'], L['cult'])
             L['ali'] = old_dom if old_dom != L['dom'] else roll_ali(L['ideo'], L['dom'])
             L['stab'] = 4; L['changes'] += 1; L['doms'].append(L['dom'])
             s.smuta(li)
@@ -528,14 +541,16 @@ class World2(World):
         if roll3() >= 8 + c['stab']:
             c['crises'] += 1; s.stats['crisis'] += 1; s.stats['crisis_now'] += 1
             if roll3() >= 11: s.power_change(ci)
-            else: c['stab'] = min(10, c['stab'] + 2)
+            else: c['stab'] = min(STAB_CAP.get(c['ideo'], 10), c['stab'] + 2)
 
     def power_change(s, ci):
         c = s.countries[ci]
         c['changes'] += 1; s.stats['power_change'] += 1
         old_dom, old_ali = c['dom'], c['ali']
         if BIND:
-            c['ideo'] = random.choice(COUP[old_ali])
+            opts = list(COUP[old_ali])
+            if old_ali == 'Народ' and sim3.CONF_RULE and s.cprof[c['cult']][4] == -2: opts.append('Теократия')   # сильно теистичная культура
+            c['ideo'] = random.choice(opts)
             c['dom'] = old_ali if old_ali in CLOSE[c['ideo']] else by_tab(DOM[c['ideo']])
             if d6() <= 3 and old_dom != c['dom']: c['ali'] = old_dom
             else: c['ali'] = roll_ali(c['ideo'], c['dom'])
@@ -543,6 +558,7 @@ class World2(World):
             c['dom'], c['ali'] = old_ali, old_dom
             c['ideo'] = random.choice(COUP[c['dom']])
         c['stab'] = 4; c['doms'].append(c['dom']); c['embargo'] = False
+        if sim3.CONF_RULE: c['conflict'] = s.against(c['ideo'], c['cult'])
         s.coups.append((ci, old_dom, c['dom'], len(c['doms']) >= 3 and c['doms'][-1] == c['doms'][-3], len(c['doms']) >= 3))
         s.smuta(ci)
         s.flight_chance(ci, 'power')
@@ -566,7 +582,7 @@ class World2(World):
                 cls0 = p.cls; keep = {k: p.items.get(k, 0) > 0 for k in ('Присяга', 'Значок')}
                 exec_text(card.get('Для всех', ''), p, s, p.seg); exec_text(card.get(side, ''), p, s, p.seg)
                 txt = ' '.join(str(v) for v in card.values())
-                if c['ideo'] in ('Военная диктатура', 'Госсоциализм', 'Теократия', 'Национализм') and 'не действует' not in txt and p.inst is None and p.alive:
+                if c['ideo'] in HARSH_I and 'не действует' not in txt and p.inst is None and p.alive:
                     lose = side == 'Проигравшие' or (side == 'Нейтралы' and (sim3.SMUTA_N == 'all' or c['ideo'] == 'Военная диктатура') and roll3() + p.st['Смекалка'] < 12)
                     if lose: p.enter('Тюрьма', random.randint(1, 3)); s.stats['prison_smuta'] += 1
                 p.smuta_lost = side == 'Проигравшие'
@@ -607,12 +623,14 @@ class World2(World):
                 for p in s.players:
                     if p and p.alive and not p.done and p.cidx == ci and p.seg >= 2: p.vozm += 2 if p.cls == 'Мафия' else -1
         for ci, c in enumerate(s.countries):
+            s.stats['T_n'] += 1; s.stats['T_dom_' + c['dom']] += 1; s.stats['T_ali_' + c['ali']] += 1; s.stats['T_ideo_' + c['ideo']] += 1
+            s.stats['T_conf'] += 1 if c['conflict'] else 0; s.stats['T_stab'] += c['stab']
             if roll3() >= 8 + c['stab']:
                 c['crises'] += 1; s.stats['crisis'] += 1
                 if roll3() >= 11: s.power_change(ci)
-                else: c['stab'] = min(10, c['stab'] + 2)
+                else: c['stab'] = min(STAB_CAP.get(c['ideo'], 10), c['stab'] + 2)
             else:
-                c['stab'] = min(10, c['stab'] + 1 - (1 if c['conflict'] else 0) - (1 if c['ali'] == 'Народ' else 0))
+                c['stab'] = min(STAB_CAP.get(c['ideo'], 10), c['stab'] + 1 - (1 if c['conflict'] else 0) - (1 if c['ali'] == 'Народ' else 0))
         pool = [x for x in DECK['Мир'] if x.get('Карта') not in THAW]
         while True:
             card = random.choice(pool); nm = card.get('Карта')

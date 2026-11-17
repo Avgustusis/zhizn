@@ -65,7 +65,7 @@ export function* playCard(g: G, p: Player, card: Card, deck: string): Flow<'по
   // «Без документов»: любая карта #закон — риск высылки.
   if (card.tags.includes('#закон')) yield* deportRisk(g, p)
   if (p.alive && !p.inst && p.seg >= 1 && ctx.shared.failed && card.tags.includes('#закон') && (c.pos === 'периферия' || t.harshIdeologies.includes(c.ideology))) {
-    if (rollDie(g, p, 6, '#закон: тюрьма на 1') <= t.lawPrisonUpTo) enterInst(g, p, 'тюрьма', rollDie(g, p, t.prison.light, 'срок'), '#закон')
+    if (rollDie(g, p, 6, '#закон: тюрьма') <= (t.lawPrisonWide[c.ideology] ?? t.lawPrisonUpTo)) enterInst(g, p, 'тюрьма', rollDie(g, p, t.prison.light, 'срок'), '#закон')
   }
   settle(g, p)
   yield* runDue(g, p)

@@ -195,6 +195,14 @@ export function* runDue(g: G, p: Player): Flow {
 
 export function enterInst(g: G, p: Player, kind: InstKind, turns: number, tag?: Tag): void {
   if (!p.alive) return
+  // Вольница тюрем не держит: вместо тюрьмы «суд круга» — без срока и без «Судимости».
+  const inst = g.c.tables.inst
+  if (kind === 'тюрьма' && inst.noPrisons.includes(countryOf(g, p).ideology)) {
+    say(g, p, '«суд круга»: тюрем здесь не держат')
+    count(p, 'суд круга')
+    for (const [k, v] of Object.entries(inst.circleCourt)) addParam(g, p, k, v, newCtx('правило'))
+    return
+  }
   if (p.counters['выход из института']) count(p, 'повторное попадание в институт')
   p.inst = { kind, left: turns, turn: 0 }
   visit(p, kind)

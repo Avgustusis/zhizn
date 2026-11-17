@@ -44,6 +44,7 @@ def ideo_mod(w, p):
     if ideo == 'Либеральная демократия': return 1
     if ideo == 'Социал-демократия': return -1
     if ideo == 'Клептократия': return 1 if p.items.get('Человек из кабинета', 0) > 0 else -1
+    if ideo == 'Вольница': return 1
     return 0
 
 
@@ -74,6 +75,7 @@ def risk_thr(w, p):
     c = w.country(p); thr = 1
     if c['ideo'] == 'Госсоциализм' and p.biz['name'] != 'Кооператив': thr = 2
     if c['ideo'] == 'Национализм' and p.minority: thr = 2
+    if c['ideo'] in ('Полицейское государство', 'Вольница'): thr = 2
     return thr
 
 

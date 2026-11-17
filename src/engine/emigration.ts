@@ -302,7 +302,8 @@ export function* emigrationRule(g: G, p: Player, arg = ''): Flow {
   if (arg.includes('сразу в страну ядра')) { yield* emigrate(g, p, { dest: core[0], free: true, noCheck: true, optional: true }); return }
   if (arg.startsWith('домой')) { if (p.country !== p.birthCountry) yield* emigrate(g, p, { dest: p.birthCountry, noCheck: true, kind: 'домой' }); return }
   if (arg.startsWith('в страну ядра или полупериферии')) {
-    const choices = g.s.world.countries.filter((c) => c.pos !== 'периферия' && c.id !== p.country).map((c) => c.id)
+    // Заработки: в страну ядра или полупериферии, но не во враждебную (решено 17.11).
+    const choices = g.s.world.countries.filter((c) => c.pos !== 'периферия' && c.id !== p.country && relation(g, p.country, c.id) !== 'вражда').map((c) => c.id)
     yield* emigrate(g, p, { choices, free: true, noCheck: true })
     return
   }
