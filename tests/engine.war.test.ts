@@ -4,7 +4,7 @@ import { gainItem } from '../src/engine/change.ts'
 import type { Flow } from '../src/engine/core.ts'
 import { Engine } from '../src/engine/engine.ts'
 import { answer } from '../src/engine/ai/simple.ts'
-import { cellFor, coupPeace, declareWar, draftCheck, endWar, frontLoss, frontRound, frontTurn, moveMark, soldiers, volunteerSides } from '../src/engine/war.ts'
+import { cellFor, coupPeace, declareWar, draftCheck, endWar, frontLoss, frontRound, frontTurn, moveMark, soldiers, volunteerSides, warRule } from '../src/engine/war.ts'
 import { worldTurn } from '../src/engine/world.ts'
 import type { Content, Player, Request } from '../src/engine/types.ts'
 
@@ -125,6 +125,19 @@ describe('призыв', () => {
     expect(drafted).toBeGreaterThan(5)
   })
 
+  it('полицейское государство: Полиция идёт только на d6 1', () => {
+    let drafted = 0
+    for (let seed = 1; seed <= 60; seed++) {
+      const { e, p } = lab(seed, { cls: 'Полиция' })
+      const { own } = warFor(e, p)
+      own.ideology = 'Полицейское государство'
+      drive(draftCheck(e.g, p))
+      if (p.inst) drafted++
+    }
+    expect(drafted).toBeGreaterThan(2)
+    expect(drafted).toBeLessThan(20)
+  })
+
   it('«Справка» освобождает и уходит; Мафия может откупиться', () => {
     const { e, p } = lab(6, { cls: 'Армия' })
     warFor(e, p)
@@ -199,6 +212,33 @@ describe('ход на фронте', () => {
     drive(gainItem(e.g, p, 'Боевые друзья'))
     expect(drive(frontLoss(e.g, p, -4), { 'Боевые друзья': 'вытащить' }).value).toBe(0)
     expect(p.items.some((h) => h.name === 'Боевые друзья')).toBe(false)
+  })
+
+  it('Молодость (18.11): потеря физ. на 1 мягче, но не вместе с офицером и «Беречь себя»', () => {
+    const { e, p } = soldier(17, { seg: 2 })
+    p.inst!.tactic = 'держать'
+    expect(drive(frontLoss(e.g, p, -3)).value).toBe(-2)
+    p.inst!.tactic = 'беречь'
+    expect(drive(frontLoss(e.g, p, -3)).value).toBe(-2)
+    p.seg = 3
+    p.inst!.tactic = 'держать'
+    expect(drive(frontLoss(e.g, p, -3)).value).toBe(-3)
+  })
+
+  it('плен: карты «Тюрьмы» по идеологии страны-пленителя; у вольницы — обмен пленными', () => {
+    const { e, p, foe } = soldier(18)
+    foe.ideology = 'Технократия'
+    drive(warRule(e.g, p, 'плен'))
+    expect(p.inst?.kind).toBe('тюрьма')
+    expect(p.inst?.captor).toBe(foe.id)
+    expect(p.inst?.noStigma).toBe(true)
+    const v = soldier(19)
+    v.foe.ideology = 'Вольница'
+    const phys = v.p.phys
+    drive(warRule(v.e.g, v.p, 'плен'))
+    expect(v.p.inst).toBeUndefined()
+    expect(v.p.phys).toBe(phys - 1)
+    expect(v.p.skip).toBe(1)
   })
 
   it('комиссия на −8: домой, лечение по идеологии (социал-демократия — большой обмен в больнице)', () => {

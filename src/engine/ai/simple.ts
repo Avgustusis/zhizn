@@ -40,7 +40,7 @@ export function value(p: Player, nodes: Node[] | undefined, depth = 0): number {
  * Пороги лечения. По умолчанию — как у ИИ симуляции автора (sim3.py: HOSP_T = 0, подлечиться при физ. < 3), без особой
  * заботы о Старости. Старые значения 3 и 6 в Старости держали физ. ≈ 5,5 к входу в Древность.
  */
-export const policy = { heal: 0, topUp: 3, oldHeal: 0, oldTopUp: 3 }
+export const policy = { heal: 0, topUp: 3, oldHeal: 0, oldTopUp: 3, kontora: 4 }
 
 /**
  * Какое действие рынка выбрать — порядок как у ИИ симуляции автора (sim3.py: market, work, small):
@@ -55,6 +55,9 @@ function marketPick(g: G, p: Player, ids: string[], price: (id: string) => numbe
   if (p.phys <= -6) { const h = first('больница-большой'); if (h) return h }
   if (p.psy <= -6) { const h = first('психолог-большой', 'психолог-привычка'); if (h) return h }
   if (hasId('психолог-привычка') && p.psy <= -1 && p.vozm >= price('психолог-привычка') + 2) return 'психолог-привычка'
+  // ■: Контора — изредка (policy.kontora из 100: подобрано так, что дело хоть раз у ~35% жизней, как в симуляции автора),
+  // если хватает на дело и ещё 3 возм. в запасе.
+  if (hasId('контора') && p.vozm >= 8 && (p.turns * 29 + p.seat * 13 + p.seg * 7) % 100 < policy.kontora) return 'контора'
   // ■: работа, пока денег меньше 10 (переработка — когда здоровья в запасе, а денег нет).
   if (work && p.vozm < 10 && p.seg < 5) return p.vozm < 2 && p.phys >= 3 && p.psy >= 3 && !old && hasId('переработка') ? 'переработка' : work
   // ▲: малый обмен.
@@ -77,6 +80,12 @@ function marketPick(g: G, p: Player, ids: string[], price: (id: string) => numbe
   return first('знакомство', 'двор') ?? 'конец'
 }
 
+/** Вариант ведёт к своему делу: имя карты дела, которую он даёт. */
+function bizGain(g: G, nodes: Node[] | undefined): string | undefined {
+  const m = JSON.stringify(nodes ?? []).match(/"gain":"([^"]+)"/g) ?? []
+  return m.map((x) => x.slice(8, -1)).find((n) => g.items.get(n)?.kind === 'дело')
+}
+
 const rankOf = (pos: string): number => ({ 'ядро': 2, 'полупериферия': 1, 'периферия': 0 } as Record<string, number>)[pos]
 
 /** Ответ ИИ на вопрос движка. */
@@ -88,10 +97,27 @@ export function answer(g: G, req: Request): string {
   switch (req.type) {
     case 'ход': return ids[0]
     case 'действие':
+      // Контора: первое по списку дело (от дорогого к дешёвому), на которое хватает с запасом 3 возм.
+      if (req.text.startsWith('Контора')) return open.find((o) => o.id !== 'нет' && p.vozm >= Number(o.label.match(/(\d+) возм/)?.[1] ?? 99) + 3)?.id ?? 'нет'
       if (ids.includes('конец')) return marketPick(g, p, ids, (id) => g.c.actions.find((a) => a.id === id)?.price?.find(() => true)?.n ?? 0)
       if (ids.includes('да') && ids.includes('нет')) return p.vozm >= 4 ? 'да' : 'нет' // сиделка, как в симуляции: при 4+ возм.
       return ids[0]
-    case 'карта': return best((o) => value(p, o.effect))
+    case 'карта': {
+      // Своё дело с карты — как ИИ симуляции (biz.py: _get, card): только если дела нет или новое крупнее, деньги
+      // на цену и ещё 2 в запасе, и то в 65% случаев. Случайность — из номера хода.
+      const bizOpt = open.find((o) => bizGain(g, o.effect))
+      if (bizOpt) {
+        const name = bizGain(g, bizOpt.effect)!
+        const cur = p.items.find((h) => g.items.get(h.name)?.kind === 'дело')
+        const better = !cur || (g.items.get(name)?.biz?.bonus ?? 0) > (g.items.get(cur.name)?.biz?.bonus ?? 0)
+        const cost = -Math.min(0, ...JSON.stringify(bizOpt.effect).match(/"возм":-?\d+/g)?.map((x) => Number(x.split(':')[1])) ?? [0])
+        const roll = (p.turns * 31 + p.seat * 19 + p.seg * 11) % 100
+        const rest = open.filter((o) => o !== bizOpt)
+        if (!(better && p.vozm >= cost + 2 && roll < 65) && rest.length) return rest.reduce((a, b) => (value(p, b.effect) > value(p, a.effect) ? b : a)).id
+        return bizOpt.id
+      }
+      return best((o) => value(p, o.effect))
+    }
     case 'козырь': case 'отмена': return ids.includes('да') ? 'да' : ids.find((x) => x !== 'нет') ?? ids[0]
     case 'сброс': return 'нет'
     case 'класс': {
@@ -136,7 +162,8 @@ export function answer(g: G, req: Request): string {
         return roll < w[0] ? 'атака' : roll < w[0] + w[1] ? 'держать' : 'беречь'
       }
       if (ids.includes('фронт')) return ids.find((x) => x !== 'фронт' && x !== 'откуп') ?? (ids.includes('откуп') ? 'откуп' : 'фронт')
-      if (ids.includes('перебросить')) return 'перебросить'
+      // «Священная война» (ответ 18.11): d6 при провале, d4 — только при 1, d10 — если строка бьёт на −2 физ. и хуже.
+      if (ids.includes('перебросить')) return /d4 шагов = 2/.test(req.text) ? 'нет' : 'перебросить'
       if (ids.includes('вытащить')) return /−[3-9]|−1\d/.test(req.options.find((o) => o.id === 'вытащить')?.label ?? '') ? 'вытащить' : 'нет'
       if (ids.includes('сотрудничать')) return roll < 50 ? 'сотрудничать' : 'сопротивляться'
       // Добровольцы: военные (Армия, «Присяга») — четверть, остальные остаются.

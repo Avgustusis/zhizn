@@ -52,7 +52,7 @@ export const RACES = ['Лирены', 'Тальвы', 'Сэйны', 'Ванэи'
 export const TAGS = [
   '#семья', '#любовь', '#дружба', '#община', '#вера', '#культура', '#раскрытие', '#утрата',
   '#работа', '#карьера', '#своёдело', '#сделка', '#собственность', '#бедность',
-  '#бюрократия', '#закон', '#политика', '#война', '#власть',
+  '#бюрократия', '#закон', '#политика', '#война', '#армия', '#власть',
   '#образование', '#традиция', '#девиация',
   '#статус', '#связи', '#заслуги', '#гендер', '#чужак', '#эмиграция',
   '#доверие', '#мошенничество', '#помощь',
@@ -122,6 +122,7 @@ export const RULES = [
   'закон ловушки',  // незаконная ловушка: −3 возм. (штраф или взятка); второй раз за отрезок — тюрьма
   'привычка',       // третье посещение места за отрезок (arg — id действия) — «Привычка»
   'обжорство',      // три хода подряд в ресторане — Аппетит +1
+  'контора',        // ■ вместо Работы: открыть своё дело самому (цена, проверка, поправки — tables.business.kontora)
   'знакомство',     // ▲: здание с колодой в доступном кольце, встреча, шаг характера, 📇 — «Знакомый»
   'поиск смысла',   // бросок на смысл сейчас (arg «преимущество»); смысл уже есть — ничего
   'смысл найден',   // смысл найден: тянешь карту, если ещё не было
@@ -710,8 +711,23 @@ export const Item = z.strictObject({
   sell: z.number().int().positive().optional(),
   sellRule: z.string().optional(),
   consumable: z.literal(true).optional(),
-  /** Своё дело: размер и бонус к доходу. */
-  biz: z.strictObject({ size: z.enum(['малое', 'среднее', 'крупное', 'мафия']), bonus: z.number().int().positive(), only: z.array(Class).optional() }).optional(),
+  /**
+   * Своё дело: размер и бонус к доходу; где законно (legalIn — только там, illegalIn — везде, кроме); риск на входе в отрезок
+   * (risk — d6 до этого числа прогорело), рост по броску риска (grow: выпало → новый бонус); turn — что ещё бывает в ход «Дела»;
+   * war — бонус и риск, пока страна воюет или идёт мировая война; selfHeal — раз в отрезок лечишься сам при физ. ниже below.
+   */
+  biz: z.strictObject({
+    size: z.enum(['малое', 'среднее', 'крупное', 'мафия', 'рискованное', 'военное']),
+    bonus: z.number().int().positive(),
+    only: z.array(Class).optional(),
+    legalIn: z.array(Ideology).optional(),
+    illegalIn: z.array(Ideology).optional(),
+    risk: z.number().int().positive().optional(),
+    grow: z.record(z.string(), z.number().int().positive()).optional(),
+    turn: z.array(Node).optional(),
+    war: z.strictObject({ bonus: z.number().int().positive(), turn: z.array(Node) }).optional(),
+    selfHeal: z.strictObject({ below: z.number().int(), add: z.number().int().positive() }).optional(),
+  }).optional(),
   doubts: z.array(z.string()).optional(),
 })
 export type Item = z.infer<typeof Item>

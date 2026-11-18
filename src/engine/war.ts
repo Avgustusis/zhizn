@@ -6,7 +6,7 @@
  * солдат-игроков нет ни у одной стороны — войну решают два броска хранителя, без трека.
  */
 import { CULTURE_AXES, type FrontEvent } from '../data/schema.ts'
-import { ask, clamp, die, emit, pick, rnd, roll3, say, type Flow, type G } from './core.ts'
+import { ask, clamp, die, emit, pick, rnd, roll3, say, segName, type Flow, type G } from './core.ts'
 import { charLean, cond, culturesOf, has, isMinority, newCtx, relation } from './cond.ts'
 import { addParam, count, enterInst, gainItem, rollDie } from './change.ts'
 import { spend } from './checks.ts'
@@ -80,12 +80,9 @@ function* attack(g: G, w: War, side: Side, p?: Player): Flow {
     log(g, `«Всегда готовы»: первая атака ${own.name} — успех без броска`, p)
   } else {
     nat = p ? rollDie(g, p, 6, 'атака') : die(g, 6)
-    if (nat < t.attack.hit && t.holy.includes(own.ideology) && w.holy[side]) {
-      // «Священная война»: кубик перебрасывает игрок, чей он; за сторону без игроков — движок, первый проваленный.
-      const again = p ? (yield* ask(g, p, 'фронт', `Атака провалена (d6 = ${nat}). «Священная война»: перебросить d6? Переброс один на мировой ход.`, [
-        { id: 'перебросить', label: 'перебросить d6 атаки' }, { id: 'нет', label: 'оставить' },
-      ], { force: true })) === 'перебросить' : true
-      if (again) { w.holy[side] = false; nat = p ? rollDie(g, p, 6, 'атака: «Священная война»') : die(g, 6); log(g, `«Священная война»: переброс — ${nat}`, p) }
+    if (nat < t.attack.hit && (yield* holy(g, w, side, p, `Атака провалена (d6 = ${nat}). Перебросить d6 атаки?`))) {
+      nat = p ? rollDie(g, p, 6, 'атака: «Священная война»') : die(g, 6)
+      log(g, `«Священная война»: переброс атаки — ${nat}`, p)
     }
   }
   w.first[side] = false
@@ -95,13 +92,47 @@ function* attack(g: G, w: War, side: Side, p?: Player): Flow {
       w.attacks[side] += 1
       if (w.attacks[side] % 2 === 0) st = Math.max(st, die(g, t.attack.steps))
     }
-    if (p && has(g, p, 'Офицерское звание') && st <= 2) { st = rollDie(g, p, t.attack.steps, 'шаги: офицер перебрасывает'); }
+    if (p && has(g, p, 'Офицерское звание') && st <= 2) st = rollDie(g, p, t.attack.steps, 'шаги: офицер перебрасывает')
+    if (st <= 2 && (yield* holy(g, w, side, p, `d4 шагов = ${st}. Перебросить d4?`, st === 1))) {
+      st = p ? rollDie(g, p, t.attack.steps, 'шаги: «Священная война»') : die(g, t.attack.steps)
+      log(g, `«Священная война»: переброс шагов — ${st}`, p)
+    }
     log(g, `${p ? p.name : `хранитель за ${own.name}`}: атака ${nat} — вперёд на ${st}`, p)
     moveMark(g, w, side, st)
   } else {
     log(g, `${p ? p.name : `хранитель за ${own.name}`}: атака ${nat} — без продвижения`, p)
     if (nat === t.attack.fumble && p && !has(g, p, 'Офицерское звание')) { say(g, p, 'сорванная атака'); addParam(g, p, 'физ', t.attack.fumbleLoss, newCtx('правило', { tags: ['#война'] })) }
   }
+}
+
+/**
+ * «Священная война» (теократия, национализм): раз за мировой ход сторона перебрасывает один свой кубик войны — d6 атаки,
+ * d4 шагов или d10 события. Солдату — вопрос; за сторону без игроков — движок: d6 при провале, иначе d4 при 1.
+ */
+function* holy(g: G, w: War, side: Side, p: Player | undefined, text: string, keeper = true): Flow<boolean> {
+  if (!w.holy[side] || !T(g).holy.includes(lead(g, w, side).ideology)) return false
+  const yes = p
+    ? (yield* ask(g, p, 'фронт', `«Священная война»: ${text} Переброс один на сторону за мировой ход.`, [
+      { id: 'перебросить', label: 'перебросить' }, { id: 'нет', label: 'оставить' },
+    ], { force: true })) === 'перебросить'
+    : keeper
+  if (yes) w.holy[side] = false
+  return yes
+}
+
+/** Худшая разовая потеря физ. в строке события (для решения о перебросе d10). */
+function worstPhys(nodes: unknown): number {
+  let m = 0
+  const walk = (x: unknown): void => {
+    if (Array.isArray(x)) { x.forEach(walk); return }
+    if (!x || typeof x !== 'object') return
+    for (const [k, v] of Object.entries(x)) {
+      if (k === 'add' && v && typeof v === 'object' && 'физ' in v) m = Math.min(m, (v as Record<string, number>)['физ'])
+      else walk(v)
+    }
+  }
+  walk(nodes)
+  return m
 }
 
 // ── Объявление ──────────────────────────────────────────────────────────
@@ -178,7 +209,10 @@ export function* draftCheck(g: G, p: Player): Flow {
   if (t.never.includes(p.cls)) return
   if (t.contract.includes(ideo) && !t.always.includes(p.cls) && cellFor(w, side) > t.contractUntil) return
   const wide = t.wide.includes(ideo)
-  const upTo = t.always.includes(p.cls) ? 6 : p.cls === 'Народ' ? (wide ? t.peopleWide : t.people) : wide ? t.othersWide : t.others
+  // Владелец ЧВК воюет чужими руками (18.11).
+  if (t.exemptBusiness.some((n) => has(g, p, n))) return
+  const own = t.ownOnly[ideo]
+  const upTo = t.always.includes(p.cls) ? 6 : own?.cls === p.cls ? own.upTo : p.cls === 'Народ' ? (wide ? t.peopleWide : t.people) : wide ? t.othersWide : t.others
   if (upTo < 6 && rollDie(g, p, 6, `призыв (1–${upTo})`) > upTo) return
   // Повестка: можно освободиться.
   const buyout = ideo === 'Клептократия' ? t.buyoutKlepto : t.buyout
@@ -287,22 +321,29 @@ export function* frontTurn(g: G, p: Player): Flow {
 
 /** Событие клетки трека: d10, офицер читает строку «Офицер». */
 function* frontEvent(g: G, p: Player, cell: number): Flow {
-  const n = rollDie(g, p, 10, 'событие фронта')
-  const e = g.c.front.events.find((x) => x.cell === cell && x.n === n) as FrontEvent
+  const officer = has(g, p, 'Офицерское звание')
+  const line = (n: number) => { const e = g.c.front.events.find((x) => x.cell === cell && x.n === n) as FrontEvent; return { e, nodes: officer && e.officer ? e.officer : e.effect } }
+  let n = rollDie(g, p, 10, 'событие фронта')
+  let { e, nodes } = line(n)
+  const w = g.s.war
+  if (w && p.inst?.side !== undefined && worstPhys(nodes) <= -2 && (yield* holy(g, w, p.inst.side, p, `событие «${e.title}» (d10 = ${n}): ${e.src} Перебросить d10?`))) {
+    n = rollDie(g, p, 10, 'событие фронта: «Священная война»');
+    ({ e, nodes } = line(n))
+  }
   emit(g, { t: 'карта', p: p.seat, id: e.id, title: e.title, deck: 'фронт' })
-  const officer = !!e.officer && has(g, p, 'Офицерское звание')
-  // Возрастного сдвига нет: события «Фронта» — не карточки (как в симуляции war_sim.py).
-  yield* run(g, p, officer ? e.officer! : e.effect, newCtx('правило', { card: e.id, deck: 'фронт', tags: e.tags }))
+  yield* run(g, p, nodes, newCtx('правило', { card: e.id, deck: 'фронт', tags: e.tags }))
   settle(g, p)
 }
 
 /**
- * Потеря физ. в событии фронта: офицеру на 1 меньше, «Беречь себя» — ещё на 1. «Боевые друзья» могут отменить её целиком.
+ * Потеря физ. в событии фронта: офицеру на 1 меньше, «Беречь себя» — ещё на 1. Возрастной сдвиг (18.11): в Молодости на 1
+ * мягче, но не вместе с ними — берётся большее смягчение. «Боевые друзья» могут отменить потерю целиком.
  */
 export function* frontLoss(g: G, p: Player, delta: number): Flow<number> {
   const inst = p.inst
-  let d = delta + (has(g, p, 'Офицерское звание') ? 1 : 0) + (inst?.tactic === 'беречь' ? 1 : 0)
-  d = Math.min(0, d)
+  const red = (has(g, p, 'Офицерское звание') ? 1 : 0) + (inst?.tactic === 'беречь' ? 1 : 0)
+  const young = -(g.c.tables.ageShift[segName(p)].physNeg ?? 0)
+  let d = Math.min(0, delta + Math.max(red, young))
   if (d < 0 && has(g, p, 'Боевые друзья')) {
     const a = yield* ask(g, p, 'фронт', `Потеря ${d} физ. «Боевые друзья»: вытащить с фронта — отменить эту потерю? (козырь уйдёт)`, [
       { id: 'вытащить', label: `отменить −${-d} физ.` }, { id: 'нет', label: 'оставить козырь' },
@@ -316,7 +357,8 @@ export function* frontLoss(g: G, p: Player, delta: number): Flow<number> {
 function* health(g: G, p: Player): Flow<boolean> {
   if (!p.alive) { warDeath(g, p); return true }
   if (p.inst?.kind !== 'фронт') {
-    const how = p.inst?.kind === 'тюрьма' ? (p.inst.noStigma ? 'плен' : 'трибунал') : p.inst?.kind === 'психбольница' ? 'психбольница' : 'домой'
+    const how = p.inst?.kind === 'тюрьма' ? (p.inst.captor !== undefined ? 'плен' : 'трибунал') : p.inst?.kind === 'психбольница' ? 'психбольница' : p.rules['обмен пленными'] ? 'обмен пленными' : 'домой'
+    delete p.rules['обмен пленными']
     left(g, p, how)
     return true
   }
@@ -395,8 +437,8 @@ export function* warRule(g: G, p: Player, rule: string, arg?: string): Flow {
   } else if (rule === 'метка фронта') {
     if (w && inst) moveMark(g, w, inst.side!, Number((arg ?? '1').replace('−', '-')))
   } else if (rule === 'плен') {
-    if (!inst) return
-    captivity(g, p)
+    if (!inst || !w) return
+    captivity(g, p, lead(g, w, (1 - inst.side!) as Side).id)
     say(g, p, 'плен')
   } else if (rule === 'отпуск') {
     if (inst) { inst.leave = true; say(g, p, 'отпуск по ранению: следующий ход дома') }
@@ -404,12 +446,24 @@ export function* warRule(g: G, p: Player, rule: string, arg?: string): Flow {
   yield* []
 }
 
-/** Плен: d3 хода тюрьмы без «Судимости», потом домой. */
-function captivity(g: G, p: Player): void {
+/**
+ * Плен (18.11): d3 хода тюрьмы страны, взявшей в плен (карты по её идеологии), без «Судимости»; потом домой.
+ * Вольница тюрем не держит: «обмен пленными» — 1 ход, −1 физ., домой.
+ */
+function captivity(g: G, p: Player, captor: number): void {
   delete p.inst
-  enterInst(g, p, 'тюрьма', rollDie(g, p, T(g).captivity, 'плен'), '#война')
+  const c = g.s.world.countries[captor]
+  if (g.c.tables.inst.noPrisons.includes(c.ideology)) {
+    say(g, p, `обмен пленными (${c.name} тюрем не держит)`)
+    count(p, 'обмен пленными')
+    p.rules['обмен пленными'] = {}
+    addParam(g, p, 'физ', T(g).exchange.phys, newCtx('правило', { tags: ['#война'] }))
+    p.skip = Math.max(p.skip, T(g).exchange.turns)
+    return
+  }
+  enterInst(g, p, 'тюрьма', rollDie(g, p, T(g).captivity, 'плен'), '#война', { anywhere: true })
   const inst = p.inst as Player['inst']
-  if (inst) inst.noStigma = true
+  if (inst) { inst.noStigma = true; inst.captor = captor }
 }
 
 // ── Круг и хранитель часов ──────────────────────────────────────────────
@@ -471,8 +525,9 @@ export function* endWar(g: G, how: 0 | 1 | 'мир'): Flow {
       if (yield* health(g, p)) continue
       offFront(g, p, 'домой (победа)')
     } else if (rollDie(g, p, 6, 'разгром: плен на 1') <= t.routCaptive) {
-      captivity(g, p)
-      left(g, p, 'плен (разгром)')
+      captivity(g, p, lead(g, w, how).id)
+      left(g, p, p.inst ? 'плен (разгром)' : 'обмен пленными (разгром)')
+      delete p.rules['обмен пленными']
     } else {
       offFront(g, p, 'домой (разгром)')
       addParam(g, p, 'псих', t.routPsy, newCtx('правило', { tags: ['#война'] }))

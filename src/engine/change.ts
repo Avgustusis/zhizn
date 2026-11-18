@@ -193,11 +193,11 @@ export function* runDue(g: G, p: Player): Flow {
 
 // ── Институты ───────────────────────────────────────────────────────────
 
-export function enterInst(g: G, p: Player, kind: InstKind, turns: number, tag?: Tag): void {
+export function enterInst(g: G, p: Player, kind: InstKind, turns: number, tag?: Tag, opts: { anywhere?: true } = {}): void {
   if (!p.alive) return
-  // Вольница тюрем не держит: вместо тюрьмы «суд круга» — без срока и без «Судимости».
+  // Вольница тюрем не держит: вместо тюрьмы «суд круга» — без срока и без «Судимости». Плен — в тюрьме чужой страны.
   const inst = g.c.tables.inst
-  if (kind === 'тюрьма' && inst.noPrisons.includes(countryOf(g, p).ideology)) {
+  if (kind === 'тюрьма' && !opts.anywhere && inst.noPrisons.includes(countryOf(g, p).ideology)) {
     say(g, p, '«суд круга»: тюрем здесь не держат')
     count(p, 'суд круга')
     for (const [k, v] of Object.entries(inst.circleCourt)) addParam(g, p, k, v, newCtx('правило'))

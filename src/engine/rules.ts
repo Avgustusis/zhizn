@@ -6,7 +6,7 @@ import { clamp, countryOf, pick, say, todo, type Flow, type G } from './core.ts'
 import type { Ctx } from './cond.ts'
 import { kindOf } from './cond.ts'
 import { addParam, charStep, gainItem, removeHeld, wed } from './change.ts'
-import { acquaintance, burn, lawTrap, partnerClass, rite, work } from './market.ts'
+import { acquaintance, burn, kontora, lawTrap, partnerClass, rite, work } from './market.ts'
 import { foundNow, searchNow } from './meaning.ts'
 import { crisisCheck, flight, turmoilRule } from './world.ts'
 import { emigrationRule } from './emigration.ts'
@@ -65,6 +65,7 @@ const RULES: Record<string, Rule> = {
     if (p.counters['обжорство: подряд'] === 3) charStep(g, p, 'Аппетит')
   },
   *'знакомство'(g, p) { yield* acquaintance(g, p) },
+  *'контора'(g, p) { yield* kontora(g, p) },
   *'обряд'(g, p) { yield* rite(g, p) },
   'без рынка'(_g, p) { p.rules['без рынка'] = { arg: String(p.turns + 1) } },
   'поиск смысла'(g, p, arg) { searchNow(g, p, arg === 'преимущество') },

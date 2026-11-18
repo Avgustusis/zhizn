@@ -12,6 +12,9 @@ from engine3 import *
 import engine3 as engine
 import meanings as MN
 import biz as BZ
+import social as SO
+TAX18 = os.environ.get('TAX18', '1') == '1'
+LDFLOOR = os.environ.get('LDFLOOR', '1') == '1'
 import char as CH
 
 E = os.environ.get
@@ -63,6 +66,7 @@ CTYPES = ['Возраст', 'Отношения', 'Культура', 'Стра�
 GATES = {'Больница': (6, 1, 'need'), 'Больница+': (6, 1, 'need'), 'Психолог': (0, 1, 'need'), 'Психолог+': (0, 1, 'need'),
          'Курсы': (6, 1, 'lux'), 'Спортзал': (4, 1, 'lux'), 'Салон': (0, -1, 'lux'), 'Путешествие': (1, 1, 'lux'), 'Благотворительность': (1, 1, 'lux'),
          'Бордель': (2, -1, 'lux'), 'Бар': (4, -1, 'lux'), 'Обжорство': (4, -1, 'lux'), 'Казино': (5, -1, 'lux'), 'Знакомство': (0, -1, 'lux'), 'Хобби': (6, -1, 'lux')}
+KONT_GATES = [(6, 1), (4, -1), (5, -1)]   # Беспечность, Мера, Выдержка
 PLACE_OF = lambda k: 'Салон' if k == 'Красота' else 'Спортзал' if k in ('Сила', 'Выносливость', 'Ловкость') else 'Курсы'
 IDEOS = ['Либеральная демократия', 'Социал-демократия', 'Теократия', 'Национализм', 'Госсоциализм', 'Военная диктатура', 'Клептократия']
 IDEO10 = E('IDEO10', '1') == '1'          # 17.11: + технократия, полицейское государство, вольница
@@ -549,8 +553,11 @@ class World:
         if c['ideo'] == 'Национализм': d += -1 if p.minority else 1
         if c['ideo'] == 'Технократия' and cls == 'Интеллигенция': d += 2
         if c['ideo'] == 'Полицейское государство' and cls == 'Полиция': d += 2
-        if c['ideo'] == 'Вольница': d += 1
+        if c['ideo'] == 'Вольница' and not TAX18: d += 1
+        if TAX18 and c['ideo'] == 'Либеральная демократия' and cls in ('Олигархи', 'Интеллигенция'): d += 1   # 18.11: рынок любит своих
         if p.uchil and p.seg == 2: d += 1
+        d += SO.inc_mod(s, p)
+        if TAX18 and LDFLOOR and c['ideo'] == 'Либеральная демократия': d = max(2, d)   # 18.11: минимальная оплата
         return max(1, d)
 
     def only_ok(s, c, p):
@@ -889,6 +896,14 @@ class World:
     def try_(s, p, name):
         """Доступ к месту по характеру (GATE, 16.11). None — закрыто (ИИ знает и не идёт), False — проверка провалена, действие потрачено, True — можно."""
         if not GATE: return True
+        if name == 'Контора':                         # 18.11: три черты — Беспечность, Мера, Выдержка
+            res = True
+            for g in KONT_GATES:
+                v = p.char[g[0]] * g[1]
+                if v >= 2: s.stats['gate_ban'] += 1; s.stats['gate_ban_Контора'] += 1; return None
+                if v == 1: res = res and d6() >= 4
+            if not res: s.stats['gate_fail'] += 1; s.stats['gate_fail_Контора'] += 1
+            return res
         g = GATES.get(name)
         if not g: return True
         a, sg, kind = g
@@ -903,6 +918,9 @@ class World:
         s.stats['gate_chk_' + name] += 1
         if d6() >= need: return True
         s.stats['gate_fail'] += 1; s.stats['gate_fail_' + name] += 1; return False
+
+    def banned_kont(s, p):
+        return GATE and any(p.char[a] * sg >= 2 for a, sg in KONT_GATES)
 
     def banned(s, p, name):
         if not GATE or name not in GATES: return False
@@ -1049,6 +1067,7 @@ class World:
             if p.nodoc_t % 3 == 0 and roll3() + p.st['Смекалка'] >= 15: p.drop_item('Без документов'); s.stats['legalized'] += 1
             return
         if BZ.BIZ and p.biz is not None and BZ.work(s, p, c): return
+        if BZ.BIZ and p.biz is None and BZ.kontora(s, p): return
         if p.psy <= -5 or own <= -4:
             p.vozm += (D + 1) // 2; s.stats['mk_Подработка'] += 1
             if WORK3: s.wear(p, 'podr', kind)

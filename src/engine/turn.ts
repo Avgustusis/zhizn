@@ -20,7 +20,9 @@ export const cellOf = (g: G, p: Player): BoardCell => cellsOf(g, p.seg)[p.cell]
 // ── Карты ───────────────────────────────────────────────────────────────
 
 /** Подходит ли карта игроку сейчас: отрезок, подсектор, условие карты. */
-function fits(g: G, p: Player, card: Card, deck: string): boolean {
+function fits(g: G, p0: Player, card: Card, deck: string): boolean {
+  // В плену карты «Тюрьмы» — по идеологии страны, взявшей в плен.
+  const p = p0.inst?.captor !== undefined && deck === 'тюрьма' ? { ...p0, country: p0.inst.captor } : p0
   if (card.segs && !card.segs.includes(segName(p))) return false
   if (card.sub) {
     const codes = g.c.subCodes[deck]
@@ -237,14 +239,21 @@ export function priceOf(g: G, p: Player, a: Action): number {
 }
 
 /** Подсказка о доступе по характеру: шанс пройти проверку или «закрыто». */
-export function gateOf(g: G, p: Player, a: Action): { closed?: string; need?: number } {
+export function gateOf(g: G, p: Player, a: Action): { closed?: string; need?: number; rolls?: number; poles?: string } {
   if (!a.gate) return {}
+  const t = g.c.tables.gate
+  if (Array.isArray(a.gate)) {
+    // Несколько черт («Контора»): любая на ±2 — закрыто; каждая на ±1 — своя проверка d6 4–6.
+    const hit = a.gate.filter((x) => charLean(p, x.pole) > 0)
+    const strong = hit.find((x) => charLean(p, x.pole) >= 2)
+    if (strong) return { closed: `не в твоём характере (${strong.pole})` }
+    return hit.length ? { need: t.lux, rolls: hit.length, poles: hit.map((x) => x.pole).join(', ') } : {}
+  }
   const lean = charLean(p, a.gate.pole)
   if (!lean) return {}
-  const t = g.c.tables.gate
-  if (a.gate.need) return { need: t.need[lean] }
-  if (lean >= 2) return a.gate.strongRoll ? { need: a.gate.strongRoll } : { closed: `не в твоём характере (${a.gate.pole})` }
-  return { need: t.lux }
+  if (a.gate.need) return { need: t.need[lean], poles: a.gate.pole }
+  if (lean >= 2) return a.gate.strongRoll ? { need: a.gate.strongRoll, poles: a.gate.pole } : { closed: `не в твоём характере (${a.gate.pole})` }
+  return { need: t.lux, poles: a.gate.pole }
 }
 
 /**
@@ -298,7 +307,7 @@ function* actions(g: G, p: Player): Flow {
     const id = yield* ask(g, p, 'действие', `Что делаешь? Действий осталось: ${left.acts}${left.acts && !left.work ? ' (работа уже была)' : ''}${left.youth ? '; ещё ◆ рынок молодости' : ''}`, [
       ...shown.map(({ a, price, gate, off, via }) => ({
         id: via ? `${a.id}@знакомство` : a.id, label: via ? `${a.label} — по знакомству, без риска` : a.label, effect: a.effect, ...(off ? { off } : {}),
-        note: [a.slots.join(''), price ? `${price} возм.` : '', gate.need ? `характер (${a.gate!.pole}): d6 ${gate.need}–6, ${Math.round(((7 - gate.need) / 6) * 100)}%` : '', a.note ?? ''].filter(Boolean).join(' · '),
+        note: [a.slots.join(''), price ? `${price} возм.` : '', gate.need ? `характер (${gate.poles}): d6 ${gate.need}–6${(gate.rolls ?? 1) > 1 ? ` × ${gate.rolls}` : ''}, ${Math.round(((7 - gate.need) / 6) ** (gate.rolls ?? 1) * 100)}%` : '', a.note ?? ''].filter(Boolean).join(' · '),
       })),
       { id: 'конец', label: 'закончить ход' },
     ], { force: true })
@@ -306,7 +315,13 @@ function* actions(g: G, p: Player): Flow {
     const { a, gate, via } = shown.find((x) => (x.via ? `${x.a.id}@знакомство` : x.a.id) === id)!
     spendSlots(a)
     // Проверка характера: провал — действие потрачено, деньги не списываются.
-    if (gate.need && rollDie(g, p, 6, `характер: ${a.gate!.pole}`) < gate.need) { say(g, p, 'дошёл до двери и раздумал'); continue }
+    let turned = false
+    for (let i = 0; gate.need && i < (gate.rolls ?? 1) && !turned; i++) turned = rollDie(g, p, 6, `характер: ${gate.poles}`) < gate.need
+    if (turned) {
+      say(g, p, 'дошёл до двери и раздумал')
+      if (a.tryCounts) p.counters[`действие:${a.id}:${p.seg}`] = (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) + 1
+      continue
+    }
     yield* perform(g, p, a, via)
   }
 }

@@ -4,9 +4,9 @@ import { gainItem } from '../src/engine/change.ts'
 import type { Flow } from '../src/engine/core.ts'
 import { Engine } from '../src/engine/engine.ts'
 import { run } from '../src/engine/exec.ts'
-import { businessAtEntry, income, money, pension, rings } from '../src/engine/market.ts'
+import { businessAtEntry, income, kontora, kontoraMenu, money, pension, rings, work } from '../src/engine/market.ts'
 import { newCtx } from '../src/engine/cond.ts'
-import { playerTurn, priceOf } from '../src/engine/turn.ts'
+import { gateOf, playerTurn, priceOf } from '../src/engine/turn.ts'
 import type { Action, Content, Player, Request } from '../src/engine/types.ts'
 
 const real = loadContent()
@@ -46,15 +46,22 @@ const country = (e: Engine, p: Player) => e.state.world.countries[p.country]
 describe('работа', () => {
   it('доход по примерам концепции: интеллигент в ядре — 5, рабочий на периферии — минимум 1', () => {
     const a = lab(1, { cls: 'Интеллигенция' })
-    Object.assign(country(a.e, a.p), { pos: 'ядро', ideology: 'Либеральная демократия', dominant: 'Олигархи', alienated: 'Мафия' })
+    Object.assign(country(a.e, a.p), { pos: 'ядро', ideology: 'Теократия', dominant: 'Олигархи', alienated: 'Мафия' })
     a.p.stats = { ...a.p.stats, 'Интеллект': 8, 'Мудрость': 6 }
     expect(income(a.e.g, a.p)).toBe(5)
     const b = lab(2, { cls: 'Народ' })
-    Object.assign(country(b.e, b.p), { pos: 'периферия', ideology: 'Либеральная демократия', dominant: 'Олигархи', alienated: 'Мафия' })
+    Object.assign(country(b.e, b.p), { pos: 'периферия', ideology: 'Теократия', dominant: 'Олигархи', alienated: 'Мафия' })
     b.p.stats = { ...b.p.stats, 'Выносливость': 2, 'Смекалка': 2 }
     expect(income(b.e.g, b.p)).toBe(1)
     country(b.e, b.p).ideology = 'Госсоциализм' // одинаковый доход: 2 + пригодность
     expect(income(b.e.g, b.p)).toBe(2)
+    // 18.11: либеральная демократия — Интеллигенции и Олигархам +1, доход по найму не ниже 2; вольница — без +1.
+    country(a.e, a.p).ideology = 'Либеральная демократия'
+    expect(income(a.e.g, a.p)).toBe(6)
+    country(b.e, b.p).ideology = 'Либеральная демократия'
+    expect(income(b.e.g, b.p)).toBe(2)
+    country(b.e, b.p).ideology = 'Вольница'
+    expect(income(b.e.g, b.p)).toBe(1)
   })
 
   it('Работа: Д + 1, отметка Стажа найма; Подработка: Д ÷ 2 вверх, без Стажа; Дело — пустая отметка', () => {
@@ -322,5 +329,96 @@ describe('правила хода 17.11', () => {
     expect(q.options[0].check).toMatchObject({ stat: 'Харизма', dc: 15 })
     expect(q.options[0].check!.chance).toBeGreaterThan(0)
     expect(q.options[1].check).toBeUndefined()
+  })
+})
+
+describe('новые дела и Контора (18.11)', () => {
+  const turnOf = (e: Engine, p: Player, answers: string[] = []) => drive(work(e.g, p, 'дело'), answers)
+
+  it('незаконное дело: можно закрыть до облавы; работа — облава d10 1–3 (клептократия d6 1)', () => {
+    let raids = 0, runs = 0
+    for (let seed = 1; seed <= 60; seed++) {
+      const { e, p } = lab(seed, { vozm: 5, psy: 3 })
+      country(e, p).ideology = 'Либеральная демократия'
+      drive(gainItem(e.g, p, 'Незаконные препараты'))
+      if (seed === 1) {
+        turnOf(e, p, ['закрыть'])
+        expect(p.items.some((h) => h.name === 'Незаконные препараты')).toBe(false)
+        continue
+      }
+      runs++
+      turnOf(e, p, ['работать'])
+      if (p.counters['облава']) { raids++; expect(p.inst?.kind).toBe('тюрьма'); expect(p.items.some((h) => h.name === 'Судимость')).toBe(true) }
+    }
+    expect(raids / runs).toBeGreaterThan(0.12)
+    expect(raids / runs).toBeLessThan(0.5)
+  })
+
+  it('законное дело облаве не подлежит; при вольнице невольничий рынок даёт Д + 3 и −1 псих. каждый ход', () => {
+    const { e, p } = lab(2, { vozm: 0, psy: 3 })
+    Object.assign(country(e, p), { ideology: 'Вольница' })
+    drive(gainItem(e.g, p, 'Невольничий рынок'))
+    const D = income(e.g, p)
+    turnOf(e, p)
+    expect(p.vozm).toBe(D + 3 + 1) // вольница: делу +1
+    expect(p.psy).toBe(2)
+  })
+
+  it('ЧВК: в войну Д + 3 вместо Д + 1; владельца не призывают', () => {
+    const { e, p } = lab(3, { vozm: 0, psy: 3 })
+    Object.assign(country(e, p), { ideology: 'Клептократия', war: true })
+    drive(gainItem(e.g, p, 'ЧВК'))
+    const D = income(e.g, p)
+    turnOf(e, p)
+    expect(p.vozm).toBeGreaterThanOrEqual(D + 3 - 1 - 2)
+    expect(p.counters['облава']).toBeUndefined()
+  })
+
+  it('венчурная фирма: риск 1–2, на 5 растёт до +2, на 6 — до +3', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 80; seed++) {
+      const { e, p } = lab(seed, { seg: 4 })
+      country(e, p).ideology = 'Либеральная демократия'
+      drive(gainItem(e.g, p, 'Венчурная фирма'))
+      drive(businessAtEntry(e.g, p))
+      const h = p.items.find((x) => x.name === 'Венчурная фирма')
+      seen.add(!h ? 'прогорело' : String(h.bonus ?? 1))
+    }
+    expect([...seen].sort()).toEqual(['1', '2', '3', 'прогорело'])
+  })
+
+  it('Контора: дела по классу и закону страны; цена и сложность с поправками; провал — половина цены и −1 псих.', () => {
+    const { e, p } = lab(4, { cls: 'Народ', vozm: 20, psy: 3 })
+    country(e, p).ideology = 'Госсоциализм'
+    expect(kontoraMenu(e.g, p).map((m) => m.name)).toEqual(['Кооператив', 'Фермерское хозяйство', 'Точка на рынке'])
+    country(e, p).ideology = 'Вольница'
+    const v = kontoraMenu(e.g, p)
+    expect(v.find((m) => m.name === 'Точка на рынке')).toEqual({ name: 'Точка на рынке', price: 4, check: { stat: 'Смекалка', dc: 9 } })
+    country(e, p).ideology = 'Клептократия'
+    expect(kontoraMenu(e.g, p).find((m) => m.name === 'Точка на рынке')!.price).toBe(7)
+    p.cls = 'Олигархи'
+    country(e, p).ideology = 'Либеральная демократия'
+    const names = kontoraMenu(e.g, p).map((m) => m.name)
+    expect(names).toContain('Крупное предприятие')
+    expect(names).toContain('Венчурная фирма')
+    expect(names).not.toContain('Невольничий рынок')
+    // Провал: Крупное предприятие, Смекалка 18 при Смекалке 0 — почти всегда провал.
+    p.stats = { ...p.stats, 'Смекалка': 0 }
+    const before = p.vozm
+    drive(kontora(e.g, p), ['Крупное предприятие'])
+    if (!p.items.some((h) => h.name === 'Крупное предприятие')) { expect(p.vozm).toBe(before - 11 + 5); expect(p.psy).toBe(2) }
+  })
+
+  it('Контора: одна попытка за отрезок, и черты Беспечность, Мера, Выдержка (±2) её закрывают', () => {
+    const a = act('контора')
+    const { e, p } = lab(5, { vozm: 20 })
+    expect(gateOf(e.g, p, a)).toEqual({})
+    p.character = [0, 0, 0, 0, 1, 0, 0] // Мера умеренно
+    expect(gateOf(e.g, p, a)).toMatchObject({ need: 4, rolls: 1 })
+    p.character = [0, 0, 0, 0, 1, 1, -1] // Мера, Выдержка, Беспечность — три проверки
+    expect(gateOf(e.g, p, a)).toMatchObject({ need: 4, rolls: 3 })
+    p.character = [0, 0, 0, 0, 0, 2, 0]
+    expect(gateOf(e.g, p, a).closed).toContain('Выдержка')
+    expect(a.perSeg).toBe(1)
   })
 })

@@ -8,8 +8,9 @@ import { ask, countryOf, die, say, segName, shuffle, step, type Flow, type G } f
 import { charAxisOf, has, isMinority, kindOf, newCtx, pairOf, type Ctx } from './cond.ts'
 import { addParam, charStep, count, enterInst, gainItem, removeHeld, rollDie, setClass, visit } from './change.ts'
 import { run } from './exec.ts'
+import { previewCheck, runCheck } from './checks.ts'
 import { legalize } from './emigration.ts'
-import type { CharPole, Cls, Held, Player } from './types.ts'
+import type { CharPole, Cls, Held, Player, Stat } from './types.ts'
 
 // ── Доход ───────────────────────────────────────────────────────────────
 
@@ -33,7 +34,7 @@ export function income(g: G, p: Player): number {
   if (p.rules['мир: доход −1']) d -= 1
   // После геноцида два мировых хода работать некому.
   if (c.emptied !== undefined && g.s.worldTurns <= c.emptied) d -= 1
-  return Math.max(w.min, d)
+  return Math.max(w.min, t.ideologyIncome.floor[c.ideology] ?? w.min, d)
 }
 
 /** Износ одного здоровья: на −8 и ниже потеря уходит в другое здоровье. */
@@ -57,15 +58,42 @@ export function* work(g: G, p: Player, kind: string): Flow {
     const biz = p.items.find((h) => kindOf(g, h) === 'дело')
     const item = biz && g.items.get(biz.name)
     if (!biz || !item?.biz) return
-    const bonus = item.biz.size === 'малое' && biz.grown ? 2 : item.biz.bonus
-    let mod = t.business.ideology[c.ideology] ?? 0
+    const b = item.biz
+    // Незаконное дело: перед доходом — облава; можно закрыть дело, ничего не получив.
+    if (!bizLegal(g, p, biz.name)) {
+      const soft = c.ideology === 'Клептократия' || c.dominant === 'Мафия'
+      const r = t.business.raid
+      const a = yield* ask(g, p, 'действие', `«${biz.name}» здесь незаконно: облава на ${soft ? `d6 1` : `d10 1–${r.d10}`} — дело конфисковано, «Судимость», тюрьма d3. Работать или закрыть дело?`, [
+        { id: 'работать', label: 'работать, рискуя облавой' }, { id: 'закрыть', label: 'закрыть дело: сбросить карту, ничего не получив' },
+      ], { force: true })
+      if (a === 'закрыть') { removeHeld(g, p, biz); say(g, p, `дело «${biz.name}» закрыто`); count(p, 'дело закрыто'); return }
+      if (soft ? rollDie(g, p, 6, 'облава на 1') <= r.d6 : rollDie(g, p, 10, `облава на 1–${r.d10}`) <= r.d10) {
+        say(g, p, `облава: «${biz.name}» конфисковано`)
+        removeHeld(g, p, biz)
+        count(p, 'облава')
+        yield* gainItem(g, p, r.stigma)
+        enterInst(g, p, 'тюрьма', rollDie(g, p, g.c.tables.inst.prison.light, 'срок'), '#закон')
+        return
+      }
+    }
+    const war = !!b.war && (c.war || g.s.war?.kind === 'мировая')
+    const bonus = war ? b.war!.bonus : bizBonus(g, biz)
+    let mod = (b.size === 'крупное' ? t.business.bigIdeology[c.ideology] : undefined) ?? t.business.ideology[c.ideology] ?? 0
     if (c.ideology === 'Клептократия' && has(g, p, t.business.kleptoPatron.item)) mod = t.business.kleptoPatron.add
     let gain = Math.max(t.work.min, D + bonus + mod)
     if (p.psy <= -5) gain = Math.ceil(gain / 2)
     addParam(g, p, 'возм', gain, ctx)
     addStazh(p, false)
-    // Мафиозные дела: каждый ход d6 1 — потеря.
-    if (item.biz.size === 'мафия' && rollDie(g, p, 6, `риск «${biz.name}»`) <= t.business.mafiaTurnRisk) yield* gainItem(g, p, 'Дурная слава')
+    // Особое: ход «Дела» у новых дел; клиника — раз в отрезок лечишься сам.
+    if (war) yield* run(g, p, b.war!.turn, ctx)
+    if (b.turn) yield* run(g, p, b.turn, ctx)
+    if (b.selfHeal && p.phys < b.selfHeal.below && !p.counters[`лечишься сам:${p.seg}`]) {
+      p.counters[`лечишься сам:${p.seg}`] = 1
+      say(g, p, 'лечишься сам в своей клинике')
+      addParam(g, p, 'физ', b.selfHeal.add, ctx)
+    }
+    // Мафиозные дела без своих правил хода («Серый импорт», «Рекет»): d6 1 — потеря.
+    if (b.size === 'мафия' && !b.turn && rollDie(g, p, 6, `риск «${biz.name}»`) <= t.business.mafiaTurnRisk) yield* gainItem(g, p, 'Дурная слава')
     return
   }
   if (kind === 'подработка' || weak) {
@@ -131,6 +159,19 @@ export function money(g: G, p: Player): void {
 
 // ── Своё дело: риск и продажа на входе в отрезок ────────────────────────
 
+/** Законно ли дело в стране игрока (новые дела 18.11: только при одной идеологии или кроме некоторых). */
+export function bizLegal(g: G, p: Player, name: string, ideology = countryOf(g, p).ideology): boolean {
+  const b = g.items.get(name)?.biz
+  if (!b) return true
+  if (b.legalIn && !b.legalIn.includes(ideology)) return false
+  return !b.illegalIn?.includes(ideology)
+}
+/** Бонус дела к доходу: выросшее малое — +2, венчурная фирма после роста — +2 или +3. */
+export function bizBonus(g: G, h: Held): number {
+  const b = g.items.get(h.name)!.biz!
+  return h.bonus ?? (b.size === 'малое' && h.grown ? 2 : b.bonus)
+}
+
 export function* businessAtEntry(g: G, p: Player): Flow {
   const t = g.c.tables.business
   const h = p.items.find((x) => kindOf(g, x) === 'дело')
@@ -138,7 +179,7 @@ export function* businessAtEntry(g: G, p: Player): Flow {
   if (!h || !item?.biz) return
   const seg = segName(p)
   if (seg === t.saleSeg) {
-    const bonus = item.biz.size === 'малое' && h.grown ? 2 : item.biz.bonus
+    const bonus = bizBonus(g, h)
     say(g, p, `дело «${h.name}» продано`)
     removeHeld(g, p, h)
     addParam(g, p, 'возм', bonus * t.salePerBonus, newCtx('правило'))
@@ -148,7 +189,9 @@ export function* businessAtEntry(g: G, p: Player): Flow {
   const c = countryOf(g, p)
   const wide = (c.ideology === 'Госсоциализм' && h.name !== t.coop) || (c.ideology === 'Национализм' && isMinority(g, p)) || t.riskWideIdeo.includes(c.ideology)
   const r = rollDie(g, p, 6, `риск дела «${h.name}»`)
-  if (r <= (wide ? t.riskWide : 1)) yield* burn(g, p, h)
+  const grow = item.biz.grow?.[String(r)]
+  if (r <= Math.max(wide ? t.riskWide : 1, item.biz.risk ?? 1)) yield* burn(g, p, h)
+  else if (grow && !h.grown) { h.grown = true; h.bonus = grow; say(g, p, `дело «${h.name}» выросло: Д + ${grow}`) }
   else if (r === 6 && item.biz.size === 'малое' && !h.grown) { h.grown = true; say(g, p, `малое дело «${h.name}» выросло до среднего`) }
 }
 
@@ -165,6 +208,48 @@ export function* burn(g: G, p: Player, h?: Held): Flow {
   if (stigma) yield* gainItem(g, p, stigma)
   else addParam(g, p, 'псих', t.burnPsy, ctx)
   if (countryOf(g, p).ideology === 'Социал-демократия') addParam(g, p, 'возм', t.socdemBenefit, ctx)
+}
+
+// ── Контора: открыть дело самому (18.11) ───────────────────────────────
+
+/** Дела, которые игрок может открыть в Конторе: по классу, по статусу, законные в стране; цена и сложность с поправками. */
+export function kontoraMenu(g: G, p: Player): { name: string; price: number; check?: { stat: Stat; dc: number } }[] {
+  const k = g.c.tables.business.kontora
+  const c = countryOf(g, p)
+  return k.menu.flatMap((m) => {
+    if (m.who && !m.who.includes(p.cls)) return []
+    if (m.item && !has(g, p, m.item)) return []
+    if (m.onlyIn && !m.onlyIn.includes(c.ideology)) return []
+    if (m.notIn?.includes(c.ideology) || !bizLegal(g, p, m.name)) return []
+    const price = Math.max(1, m.price + (k.price[c.ideology] ?? 0) + (c.ideology === 'Клептократия' && !has(g, p, k.kleptoFree) ? k.kleptoAdd : 0))
+    const dc = m.check ? m.check.dc + (k.dc[c.ideology] ?? 0) + (isMinority(g, p) ? k.minorityDc[c.ideology] ?? 0 : 0) : 0
+    return [{ name: m.name, price, ...(m.check ? { check: { stat: m.check.stat, dc } } : {}) }]
+  })
+}
+
+export function* kontora(g: G, p: Player): Flow {
+  const k = g.c.tables.business.kontora
+  const ctx = newCtx('действие', { tags: ['#своёдело'] })
+  const menu = kontoraMenu(g, p)
+  if (!menu.length) { say(g, p, 'открыть здесь нечего'); return }
+  const id = yield* ask(g, p, 'действие', 'Контора: какое дело открыть?', [
+    ...menu.map((m) => ({
+      id: m.name, label: `${m.name}: ${m.price} возм.`,
+      ...(m.check ? { check: previewCheck(g, p, { stat: m.check.stat, dc: m.check.dc }, ctx) } : { note: 'без проверки' }),
+      ...(p.vozm < m.price ? { off: 'нет денег' } : {}),
+    })),
+    { id: 'нет', label: 'ничего не открывать' },
+  ], { force: true })
+  if (id === 'нет') return
+  const m = menu.find((x) => x.name === id)!
+  addParam(g, p, 'возм', -m.price, ctx)
+  count(p, 'контора')
+  const ok = m.check ? yield* runCheck(g, p, { stat: m.check.stat, dc: m.check.dc, what: `Контора: ${m.name}` }, ctx) : true
+  if (ok) { yield* gainItem(g, p, m.name); count(p, 'своё дело открыто') } else {
+    say(g, p, 'не вышло: половина денег вернулась')
+    addParam(g, p, 'возм', Math.floor(m.price / 2), ctx)
+    addParam(g, p, 'псих', k.failPsy, ctx)
+  }
 }
 
 // ── Обряд ───────────────────────────────────────────────────────────────

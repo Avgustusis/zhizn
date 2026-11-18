@@ -18,6 +18,7 @@
 import os, sys, random, re, statistics as S, collections as C
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import sim3
+import social as SO
 from sim3 import World, Player, d6, roll3, DECK, THAW, exec_text, SEGS, PRANK, STAB_CAP, HARSH_I
 import char as CH
 import war_sim as WS
@@ -75,6 +76,7 @@ def roll_ali(ideo, dom):
     return random.choice([c for c in CLASSES if c != dom])
 
 # ---------- война: константы правил ----------
+WAR_AGE = int(os.environ.get('WAR_AGE', '2'))   # 0 — без сдвига, 1 — складывается, 2 — не складывается с офицером/«Беречь себя»
 WIDE = {'Военная диктатура', 'Госсоциализм', 'Национализм'}          # призыв шире
 PAID = {'Либеральная демократия', 'Социал-демократия', 'Клептократия', 'Технократия'}  # жалованье +1 возм. за ход
 TREAT = {'Либеральная демократия': (1, 1), 'Социал-демократия': (2, 2), 'Теократия': (1, 1), 'Национализм': (2, 0),
@@ -157,6 +159,12 @@ class World2(World):
             if BIND:
                 c['dom'] = by_tab(DOM[c['ideo']]); c['ali'] = roll_ali(c['ideo'], c['dom']); c['doms'] = [c['dom']]
                 c['stab'] = 5 + (1 if c['pos'] == 'ядро' else -1 if c['pos'] == 'периферия' else 0) - (2 if c['conflict'] else 0) - (2 if c['ali'] == 'Народ' else 0)
+        SO.init(s)
+
+    def draw(s, deck, p, seg):
+        c = World.draw(s, deck, p, seg)
+        SO.card_mark(s, p, deck, c, s.last_fail)
+        return c
 
     # ---------- ход игрока ----------
     def step(s, p):
@@ -165,7 +173,9 @@ class World2(World):
             p.turns += 1
             if p.skip > 0: p.skip -= 1; s.stats['skip_turn'] += 1; return
             return s.front_turn(p)
-        return ORIG_STEP(s, p)
+        r = ORIG_STEP(s, p)
+        if p.alive and not p.inst: SO.player_mark(s, p)
+        return r
 
     def run(s):
         for r in range(1, s.rounds + 1):
@@ -229,7 +239,10 @@ class World2(World):
             if k == 'ph':
                 n = a[1]
                 if n < 0:
-                    n = min(0, n + (WS.OFF_DMG if sol.off else 0) + (WS.SAVE_DMG if sol.tac == 'беречь' else 0))
+                    red = (WS.OFF_DMG if sol.off else 0) + (WS.SAVE_DMG if sol.tac == 'беречь' else 0)
+                    young = 1 if (WAR_AGE and p.seg == 2) else 0              # 18.11: возрастной сдвиг Молодости — физ.− на 1 мягче
+                    red = red + young if WAR_AGE == 1 else max(red, young) if WAR_AGE == 2 else red
+                    n = min(0, n + red)
                     if n <= -3 and sol.bf:                     # «Боевые друзья»: отменить одну потерю физ.
                         p.items['Боевые друзья'] -= 1; sol.bf = p.items['Боевые друзья'] > 0; st['bf_cancel'] += 1; n = 0
                 p.phys = max(-10, min(10, p.phys + n))
@@ -309,7 +322,11 @@ class World2(World):
     def leave_status(s, sol):
         p = sol.p
         if sol.status == 'captive':
-            s.off_front(sol, 'captive'); p.no_sud = True; p.enter('Тюрьма', random.randint(1, 3))
+            s.off_front(sol, 'captive')
+            enemy = s.countries[sol.fr.sides[1 - sol.side][0]]['ideo']   # 18.11: плен — в тюрьме взявшей страны
+            if enemy == 'Вольница':                                        # тюрем нет — обмен пленными
+                p.phys -= 1; s.stats['war_exchange'] += 1; p.check_death('плен'); return
+            p.no_sud = True; p.enter('Тюрьма', random.randint(1, 3))
         elif sol.status == 'tribunal':
             s.off_front(sol, 'tribunal'); heavy = getattr(sol, 'prison_kind', 'лёгкое') == 'тяжёлое'
             p.enter('Тюрьма', random.randint(1, 3) + (3 if heavy and random.random() < 0.4 else 0))
@@ -419,8 +436,10 @@ class World2(World):
             if ideo in ('Либеральная демократия', 'Вольница') and cls != 'Армия' and fr.W.cell(side) > -3: continue
             if cls == 'Армия': go = True
             elif cls == 'Народ': go = d6() <= (5 if ideo in WIDE else 4)
+            elif cls == 'Полиция' and ideo == 'Полицейское государство': go = d6() <= 1   # 18.11: комиссары и особисты
             else: go = d6() <= (3 if ideo in WIDE else 2)
             if not go: continue
+            if p.biz is not None and p.biz['kind'] == 'pmc': s.stats['draft_free_pmc'] += 1; continue   # 18.11: владелец ЧВК воюет чужими руками
             used = False
             for k in ('Справка', 'Друг в Генштабе'):
                 if p.items.get(k, 0) > 0: p.items[k] -= 1; s.stats['draft_free_' + k] += 1; used = True; break
@@ -599,6 +618,7 @@ class World2(World):
     # ---------- мировой ход ----------
     def world_turn(s):
         s.stats['world_turns'] += 1; s.wt += 1
+        SO.world(s)
         for c in s.countries: c['war'] = False
         fr = s.front
         if fr:
