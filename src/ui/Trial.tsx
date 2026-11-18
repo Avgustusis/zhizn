@@ -34,6 +34,20 @@ function WarBar({ e }: { e: Engine }) {
   )
 }
 
+/** Страны: идеология, стабильность, жетоны «Общественного следа» и карты политики. */
+function WorldBar({ e }: { e: Engine }) {
+  const s = e.state
+  return (
+    <p className="legend">
+      {s.world.countries.map((c) => {
+        const tokens = Object.entries(c.trace ?? {}).filter(([, n]) => n > 0).map(([ch, n]) => `✊ ${ch} ${n}`)
+        const pol = (c.policies ?? []).filter((x) => x.until > s.worldTurns).map((x) => `«${x.title}» (${x.cls} ${x.add > 0 ? '+1' : '−1'}, до мир. хода ${x.until})`)
+        return <span key={c.id}>{c.name}: {c.ideology}, стаб. {c.stability}{[...tokens, ...pol].length ? ` · ${[...tokens, ...pol].join(' · ')}` : ''}<br /></span>
+      })}
+    </p>
+  )
+}
+
 function Sheet({ e, p, current }: { e: Engine; p: Player; current: boolean }) {
   const s = e.state
   const country = s.world.countries[p.country]
@@ -88,6 +102,7 @@ function CardPanel({ id, deck, who, result, pending, onClose }: { id: string; de
       {card.text && <p className="text">{card.text}</p>}
       <p className="src">{card.src}</p>
       <p className="tags">{card.tags.join(' ')}</p>
+      {card.trace && <p className="tags">{card.trace}</p>}
       {result.length > 0 && <div className="result"><h4>Что вышло</h4>{result.map((r, i) => <p key={i}>{r}</p>)}</div>}
       {!pending && <button onClick={onClose}>Закрыть карту</button>}
       {pending && <p className="num">выбери вариант ниже</p>}
@@ -196,6 +211,7 @@ export default function Trial() {
     <section className="trial">
       <h2>Пробная партия <span className="num">зерно {s.config.seed} · круг {s.round + 1} · мировых ходов {s.worldTurns}</span></h2>
       {s.war && <WarBar e={e} />}
+      <details><summary>страны и «Общественный след»</summary><WorldBar e={e} /></details>
       {error && <p className="req">Ошибка движка: {error} (зерно {s.config.seed})</p>}
       <div className="sheets">{s.players.map((p) => <Sheet key={p.seat} e={e} p={p} current={req?.player === p.seat} />)}</div>
 

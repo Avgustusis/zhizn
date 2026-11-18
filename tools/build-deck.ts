@@ -35,7 +35,7 @@ const rows: Record<string, string>[] = CLASS_DECK
   : sectionRows(md, header)
 const miracles = new Map(readTable(md, '## Чудеса').map((r) => [r['Карта'], r['Текст']]))
 const outPath = resolve(`src/data/decks/${DECK_FILES[deck]}.json`)
-type Effects = Record<string, { effect: unknown; doubts?: string[]; requires?: unknown; cancelBy?: string[]; target?: unknown; country?: unknown; sides?: unknown }>
+type Effects = Record<string, { effect: unknown; doubts?: string[]; requires?: unknown; cancelBy?: string[]; target?: unknown; country?: unknown; sides?: unknown; trace?: string }>
 /** Ключ карты по id: «возраст.детство.04» → «4», «класс.народ.01» → «Народ.1». */
 function keyOf(c: Card): string {
   const parts = c.id.split('.')
@@ -45,7 +45,7 @@ function keyOf(c: Card): string {
 }
 // Разбор берётся из уже собранного файла колоды, поверх — из effects.json (если дан).
 const existing: Effects = existsSync(outPath)
-  ? Object.fromEntries(DeckFile.parse(JSON.parse(readFileSync(outPath, 'utf8'))).cards.map((c) => [keyOf(c), { effect: c.effect, doubts: c.doubts, requires: c.requires, cancelBy: c.cancelBy, target: c.target, country: c.country, sides: c.sides }]))
+  ? Object.fromEntries(DeckFile.parse(JSON.parse(readFileSync(outPath, 'utf8'))).cards.map((c) => [keyOf(c), { effect: c.effect, doubts: c.doubts, requires: c.requires, cancelBy: c.cancelBy, target: c.target, country: c.country, sides: c.sides, trace: c.trace }]))
   : {}
 const effects: Effects = { ...existing, ...(effectsPath ? JSON.parse(readFileSync(effectsPath, 'utf8')) : {}) }
 
@@ -130,6 +130,7 @@ const cards = rows.flatMap((r, i) => {
     ...(e.cancelBy ? { cancelBy: e.cancelBy } : {}),
     ...(miracle ? { miracle: true } : {}),
     effect: e.effect,
+    ...(e.trace ? { trace: e.trace } : {}),
     ...(e.doubts?.length ? { doubts: e.doubts } : {}),
   }
   const parsed = Card.safeParse(card)

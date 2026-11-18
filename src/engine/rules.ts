@@ -11,6 +11,7 @@ import { foundNow, searchNow } from './meaning.ts'
 import { crisisCheck, flight, turmoilRule } from './world.ts'
 import { emigrationRule } from './emigration.ts'
 import { draftCheck, frontNow, warRule } from './war.ts'
+import { traceRule } from './social.ts'
 import { newCtx } from './cond.ts'
 import type { Player } from './types.ts'
 
@@ -93,6 +94,8 @@ const RULES: Record<string, Rule> = {
   *'стать проигравшим'(g, p, arg) { yield* turmoilRule(g, p, 'стать проигравшим', arg) },
   *'донос на нейтрала'(g, p, arg) { yield* turmoilRule(g, p, 'донос на нейтрала', arg) },
   *'люстрация'(g, p, arg) { yield* turmoilRule(g, p, 'люстрация', arg) },
+  // ── Общественный след (18.11) ──
+  'след'(g, p, arg) { traceRule(g, p, arg) },
   // ── Война (этап 3в) ──
   *'призыв'(g, p) { yield* draftCheck(g, p) },
   'фронт'(g, p) { frontNow(g, p) },

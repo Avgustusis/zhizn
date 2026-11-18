@@ -13,6 +13,7 @@ import { settle } from './meaning.ts'
 import { againstCulture, classesFor } from './setup.ts'
 import { emigrate } from './emigration.ts'
 import { afterDeclare, coupPeace, declareWar, endWar, warWorldEnd, warWorldStart } from './war.ts'
+import { nearMiss, socialWorld } from './social.ts'
 import type { Cls, Country, Player, Relation } from './types.ts'
 
 const alive = (p: Player | undefined): p is Player => !!p && p.alive && !p.finished
@@ -68,6 +69,7 @@ export function* worldTurn(g: G): Flow {
   for (const c of g.s.world.countries) yield* crisisCheck(g, c, false)
   yield* worldCard(g)
   yield* warWorldEnd(g)
+  yield* socialWorld(g)
   for (const p of g.s.players.filter(alive)) settle(g, p)
 }
 
@@ -76,6 +78,8 @@ export function* crisisCheck(g: G, c: Country, now: boolean): Flow {
   const t = g.c.tables.crisis
   const r = roll3(g).sum
   if (r < t.base + c.stability) {
+    // Фон «Общественного следа»: не дотянул до кризиса на 3 и меньше — жетон отчуждённого класса (новых кубиков нет).
+    if (!now) nearMiss(g, c, r, t.base + c.stability)
     if (!now) stab(g, c, t.calm - (ideologyAgainstCulture(g, c) ? 1 : 0) - (c.alienated === 'Народ' ? 1 : 0))
     return
   }

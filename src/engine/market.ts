@@ -9,6 +9,7 @@ import { charAxisOf, has, isMinority, kindOf, newCtx, pairOf, type Ctx } from '.
 import { addParam, charStep, count, enterInst, gainItem, removeHeld, rollDie, setClass, visit } from './change.ts'
 import { run } from './exec.ts'
 import { previewCheck, runCheck } from './checks.ts'
+import { policyIncome } from './social.ts'
 import { legalize } from './emigration.ts'
 import type { CharPole, Cls, Held, Player, Stat } from './types.ts'
 
@@ -32,6 +33,8 @@ export function income(g: G, p: Player): number {
   if (c.ideology === 'Национализм') d += isMinority(g, p) ? -t.ideologyIncome.nationalism : t.ideologyIncome.nationalism
   for (const i of p.income) d += i.add
   if (p.rules['мир: доход −1']) d -= 1
+  // Карты политики «Общественного следа»: классу канала ±1 на 5 мировых ходов.
+  d += policyIncome(g, p)
   // После геноцида два мировых хода работать некому.
   if (c.emptied !== undefined && g.s.worldTurns <= c.emptied) d -= 1
   return Math.max(w.min, t.ideologyIncome.floor[c.ideology] ?? w.min, d)

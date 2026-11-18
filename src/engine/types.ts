@@ -106,6 +106,12 @@ export interface Country {
   embargo?: true
   /** После геноцида доход −1 до этого мирового хода включительно. */
   emptied?: number
+  /** Общественный след: жетоны по каналам, чьи они (места игроков), легло ли что-то за этот мировой ход. */
+  trace?: Record<string, number>
+  traceWho?: Record<string, number[]>
+  traceNew?: true
+  /** Карты политики на стране: класс, прибавка к доходу, до какого мирового хода (не включая). */
+  policies?: { title: string; channel: string; kind: 'уступка' | 'подавление'; cls: Cls; add: number; until: number }[]
 }
 
 /** Война на «Фронте». Метка — с края первой стороны: её +7 — «ПОБЕДА!» первой, −7 — второй. */
@@ -305,6 +311,8 @@ export interface GameState {
   /** Идёт война (одна на мир) и сколько войн было за партию. */
   war?: War
   wars?: number
+  /** «Летопись эпохи»: заголовки карт политики и другие события мира. */
+  chronicle?: { worldTurn: number; country: number; text: string }[]
   /** Счётчики партии: войны, итоги, броски хранителя — для сверки с симуляцией. */
   stats?: Record<string, number>
   world: World
