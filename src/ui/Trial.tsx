@@ -23,11 +23,22 @@ function store(e: Engine | null): void {
   try { if (e) localStorage.setItem(KEY, JSON.stringify(e.save())); else localStorage.removeItem(KEY) } catch { /* место кончилось — играем без сохранения */ }
 }
 
+/** Идёт война: стороны и метка «Фронта» (с края первой стороны). */
+function WarBar({ e }: { e: Engine }) {
+  const w = e.state.war!
+  const c = e.state.world.countries
+  const name = (ids: number[]) => ids.map((id) => `${c[id].name} (${c[id].pos}, ${c[id].ideology})`).join(', ')
+  const title = content.front.cells.find((x) => x.cell === w.mark)?.title ?? ''
+  return (
+    <p className="req">⚔ {w.kind === 'мировая' ? 'Мировая война' : 'Война'}: {name(w.sides[0])} против {name(w.sides[1])} · метка {signed(w.mark)} «{title}» для первой стороны · кругов {w.rounds}</p>
+  )
+}
+
 function Sheet({ e, p, current }: { e: Engine; p: Player; current: boolean }) {
   const s = e.state
   const country = s.world.countries[p.country]
   const cell = content.board.segments[p.seg].cells[p.cell]
-  const status = !p.alive ? `умер: ${p.death?.cause}, ${p.death?.seg}` : p.finished ? 'дошёл до «Финала»' : p.inst ? `${p.inst.kind}` : ''
+  const status = !p.alive ? `умер: ${p.death?.cause}, ${p.death?.seg}` : p.finished ? 'дошёл до «Финала»' : p.inst ? (p.inst.kind === 'фронт' ? `на «Фронте»${p.inst.foreign ? ' (доброволец, чужая война)' : ''}` : `${p.inst.kind}`) : ''
   const poles = CHAR_AXES.flatMap(([a, b], i) => (p.character[i] ? [`${p.character[i] < 0 ? a : b}${Math.abs(p.character[i]) === 2 ? ' (сильно)' : ''}`] : []))
   const m = meaningOf(e.g, p)
   return (
@@ -58,9 +69,17 @@ function Sheet({ e, p, current }: { e: Engine; p: Player; current: boolean }) {
   )
 }
 
+/** Событие «Фронта» в виде карты: клетка трека, d10, текст, эффект (строка «Офицер» — в тексте эффекта). */
+function frontCard(id: string): (typeof content.decks)[string][number] | undefined {
+  const e = content.front.events.find((x) => x.id === id)
+  if (!e) return undefined
+  const cell = content.front.cells.find((c) => c.cell === e.cell)?.title ?? ''
+  return { id: e.id, n: e.n, title: `${e.title} (клетка ${e.cell > 0 ? '+' : ''}${e.cell} «${cell}», d10 = ${e.n})`, text: e.text, src: e.src, kind: 'Б', tags: e.tags, effect: e.effect }
+}
+
 /** Карта целиком, как в настольной версии: название, текст, оригинальный эффект, теги — и что из неё вышло. */
 function CardPanel({ id, deck, who, result, pending, onClose }: { id: string; deck: string; who: string; result: string[]; pending: boolean; onClose: () => void }) {
-  const card = Object.values(content.decks).flat().find((c) => c.id === id)
+  const card = Object.values(content.decks).flat().find((c) => c.id === id) ?? frontCard(id)
   if (!card) return null
   return (
     <article className="cardpanel">
@@ -123,16 +142,21 @@ export default function Trial() {
   const resume = () => act((x) => { const y = saved ? Engine.load(content, saved) : x; if (y) setSeen(y.state.log.length); return y })
   const answer = (id: string) => act((x) => { x?.answer(id); return x })
   /** Отвечать наугад, пока не дойдём до следующего вопроса «твой ход» (или до конца партии). */
+  // Карты, сыгранные за ИИ, считаются просмотренными; следующие (ход человека) снова показываются целиком.
   const skipTurn = () => act((x) => {
-    queueMicrotask(() => setSeen(Number.MAX_SAFE_INTEGER))
     if (!x?.pending) return x
     x.answer(randomId(x))
     for (let i = 0; i < 500 && x.pending && x.pending.type !== 'ход'; i++) x.answer(randomId(x))
+    const n = x.state.log.length
+    queueMicrotask(() => setSeen(n))
     return x
   })
   const skipAll = () => act((x) => {
-    queueMicrotask(() => setSeen(Number.MAX_SAFE_INTEGER))
-    for (let i = 0; x && i < 100000 && x.pending; i++) x.answer(randomId(x)); return x })
+    for (let i = 0; x && i < 100000 && x.pending; i++) x.answer(randomId(x))
+    const n = x?.state.log.length ?? 0
+    queueMicrotask(() => setSeen(n))
+    return x
+  })
   const undo = () => act((x) => {
     if (!x) return x
     const save = x.save()
@@ -144,7 +168,7 @@ export default function Trial() {
     return (
       <section className="trial">
         <h2>Пробная партия</h2>
-        <p className="legend">Отладочный экран движка (этапы 2 и 3а): рождение, поле, карты событий, проверки, здоровье, смысл и счастье. Рынок, работа, траты, пенсия, город и знакомства уже работают (этап 3а). Эмиграции, мировых событий, кризисов и войны ещё нет — это этапы 3б и 3в. Смысл жизни виден всем: это проверка правил, а не игра.</p>
+        <p className="legend">Отладочный экран движка: рождение, поле, карты событий, проверки, здоровье, смысл и счастье; рынок, работа, траты, пенсия, город и знакомства (этап 3а); мировые ходы, кризисы, Смута и эмиграция (3б); война на «Фронте» — призыв, тактика, 140 событий, комиссия, плен, итоги войны (3в). Смысл жизни виден всем: это проверка правил, а не игра.</p>
         <div className="controls">
           <label>Игроков <select value={seats} onChange={(ev) => setSeats(Number(ev.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n}>{n}</option>)}</select></label>
           <label>Зерно <input type="number" value={seed} onChange={(ev) => setSeed(Number(ev.target.value) || 0)} style={{ width: '7em' }} /></label>
@@ -171,6 +195,7 @@ export default function Trial() {
   return (
     <section className="trial">
       <h2>Пробная партия <span className="num">зерно {s.config.seed} · круг {s.round + 1} · мировых ходов {s.worldTurns}</span></h2>
+      {s.war && <WarBar e={e} />}
       {error && <p className="req">Ошибка движка: {error} (зерно {s.config.seed})</p>}
       <div className="sheets">{s.players.map((p) => <Sheet key={p.seat} e={e} p={p} current={req?.player === p.seat} />)}</div>
 

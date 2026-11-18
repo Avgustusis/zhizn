@@ -3,11 +3,11 @@ import type { GameState, LogEvent } from '../engine/types.ts'
 
 const signed = (n: number): string => (n > 0 ? `+${n}` : String(n).replace('-', '−'))
 const NAMES: Record<string, string> = { 'физ': 'физ. здоровье', 'псих': 'псих. здоровье', 'возм': 'Возможности' }
-const INST: Record<string, string> = { 'тюрьма': 'тюрьма', 'психбольница': 'психбольница', 'кабала': 'кабала' }
+const INST: Record<string, string> = { 'тюрьма': 'тюрьма', 'психбольница': 'психбольница', 'кабала': 'кабала', 'фронт': '«Фронт»' }
 
 /** Строка журнала и её вид: заголовок, обычная, тихая (служебная), важная. */
 export function describe(ev: LogEvent, s: GameState): { text: string; kind: 'head' | 'plain' | 'quiet' | 'loud' } {
-  const who = 'p' in ev ? s.players[ev.p]?.name ?? '' : ''
+  const who = 'p' in ev && ev.p !== undefined ? s.players[ev.p]?.name ?? '' : ''
   switch (ev.t) {
     case 'ход': return { text: `${who} — ход, круг ${ev.round}`, kind: 'head' }
     case 'бросок': return { text: `кубик d${ev.die}: ${ev.value} (${ev.why})`, kind: 'quiet' }
@@ -37,6 +37,7 @@ export function describe(ev: LogEvent, s: GameState): { text: string; kind: 'hea
     case 'институт': return { text: ev.how === 'вход' ? `${INST[ev.kind]}: вход${ev.turns ? `, срок ${ev.turns}` : ''}` : `${INST[ev.kind]}: выход`, kind: 'loud' }
     case 'смысл': return { text: `смысл жизни: ${ev.id} (${ev.from})`, kind: 'loud' }
     case 'счастье': return { text: `счастье ${ev.from} → ${ev.to}`, kind: 'loud' }
+    case 'фронт': return { text: `⚔ ${ev.text}${ev.mark !== undefined ? ` [метка ${signed(ev.mark)}]` : ''}`, kind: 'plain' }
     case 'смерть': return { text: `${who}: смерть — ${ev.cause}`, kind: 'loud' }
     case 'финал': return { text: `${who}: «Финал». У калитки кто-то машет.`, kind: 'loud' }
     case 'мир': return { text: ev.text, kind: 'head' }

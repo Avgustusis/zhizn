@@ -8,6 +8,7 @@ import { settle } from './meaning.ts'
 import { newState, setup } from './setup.ts'
 import { playerTurn } from './turn.ts'
 import { foresight, worldTurn } from './world.ts'
+import { frontRound } from './war.ts'
 import type { Content, GameConfig, GameState, Player, Request, SaveFile } from './types.ts'
 
 export interface EngineOptions {
@@ -79,6 +80,8 @@ export class Engine {
     const { g } = this
     const s = g.s
     if (s.phase === 'подготовка') { yield* setup(g); this.firstSeat(); return }
+    // Конец круга: сначала хранитель часов на «Фронте», потом мировой ход.
+    if (s.frontDue) { delete s.frontDue; yield* frontRound(g); return }
     if (s.worldDue) { delete s.worldDue; yield* worldTurn(g); this.endCheck(); return }
     const p = s.players[s.current]
     if (active(p)) yield* playerTurn(g, p)
@@ -101,6 +104,7 @@ export class Engine {
       if (seat >= n) {
         seat = 0
         s.round += 1
+        if (s.war) s.frontDue = true
         const per = this.g.c.tables.world.roundsPerWorldTurn
         if (s.round % per === 0) s.worldDue = true
         // Предчувствие — за круг до мирового хода.

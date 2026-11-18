@@ -1,7 +1,7 @@
 /**
  * Мировой ход (концепция, «Стабильность, революции и перевороты», «Мировые события»; колоды «Мир» и «Смута»).
- * Порядок: часы → проверка кризиса в каждой стране → карта «Мир». Война на «Фронте» — этап 3в: пока война длится
- * до следующего мирового хода (как в старой симуляции).
+ * Порядок: часы → военный налог и конец оккупации → проверка кризиса в каждой стране → карта «Мир» → призыв, пока идёт война.
+ * Сама война на «Фронте» — engine/war.ts.
  */
 import type { Card, Node } from '../data/schema.ts'
 import { CULTURE_AXES } from '../data/schema.ts'
@@ -12,6 +12,7 @@ import { run } from './exec.ts'
 import { settle } from './meaning.ts'
 import { againstCulture, classesFor } from './setup.ts'
 import { emigrate } from './emigration.ts'
+import { afterDeclare, coupPeace, declareWar, endWar, warWorldEnd, warWorldStart } from './war.ts'
 import type { Cls, Country, Player, Relation } from './types.ts'
 
 const alive = (p: Player | undefined): p is Player => !!p && p.alive && !p.finished
@@ -55,16 +56,18 @@ export function foresight(g: G): void {
 export function* worldTurn(g: G): Flow {
   g.s.worldTurns += 1
   emit(g, { t: 'мир', text: `мировой ход ${g.s.worldTurns}` })
-  // Всё «до следующего мирового хода» гаснет; война без «Фронта» длится один мировой ход.
-  for (const c of g.s.world.countries) { c.war = false; delete c.suppressed }
+  // Всё «до следующего мирового хода» гаснет. Война идёт, пока её не решит «Фронт» или мир.
+  for (const c of g.s.world.countries) delete c.suppressed
   for (const p of g.s.players.filter(alive)) {
     for (const k of Object.keys(p.rules)) if (k.startsWith('мир: ')) delete p.rules[k]
     p.mods = p.mods.filter((m) => m.until !== 'мировой ход')
     fire(g, p, 'следующий мировой ход')
     yield* runDue(g, p)
   }
+  yield* warWorldStart(g)
   for (const c of g.s.world.countries) yield* crisisCheck(g, c, false)
   yield* worldCard(g)
+  yield* warWorldEnd(g)
   for (const p of g.s.players.filter(alive)) settle(g, p)
 }
 
@@ -140,6 +143,7 @@ export function* powerChange(g: G, c: Country, sides = new Map<number, Side>()):
   else { let a = classesFor(g, c.ideology).alienated; while (a === c.dominant) a = classesFor(g, c.ideology).alienated; c.alienated = a }
   c.stability = Math.min(t.after, g.c.tables.world.stabilityCap[c.ideology] ?? t.after)
   c.powerChanges += 1
+  delete c.embargo
   emit(g, { t: 'мир', text: `${c.name}: смена власти — ${c.ideology}; правит ${c.dominant}, отчуждён ${c.alienated}` })
   // Отношения с каждой страной: d6 1 — хуже, 6 — лучше.
   for (const o of g.s.world.countries) {
@@ -149,6 +153,8 @@ export function* powerChange(g: G, c: Country, sides = new Map<number, Side>()):
     if (r >= t.relBetter) shiftRelation(g, c.id, o.id, 1)
   }
   yield* turmoil(g, c, oldDom, sides)
+  // Воюющая страна: новая власть может просить мира.
+  yield* coupPeace(g, c)
 }
 
 // ── Смута ───────────────────────────────────────────────────────────────
@@ -156,7 +162,7 @@ export function* powerChange(g: G, c: Country, sides = new Map<number, Side>()):
 interface Turmoil { prison: 'общее' | 'тяжёлое' | 'нет' | 'для всех'; denounced: boolean; stability?: number }
 
 /** «Смута»: одна карта на страну; каждый игрок читает «Для всех» и строку своей стороны; общие правила поверх карты. */
-function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>): Flow {
+export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>): Flow {
   const t = g.c.tables.crisis
   const card = drawPile(g, 'смута')
   if (!card) return
@@ -256,6 +262,9 @@ const cardOf = (g: G, id?: string) => (id ? g.cards.get(id)?.card : undefined)
 // ── Карта «Мир» ─────────────────────────────────────────────────────────
 
 /** Верхняя подходящая карта стопки; сыгранная — в сброс, колода кончилась — перетасуй сброс. */
+/** Карта начинает войну (часть «Страна» с правилом «война»). */
+const isWarCard = (card: Card) => (card.country ?? []).some((n) => 'rule' in n && n.rule === 'война')
+
 function drawPile(g: G, deck: string): Card | undefined {
   const pile = (g.s.piles[deck] ??= [])
   const used = (g.s.piles[`${deck}:сброс`] ??= [])
@@ -264,6 +273,8 @@ function drawPile(g: G, deck: string): Card | undefined {
     const id = pile.shift()!
     used.push(id)
     const card = g.cards.get(id)!.card
+    // В мире одна война за раз: «Война» и «Мировая война» во время войны — в сброс, тянут следующую.
+    if (deck === 'мир' && g.s.war && isWarCard(card)) { emit(g, { t: 'мир', text: `«${card.title}» во время войны — в сброс` }); continue }
     if (!card.requires || g.s.config.mode === 'род' || !JSON.stringify(card.requires).includes('"род"')) return card
   }
   return undefined
@@ -331,39 +342,30 @@ function* worldCard(g: G): Flow {
     if (card.scope === 'глобальный' && p.alive) count(p, 'глобальное событие в своей стране')
     settle(g, p)
   }
+  // Объявлена война: проверки кризиса мировой войны, добровольцы, бросок хранителя, если солдат нет.
+  yield* afterDeclare(g)
 }
 
 /** Выполнить часть «Страна»: шаги stab и правила стран идут на целевую страну, а не на игрока. */
 function* runCountry(g: G, proxy: Player, nodes: Node[], ctx: Ctx, pair: number[]): Flow {
   for (const n of nodes) {
-    if ('stab' in n) { const c = g.s.world.countries[ctx.target ?? proxy.country]; stab(g, c, n.stab) }
+    // Стабильность воюющих при объявлении уже учла война (declareWar).
+    if ('stab' in n) { if (!g.s.war?.declaring) stab(g, g.s.world.countries[ctx.target ?? proxy.country], n.stab) }
     else if ('say' in n) emit(g, { t: 'мир', text: n.say })
     else if ('if' in n) yield* runCountry(g, proxy, cond(g, proxy, n.if, ctx) ? n.then : n.else ?? [], ctx, pair)
     else if ('rule' in n) yield* countryRule(g, n.rule, n.arg, ctx, pair)
   }
 }
 
-/** Правила стран: война (пока без «Фронта»), мирный договор, отношения, проверка кризиса. */
+/** Правила стран: война, мирный договор, отношения, проверка кризиса. */
 function* countryRule(g: G, rule: string, arg: string | undefined, ctx: Ctx, pair: number[]): Flow {
   const all = g.s.world.countries
   const pairsOf = (r: Relation) => all.flatMap((a) => all.filter((b) => b.id > a.id && relation(g, a.id, b.id) === r).map((b) => [a.id, b.id]))
   if (rule === 'проверка кризиса' && ctx.target !== undefined) yield* crisisCheck(g, all[ctx.target], true)
-  else if (rule === 'война') {
-    // Этап 3б: страны воюют до следующего мирового хода; «Фронт», призыв и итоги — этап 3в.
-    const global = /мировая/.test(arg ?? '')
-    let hostile = pairsOf('вражда')
-    if (!hostile.length) { const n = pairsOf('нейтралитет'); if (n.length) { const [a, b] = pick(g, n); g.s.world.relations[relKey(a, b)] = 'вражда'; hostile = [[a, b]] } }
-    if (!hostile.length) return
-    const [a, b] = pick(g, hostile)
-    const sides = global ? all.filter((c) => c.id === a || c.id === b || relation(g, c.id, a) === 'союз' || relation(g, c.id, b) === 'союз').map((c) => c.id) : [a, b]
-    for (const id of sides) { all[id].war = true; stab(g, all[id], global ? -3 : -2) }
-    if (global) for (const c of all) if (!c.war) stab(g, c, -1)
-    pair.push(...sides)
-    emit(g, { t: 'мир', text: `война: ${sides.map((id) => all[id].name).join(', ')}` })
-    if (global) for (const id of sides) yield* crisisCheck(g, all[id], true)
-  } else if (rule === 'мирный договор') {
-    const atWar = all.filter((c) => c.war)
-    if (atWar.length) { for (const c of atWar) { c.war = false; stab(g, c, 1) } pair.push(...atWar.map((c) => c.id)); emit(g, { t: 'мир', text: 'мир: война окончена без итога' }); return }
+  else if (rule === 'война') pair.push(...declareWar(g, /мировая/.test(arg ?? '')))
+  else if (rule === 'мирный договор') {
+    const w = g.s.war
+    if (w) { pair.push(...w.sides[0], ...w.sides[1]); yield* endWar(g, 'мир'); return }
     const hostile = pairsOf('вражда')
     if (hostile.length) { const [a, b] = pick(g, hostile); g.s.world.relations[relKey(a, b)] = 'нейтралитет'; stab(g, all[a], 1); stab(g, all[b], 1); pair.push(a, b); return }
     const neutral = pairsOf('нейтралитет')

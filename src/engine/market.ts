@@ -31,6 +31,8 @@ export function income(g: G, p: Player): number {
   if (c.ideology === 'Национализм') d += isMinority(g, p) ? -t.ideologyIncome.nationalism : t.ideologyIncome.nationalism
   for (const i of p.income) d += i.add
   if (p.rules['мир: доход −1']) d -= 1
+  // После геноцида два мировых хода работать некому.
+  if (c.emptied !== undefined && g.s.worldTurns <= c.emptied) d -= 1
   return Math.max(w.min, d)
 }
 
@@ -97,7 +99,7 @@ export function* work(g: G, p: Player, kind: string): Flow {
 const cultureFree = (p: Player): boolean => p.character[charAxisOf('Усердие')[0]] > 0
 
 /** Отметка Стажа: найма (идёт в пенсию) или пустая — от своего дела. */
-function addStazh(p: Player, hire: boolean): void {
+export function addStazh(p: Player, hire: boolean): void {
   p.stazh += 1
   if (hire) p.stazhHire += 1
   visit(p, 'Стаж')

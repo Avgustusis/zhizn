@@ -10,6 +10,7 @@ import { acquaintance, burn, lawTrap, partnerClass, rite, work } from './market.
 import { foundNow, searchNow } from './meaning.ts'
 import { crisisCheck, flight, turmoilRule } from './world.ts'
 import { emigrationRule } from './emigration.ts'
+import { draftCheck, frontNow, warRule } from './war.ts'
 import { newCtx } from './cond.ts'
 import type { Player } from './types.ts'
 
@@ -91,6 +92,13 @@ const RULES: Record<string, Rule> = {
   *'стать проигравшим'(g, p, arg) { yield* turmoilRule(g, p, 'стать проигравшим', arg) },
   *'донос на нейтрала'(g, p, arg) { yield* turmoilRule(g, p, 'донос на нейтрала', arg) },
   *'люстрация'(g, p, arg) { yield* turmoilRule(g, p, 'люстрация', arg) },
+  // ── Война (этап 3в) ──
+  *'призыв'(g, p) { yield* draftCheck(g, p) },
+  'фронт'(g, p) { frontNow(g, p) },
+  *'награда'(g, p, arg) { yield* warRule(g, p, 'награда', arg) },
+  *'метка фронта'(g, p, arg) { yield* warRule(g, p, 'метка фронта', arg) },
+  *'плен'(g, p, arg) { yield* warRule(g, p, 'плен', arg) },
+  *'отпуск'(g, p, arg) { yield* warRule(g, p, 'отпуск', arg) },
   *'проверка кризиса'(g, p, _arg, ctx) { yield* crisisCheck(g, g.s.world.countries[ctx.target ?? p.country], true) },
 }
 

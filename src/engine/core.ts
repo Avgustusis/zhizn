@@ -19,6 +19,8 @@ export interface G {
 export function makeG(s: GameState, c: Content): G {
   const cards = new Map<string, { card: Card; deck: string }>()
   for (const [deck, list] of Object.entries(c.decks)) for (const card of list) cards.set(card.id, { card, deck })
+  // События «Фронта» — не карты, но показываются так же: заголовок, текст, эффект.
+  for (const e of c.front?.events ?? []) cards.set(e.id, { card: { id: e.id, n: e.n, title: e.title, text: e.text, src: e.src, kind: 'Б', tags: e.tags, effect: e.effect } as unknown as Card, deck: 'фронт' })
   const items = new Map(c.items.map((i) => [i.name, i]))
   const groups = new Map<string, string[]>()
   for (const i of c.items) if (i.group) groups.set(i.group, [...(groups.get(i.group) ?? []), i.name])

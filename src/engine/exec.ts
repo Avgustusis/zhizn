@@ -5,6 +5,7 @@ import { cond, has, type Ctx } from './cond.ts'
 import { addParam, charStep, enterInst, gainItem, leaveInst, loseItem, rollDie, setClass, setParam, statCap } from './change.ts'
 import { firstCheck, previewCheck, runCheck, spend, strongIn, type CheckPreview } from './checks.ts'
 import { runRule } from './rules.ts'
+import { frontLoss } from './war.ts'
 import type { Player, Stat } from './types.ts'
 
 /** Попадает ли значение кубика в диапазон «1-2» или «6». */
@@ -33,7 +34,11 @@ export function* run(g: G, p: Player, nodes: Node[], ctx: Ctx): Flow {
 function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
   if ('add' in n) {
     const c = n.cap !== undefined ? { ...ctx, cap: n.cap } : ctx
-    for (const [param, delta] of Object.entries(n.add)) addParam(g, p, param, delta, c)
+    for (const [param, delta] of Object.entries(n.add)) {
+      // Фронт: потеря физ. в событии меньше у офицера и при «Беречь себя»; «Боевые друзья» могут её отменить.
+      const d = param === 'физ' && delta < 0 && ctx.deck === 'фронт' && p.inst?.kind === 'фронт' ? yield* frontLoss(g, p, delta) : delta
+      addParam(g, p, param, d, c)
+    }
   } else if ('say' in n) say(g, p, n.say)
   else if ('if' in n) {
     if (cond(g, p, n.if, ctx)) yield* run(g, p, n.then, branchCtx(g, p, ctx, n.if))

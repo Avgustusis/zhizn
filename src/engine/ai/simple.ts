@@ -126,6 +126,26 @@ export function answer(g: G, req: Request): string {
       // Обязательный переезд: страна с позицией повыше.
       return best((o) => (/^\d+$/.test(o.id) ? rankOf(g.s.world.countries[Number(o.id)].pos) : -1))
     }
+    case 'фронт': {
+      // Как ИИ симуляции (war_sim.py, war_life.py). Случайность — из номера хода, не из генератора движка.
+      const roll = (p.turns * 41 + p.seat * 17 + g.s.worldTurns * 7 + (g.s.war?.rounds ?? 0) * 3) % 100
+      if (ids.includes('атака')) {
+        if (ids.includes('генштаб') && (p.phys <= -6 || p.psy <= -6)) return 'генштаб'
+        if (ids.length === 1) return ids[0]
+        const w = p.phys <= -6 || p.psy <= -6 ? [20, 30] : [65, 25]
+        return roll < w[0] ? 'атака' : roll < w[0] + w[1] ? 'держать' : 'беречь'
+      }
+      if (ids.includes('фронт')) return ids.find((x) => x !== 'фронт' && x !== 'откуп') ?? (ids.includes('откуп') ? 'откуп' : 'фронт')
+      if (ids.includes('перебросить')) return 'перебросить'
+      if (ids.includes('вытащить')) return /−[3-9]|−1\d/.test(req.options.find((o) => o.id === 'вытащить')?.label ?? '') ? 'вытащить' : 'нет'
+      if (ids.includes('сотрудничать')) return roll < 50 ? 'сотрудничать' : 'сопротивляться'
+      // Добровольцы: военные (Армия, «Присяга») — четверть, остальные остаются.
+      if (ids.includes('нет')) {
+        const mil = p.cls === 'Армия' || p.items.some((h) => h.name === 'Присяга')
+        return mil && roll < 25 ? ids.find((x) => x !== 'нет')! : 'нет'
+      }
+      return ids[0]
+    }
     case 'предмет': return ids[0]
     default: return ids[0]
   }

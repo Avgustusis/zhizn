@@ -11,6 +11,7 @@ import { rollFashion } from './setup.ts'
 import { businessAtEntry, money } from './market.ts'
 import { whyNot } from './explain.ts'
 import { acculturate, decayStigmas, deportRisk, emigrate, naturalize } from './emigration.ts'
+import { backToFront, frontTurn, volunteerAsk, volunteerSides } from './war.ts'
 import type { Action, Player } from './types.ts'
 
 const cellsOf = (g: G, seg: number): BoardCell[] => g.c.board.segments[seg].cells
@@ -333,29 +334,37 @@ export function* playerTurn(g: G, p: Player): Flow {
   p.turns += 1
   delete p.rules['сиделка']
   emit(g, { t: 'ход', p: p.seat, round: g.s.round + 1 })
+  // Отпуск по ранению: этот ход — дома, как обычный; потом обратно на «Фронт».
+  const leave = p.inst?.kind === 'фронт' && p.inst.leave ? p.inst : undefined
+  if (leave) { delete p.inst; say(g, p, 'отпуск по ранению: ход дома') }
   if (p.skip > 0) {
     p.skip -= 1
     say(g, p, 'ход пропущен')
   } else {
-    // С Молодости можно эмигрировать вместо движения (концепция, «Виды отъезда»).
+    // С Молодости можно эмигрировать вместо движения (концепция, «Виды отъезда»); в войну — уйти добровольцем.
     const canLeave = !p.inst && p.seg >= SEGMENTS.indexOf('Молодость')
+    const volunteer = leave ? [] : volunteerSides(g, p)
     const how = yield* ask(g, p, 'ход', `${p.name}: твой ход`, [
       { id: 'бросок', label: 'бросить кубик' },
       ...(canLeave ? [{ id: 'эмиграция', label: 'эмигрировать вместо хода' }] : []),
+      ...(volunteer.length ? [{ id: 'доброволец', label: 'уйти добровольцем на «Фронт» вместо хода' }] : []),
     ], { force: true })
     if (how === 'эмиграция' && (yield* emigrate(g, p, { optional: true }))) {
       // Переезд занял ход: ни движения, ни клетки.
+    } else if (how === 'доброволец') {
+      yield* volunteerAsk(g, p)
     } else {
       const steps = rollDie(g, p, t.moveDie, 'ход')
       const wasInst = !!p.inst
       const cell = yield* move(g, p, steps)
       if (p.alive && !p.finished) {
-        if (p.inst) { if (wasInst) yield* instTurn(g, p) } else if (cell) yield* resolveCell(g, p, cell)
+        if (p.inst?.kind === 'фронт') { if (wasInst) yield* frontTurn(g, p) } else if (p.inst) { if (wasInst) yield* instTurn(g, p) } else if (cell) yield* resolveCell(g, p, cell)
       }
     }
     if (p.alive && !p.finished && !p.inst && p.skip === 0) money(g, p)
     if (p.alive && !p.finished) yield* actions(g, p)
   }
+  if (leave) backToFront(g, p, leave)
   yield* endTurn(g, p)
 }
 

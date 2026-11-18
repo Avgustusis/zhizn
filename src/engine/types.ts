@@ -98,6 +98,37 @@ export interface Country {
   powerChanges: number
   /** Кризис подавлен: отчуждённый класс с помехой до следующего мирового хода. */
   suppressed?: true
+  /** Оккупирована до конца этого мирового хода (номер). */
+  occupied?: number
+  /** Эмбарго исполнителю геноцида — пока не сменится власть. */
+  embargo?: true
+  /** После геноцида доход −1 до этого мирового хода включительно. */
+  emptied?: number
+}
+
+/** Война на «Фронте». Метка — с края первой стороны: её +7 — «ПОБЕДА!» первой, −7 — второй. */
+export interface War {
+  n: number
+  kind: 'местная' | 'мировая'
+  /** Стороны: первая страна — ядро коалиции (её позиция и идеология — позиция и идеология стороны). */
+  sides: [number[], number[]]
+  mark: number
+  /** Военная диктатура: первый бросок атаки ещё не сделан. */
+  first: [boolean, boolean]
+  /** «Священная война»: переброс за этот мировой ход ещё есть. */
+  holy: [boolean, boolean]
+  /** «Ни шагу назад!»: нечетов подряд у штурмующей стороны. */
+  siege: [number, number]
+  /** Атаки стороны (для преимущества в каждую вторую). */
+  attacks: [number, number]
+  rounds: number
+  startWorldTurn: number
+  /** Война только что объявлена: смена власти даёт мир лишь на d12 10–12. */
+  declaring?: true
+  /** Война решена: сторона-победитель или мир; итоги ещё не разыграны. */
+  over?: 0 | 1 | 'мир'
+  /** Итоги разыгрываются: повторный конец войны не начинается. */
+  closing?: true
 }
 
 export interface World {
@@ -199,7 +230,11 @@ export interface Player {
   donations: number
 
   items: Held[]
-  inst?: { kind: InstKind; left: number; tag?: Tag; workoff?: number; turn: number; noStigma?: true; /** Фронт: тактика этого хода. */ tactic?: 'атака' | 'держать' | 'беречь' }
+  inst?: {
+    kind: InstKind; left: number; tag?: Tag; workoff?: number; turn: number; noStigma?: true
+    /** Фронт: тактика этого хода, сторона, номер войны, отпуск по ранению, доброволец на чужой войне. */
+    tactic?: 'атака' | 'держать' | 'беречь'; side?: 0 | 1; war?: number; leave?: true; foreign?: true
+  }
   /** Подростковый срыв уже был. */
   teenBreak?: true
 
@@ -259,6 +294,13 @@ export interface GameState {
   current: number
   /** Круг замкнулся на мировом ходе: он идёт следующим шагом. */
   worldDue?: true
+  /** Круг замкнулся во время войны: хранитель часов бросает за стороны без солдат-игроков. */
+  frontDue?: true
+  /** Идёт война (одна на мир) и сколько войн было за партию. */
+  war?: War
+  wars?: number
+  /** Счётчики партии: войны, итоги, броски хранителя — для сверки с симуляцией. */
+  stats?: Record<string, number>
   world: World
   /** Стопки: id стопки → id карт, верхняя первая. */
   piles: Record<string, string[]>
@@ -289,7 +331,7 @@ export interface Request {
   /** Что за решение: по нему ИИ и интерфейс понимают смысл вопроса. */
   type:
     | 'ход' | 'карта' | 'характеристика' | 'козырь' | 'отмена' | 'класс' | 'сброс' | 'предмет'
-    | 'смысл' | 'действие' | 'проверка' | 'кризис' | 'эмиграция'
+    | 'смысл' | 'действие' | 'проверка' | 'кризис' | 'эмиграция' | 'фронт'
   text: string
   card?: string
   options: Option[]
@@ -315,6 +357,7 @@ export type LogEvent =
   | { t: 'смерть'; p: number; cause: string }
   | { t: 'финал'; p: number }
   | { t: 'мир'; text: string }
+  | { t: 'фронт'; text: string; mark?: number; p?: number }
   | { t: 'этап3'; p: number; rule: string }
 
 export interface SaveFile { version: 1; base: string; answers: string[] }

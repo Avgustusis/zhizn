@@ -81,7 +81,7 @@ export function* emigrate(g: G, p: Player, o: EmigrateOptions = {}): Flow<boolea
     const pen = home ? 0 : penaltyOf(g, distance(g, p, c))
     const price = o.free || kind === 'бегство' ? 0 : Math.max(0, t.price[c.pos] - (o.invite ? 1 : 0))
     const legal = kind === 'бегство' || o.noCheck || legalExit(g, p, id)
-    return { id: String(id), label: `${c.name}: ${c.pos}, ${c.ideology}`, note: [`${rel}`, price ? `${price} возм.` : 'даром', pen ? `псих. ${pen}` : 'культура близка', home ? 'родина' : '', legal ? '' : 'легально нельзя'].filter(Boolean).join(' · '), ...(price > p.vozm ? { off: 'нет денег' } : {}) }
+    return { id: String(id), label: `${c.name}: ${c.pos}, ${c.ideology}`, note: [`${rel}`, price ? `${price} возм.` : 'даром', pen ? `псих. ${pen}` : 'культура близка', home ? 'родина' : '', legal ? '' : 'легально нельзя'].filter(Boolean).join(' · '), ...(price > 0 && price > p.vozm ? { off: 'нет денег' } : {}) }
   }
   const options = (o.dest !== undefined ? [o.dest] : others).map(describeDest)
   // Ни на одну страну не хватает денег — переезд не состоится.
