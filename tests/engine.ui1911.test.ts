@@ -103,19 +103,19 @@ describe('правки 19.11', () => {
   })
 
   it('сиделка: вопрос один раз при входе в Древность, дальше — настройка; переключатель в вопросе хода', () => {
-    // Первое зерно, где простой ИИ доживает до Древности.
-    for (let seed = 1; seed <= 40; seed++) {
+    // Первое зерно, где простой ИИ проживает в Древности хотя бы один ход.
+    for (let seed = 1; seed <= 60; seed++) {
       const e = new Engine(real, { mode: 'поколение', seed, seats: [{ name: 'И1' }] }, { checkpoints: false })
-      let entry = 0, toggles = 0
+      let entry = 0, ancientTurns = 0, toggles = 0
       while (e.pending) {
         const r = e.pending
         if (r.text.startsWith('Древность:')) entry++
-        if (r.type === 'ход' && r.options.some((o) => o.id === 'сиделка')) toggles++
+        if (r.type === 'ход' && e.state.players[0].seg === 5) { ancientTurns++; if (r.options.some((o) => o.id === 'сиделка')) toggles++ }
         e.answer(answer(e.g, r))
       }
-      if (e.state.players[0].seg !== 5) continue
+      if (!ancientTurns) continue
       expect(entry).toBe(1)
-      expect(toggles).toBeGreaterThan(0)
+      expect(toggles).toBe(ancientTurns)
       return
     }
     throw new Error('никто не дожил до Древности')
