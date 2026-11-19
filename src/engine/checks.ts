@@ -6,6 +6,7 @@ import { ask, clamp, countryOf, emit, roll3, type Flow, type G } from './core.ts
 import { cond, countryProfile, cultureLean, effStat, isMinority, kindOf, pairOf, privilege, profileOf, sexStanding, type Ctx } from './cond.ts'
 import { count, removeHeld, rollDie } from './change.ts'
 import { run } from './exec.ts'
+import { cigarettesOk } from './tricks.ts'
 import type { Held, Player, Stat, Tag } from './types.ts'
 
 // ── Шансы ───────────────────────────────────────────────────────────────
@@ -231,6 +232,8 @@ function playable(g: G, p: Player, tags: Tag[]): { h: Held; i: number; add: numb
     const item = g.items.get(h.name)
     item?.play?.forEach((pl, i) => {
       if (!pl.add && !pl.auto) return
+      // «Блок сигарет»: валюта только в тюрьме и кабале.
+      if (pl.rule === 'Только в тюрьме и кабале: там это валюта' && !cigarettesOk(p)) return
       if (!pl.any && !(pl.tags ?? []).some((x) => tags.includes(x))) return
       out.push({ h, i, add: pl.add ?? 0, auto: !!pl.auto })
     })

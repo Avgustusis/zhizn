@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { loadContent } from '../src/data/content.ts'
-import { gainItem, setClass } from '../src/engine/change.ts'
+import { addParam, gainItem, setClass } from '../src/engine/change.ts'
+import { anytimePlays, borderHelp, cigarettesOk, keepClass, playMenu, saveFromBondage } from '../src/engine/tricks.ts'
 import { atPowerChange, pensionStazh } from '../src/engine/items.ts'
 import { cond, newCtx } from '../src/engine/cond.ts'
 import type { Flow } from '../src/engine/core.ts'
@@ -148,5 +149,47 @@ describe('этап 3г: пассивные свойства предметов',
     expect(JSON.stringify(sport.bonus)).toContain('Старость')
     const name = real.items.find((i) => i.name === 'Фамильное имя')!
     expect(JSON.stringify(name.bonus)).toContain('Дурная слава')
+  })
+})
+
+describe('этап 3г: розыгрыш карт', () => {
+  it('меню «сыграть карту»: «Семейные сбережения» +5 возм., «Всё на красное» удваивает', () => {
+    const { e, p } = lab(20, { vozm: 3 })
+    drive(gainItem(e.g, p, 'Семейные сбережения'))
+    expect(anytimePlays(e.g, p).map((x) => x.label)).toContain('«Семейные сбережения»')
+    drive(playMenu(e.g, p), (r) => r.options.find((o) => o.label === '«Семейные сбережения»')?.id)
+    expect(p.vozm).toBe(8)
+    expect(p.items.some((h) => h.name === 'Семейные сбережения')).toBe(false)
+  })
+
+  it('«Лечение за границей» отменяет смерть от физ.: остаёшься на −9', () => {
+    const { e, p } = lab(21, { phys: -8 })
+    drive(gainItem(e.g, p, 'Лечение за границей'))
+    addParam(e.g, p, 'физ', -5, newCtx('карта'))
+    expect(p.alive).toBe(true)
+    expect(p.phys).toBe(-9)
+  })
+
+  it('«Золотой парашют»: класс не теряется в «Смуте»', () => {
+    const { e, p } = lab(22, { cls: 'Интеллигенция' })
+    drive(gainItem(e.g, p, 'Золотой парашют'))
+    const { value } = drive(keepClass(e.g, p, 'Народ', newCtx('карта', { deck: 'смута' })), (r) => (r.options.some((o) => o.id === 'да') ? 'да' : undefined))
+    expect(value).toBe(true)
+    expect(p.items.some((h) => h.name === 'Золотой парашют')).toBe(false)
+  })
+
+  it('«Семейные сбережения» спасают от кабалы; «Земляк за границей» — +2 на границе', () => {
+    const { e, p } = lab(23)
+    drive(gainItem(e.g, p, 'Семейные сбережения'))
+    expect(drive(saveFromBondage(e.g, p), () => 'да').value).toBe(true)
+    drive(gainItem(e.g, p, 'Земляк за границей'))
+    expect(drive(borderHelp(e.g, p), () => 'да').value).toBe(2)
+  })
+
+  it('«Блок сигарет» — валюта только в тюрьме и кабале', () => {
+    const { p } = lab(24)
+    expect(cigarettesOk(p)).toBe(false)
+    p.inst = { kind: 'тюрьма', left: 2, turn: 0 }
+    expect(cigarettesOk(p)).toBe(true)
   })
 })

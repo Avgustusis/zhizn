@@ -5,6 +5,8 @@
  */
 import type { Node } from '../../data/schema.ts'
 import type { G } from '../core.ts'
+import { anytimePlays } from '../tricks.ts'
+import { kindOf } from '../cond.ts'
 import type { Player, Request } from '../types.ts'
 
 /** Грубая ценность шагов для этого игрока: здоровье дороже, когда его мало; деньги — когда их нет. */
@@ -92,6 +94,17 @@ function bizGain(g: G, nodes: Node[] | undefined): string | undefined {
 
 const rankOf = (pos: string): number => ({ 'ядро': 2, 'полупериферия': 1, 'периферия': 0 } as Record<string, number>)[pos]
 
+/** Карта «в любой момент», которая закрывает нужду: деньги в минусе, психика или тело просели. */
+function wantPlay(g: G, p: Player): string | undefined {
+  const need = (k: string, x: number) => (k === 'возм' && p.vozm < 0 && x > 0) || (k === 'псих' && p.psy < -2 && x > 0) || (k === 'физ' && p.phys < -3 && x > 0)
+  for (const x of anytimePlays(g, p)) {
+    if (kindOf(g, x.h) === 'антикозырь') continue
+    const adds = (x.pl.effect ?? []).flatMap((n) => ('add' in n ? Object.entries(n.add) : []))
+    if (adds.some(([k, v]) => need(k, v)) && !adds.some(([k, v]) => v < 0 && k !== 'Пожертвования')) return x.id
+  }
+  return undefined
+}
+
 /** Ответ ИИ на вопрос движка. */
 export function answer(g: G, req: Request): string {
   const p = g.s.players[req.player]
@@ -100,6 +113,7 @@ export function answer(g: G, req: Request): string {
   const best = (score: (o: Request['options'][number]) => number) => open.reduce((a, b) => (score(b) > score(a) ? b : a)).id
   switch (req.type) {
     case 'ход': {
+      if (ids.includes('сыграть') && wantPlay(g, p)) return 'сыграть'
       // Сиделка — как в симуляции: держать, пока Возможностей 4 и больше.
       if (ids.includes('сиделка') && !!p.rules['сиделка постоянно'] !== p.vozm >= 4) return 'сиделка'
       return ids[0]
@@ -130,7 +144,11 @@ export function answer(g: G, req: Request): string {
       }
       return best((o) => value(p, o.effect))
     }
-    case 'козырь': case 'отмена': return ids.includes('да') ? 'да' : ids.find((x) => x !== 'нет') ?? ids[0]
+    case 'козырь': case 'отмена':
+      if (req.text.startsWith('Какую карту сыграть')) return wantPlay(g, p) ?? 'нет'
+      // «Старушка у подъезда» — без нужды не тратить.
+      if (req.text.includes('Посмотреть верхнюю карту')) return 'нет'
+      return ids.includes('да') ? 'да' : ids.find((x) => x !== 'нет') ?? ids[0]
     case 'сброс': {
       // Ради партнёра ИИ освобождает ячейку: сперва «Знакомый», потом «Друг», потом любая связь (сверка 19.11: пара дороже).
       const want = req.text.match(/Взять «([^»]+)»/)?.[1]

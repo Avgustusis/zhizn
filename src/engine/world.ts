@@ -16,6 +16,7 @@ import { emigrate } from './emigration.ts'
 import { afterDeclare, coupPeace, declareWar, endWar, warWorldEnd, warWorldStart } from './war.ts'
 import { nearMiss, socialWorld } from './social.ts'
 import { atPowerChange } from './items.ts'
+import { saveVozm } from './tricks.ts'
 import type { Cls, Country, Player, Relation } from './types.ts'
 
 const alive = (p: Player | undefined): p is Player => !!p && p.alive && !p.finished
@@ -162,7 +163,7 @@ function* crisis(g: G, c: Country): Flow {
     // Поддержавшим выступление: −2 возм. и «Учёт»; при диктатурах и национализме — ещё тюрьма d3.
     for (const p of inCountry(g, c.id)) {
       if (sides.get(p.seat) !== 'за') continue
-      addParam(g, p, 'возм', t.rebelCost, newCtx('правило'))
+      addParam(g, p, 'возм', yield* saveVozm(g, p, t.rebelCost, newCtx('правило', { deck: 'смута', tags: ['#политика'] })), newCtx('правило'))
       yield* gainItem(g, p, t.rebelStigma)
       if (t.harsh.includes(c.ideology) && !p.inst) enterInst(g, p, 'тюрьма', rollDie(g, p, g.c.tables.inst.prison.light, 'срок'), '#политика')
     }

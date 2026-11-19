@@ -8,6 +8,7 @@ import { ask, clamp, countryOf, emit, roll3, say, step, type Flow, type G } from
 import { has, held, kindOf, newCtx, relation } from './cond.ts'
 import { chance } from './checks.ts'
 import { mentorStart, onArrive } from './items.ts'
+import { borderHelp, smugglerChannel } from './tricks.ts'
 import { addParam, count, dropHeld, enterInst, gainItem, removeHeld, rollDie, setClass } from './change.ts'
 import type { Country, Culture, Player } from './types.ts'
 
@@ -177,14 +178,21 @@ export function* emigrate(g: G, p: Player, o: EmigrateOptions = {}): Flow<boolea
     if (!ok) { addParam(g, p, 'физ', t.flight.phys, ctx); if (p.vozm > 0) addParam(g, p, 'возм', -Math.ceil(p.vozm / 2), ctx) }
     count(p, 'бегство')
   } else {
+    const citizen = p.citizenship.includes(dest) && relation(g, p.country, dest) !== 'вражда'
+    // «Контрабандный канал»: нелегальный переход без проверки и без потери цены.
+    if (!o.noCheck && !citizen && (yield* smugglerChannel(g, p))) {
+      say(g, p, 'контрабандный канал: через границу без проверки')
+      yield* arrive(g, p, dest, false, 'нелегально', !!o.keepClass)
+      return true
+    }
     const price = o.free ? 0 : Math.max(0, t.price[c.pos] - (o.invite ? 1 : 0))
     if (price) addParam(g, p, 'возм', -price, ctx)
-    const citizen = p.citizenship.includes(dest) && relation(g, p.country, dest) !== 'вражда'
     if (!legalExit(g, p, dest) && !o.noCheck) {
       legal = false
       say(g, p, 'легально не выехать: только нелегально')
     } else if (!o.noCheck && !citizen) {
-      const mod = borderMod(g, p, c, !!o.invite)
+      // «Земляк за границей», «Дальний родственник»: +2 к броску (сверх потолка поправок).
+      const mod = borderMod(g, p, c, !!o.invite) + (yield* borderHelp(g, p))
       const roll = roll3(g)
       const ok = roll.sum + mod >= t.border.dc
       emit(g, { t: 'проверка', p: p.seat, stat: 'Смекалка', dice: roll.dice, kept: roll.sum, value: 0, mod, trump: 0, dc: t.border.dc, ok, adv: 0, what: 'граница: 3d6' })

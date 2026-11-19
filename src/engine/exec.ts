@@ -7,6 +7,7 @@ import { firstCheck, previewCheck, runCheck, spend, strongIn, type CheckPreview 
 import { RULE_NOTES, runRule } from './rules.ts'
 import { frontLoss } from './war.ts'
 import { epidemicSoft } from './items.ts'
+import { keepClass, saveVozm } from './tricks.ts'
 import type { Player, Stat } from './types.ts'
 
 /** Попадает ли значение кубика в диапазон «1-2» или «6». */
@@ -40,6 +41,8 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
       let d = param === 'физ' && delta < 0 && ctx.deck === 'фронт' && p.inst?.kind === 'фронт' ? yield* frontLoss(g, p, delta) : delta
       // «Фильтр-бочка Олан»: эпидемии бьют на 1 мягче.
       if (param === 'физ' && d < 0) d = Math.min(0, d + epidemicSoft(g, p, ctx.card))
+      // «Офшор», «Сосед-электрик»: потеря Возможностей на картах.
+      if (param === 'возм' && d < 0 && ctx.source === 'карта') d = yield* saveVozm(g, p, d, ctx)
       addParam(g, p, param, d, c)
     }
   } else if ('say' in n) say(g, p, n.say)
@@ -87,7 +90,7 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
   else if ('rule' in n) yield* runRule(g, p, n.rule, n.arg, ctx)
   else if ('charStep' in n) charStep(g, p, n.charStep, n.n ?? 1)
   else if ('mod' in n) p.mods.push({ ...n.mod, seg: p.seg })
-  else if ('cls' in n) setClass(g, p, n.cls)
+  else if ('cls' in n) { if (!(yield* keepClass(g, p, n.cls, ctx))) setClass(g, p, n.cls) }
   else if ('stab' in n) {
     const c = ctx.target !== undefined ? g.s.world.countries[ctx.target] : countryOf(g, p)
     const w = g.c.tables.world.stability

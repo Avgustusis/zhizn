@@ -13,6 +13,7 @@ import { whyNot } from './explain.ts'
 import { acculturate, decayStigmas, deportRisk, emigrate, naturalize } from './emigration.ts'
 import { backToFront, frontTurn, volunteerAsk, volunteerSides } from './war.ts'
 import { afterCard, atSegment } from './items.ts'
+import { anytimePlays, cancelWarCard, peekTop, playMenu, saveFromBondage, travelDiscount } from './tricks.ts'
 import type { Action, Player } from './types.ts'
 
 const cellsOf = (g: G, seg: number): BoardCell[] => g.c.board.segments[seg].cells
@@ -39,6 +40,8 @@ export function* drawCard(g: G, p: Player, pile: string): Flow {
     const id = stack.shift()!
     const { card, deck } = g.cards.get(id)!
     if (fits(g, p, card, deck)) {
+      // «Старушка у подъезда»: посмотреть верхнюю карту и, если надо, убрать её под низ.
+      if (yield* peekTop(g, p, card.title, card.text || card.src)) { stack.push(id); say(g, p, `«${card.title}» — под низ`); continue }
       const where = yield* playCard(g, p, card, deck)
       if (where === 'замешать') stack.splice(rnd(g, stack.length + 1), 0, id)
       else stack.push(id)
@@ -60,6 +63,8 @@ export function* playCard(g: G, p: Player, card: Card, deck: string): Flow<'по
     const a = yield* ask(g, p, 'отмена', `${card.title}. Отменить карту козырем «${trump.name}»?`, [{ id: 'да', label: `сыграть «${trump.name}»` }, { id: 'нет', label: 'оставить' }], { card: card.id, force: true })
     if (a === 'да') { spend(g, p, trump); return 'под низ' }
   }
+  // «Друг в Генштабе»: отменить одну карту #война для себя и семьи.
+  if (yield* cancelWarCard(g, p, card.tags, ctx)) { say(g, p, '«Друг в Генштабе»: карта отменена'); return 'под низ' }
   if (card.miracle) p.flags['чудо'] = true
   if (card.tags.includes('#утрата')) visit(p, 'утрата')
   yield* run(g, p, card.effect, ctx)
@@ -359,7 +364,7 @@ function* perform(g: G, p: Player, a: Action, via = false): Flow {
   if (a.place) visit(p, a.place)
   for (const l of a.log ?? []) p.counters[l] = (p.counters[l] ?? 0) + 1
   const ctx = newCtx('действие', { card: a.id, tags: a.tags ?? [], ...(a.cap ? { cap: a.cap } : {}) })
-  const price = priceOf(g, p, a) + (via ? 1 : 0)
+  const price = Math.max(0, priceOf(g, p, a) + (via ? 1 : 0) - (a.place === 'Путешествие' ? travelDiscount(g, p) : 0))
   if (price) addParam(g, p, 'возм', -price, ctx)
   if (via) p.rules['по знакомству'] = {}
   yield* run(g, p, a.effect, ctx)
@@ -386,7 +391,7 @@ export function* playerTurn(g: G, p: Player): Flow {
     const canLeave = !p.inst && p.seg >= SEGMENTS.indexOf('Молодость')
     const volunteer = leave ? [] : volunteerSides(g, p)
     let how = 'сиделка'
-    while (how === 'сиделка') {
+    while (how === 'сиделка' || how === 'сыграть') {
       how = yield* ask(g, p, 'ход', `${p.name}: твой ход`, [
       { id: 'бросок', label: 'бросить кубик' },
       // Из закрытой страны (госсоциализм, военная диктатура, полицейское государство) «по своей воле» не выпускают — только нелегально.
@@ -394,8 +399,10 @@ export function* playerTurn(g: G, p: Player): Flow {
         ? { id: 'эмиграция', label: 'уехать нелегально вместо хода', note: 'легально из твоей страны выпускают только бегством' }
         : { id: 'эмиграция', label: 'эмигрировать вместо хода' }] : []),
       ...(volunteer.length ? [{ id: 'доброволец', label: 'уйти добровольцем на «Фронт» вместо хода' }] : []),
+      ...(anytimePlays(g, p).length ? [{ id: 'сыграть', label: 'сыграть карту (козырь, вещь, знакомый)', note: 'ход не тратится' }] : []),
       ...(segName(p) === 'Древность' ? [{ id: 'сиделка', label: p.rules['сиделка постоянно'] ? 'сиделка: сейчас постоянно — переключить на «сам»' : 'сиделка: сейчас «сам» — нанять постоянно', note: 'ход не тратится' }] : []),
     ], { force: true })
+      if (how === 'сыграть') yield* playMenu(g, p)
       if (how === 'сиделка') {
         if (p.rules['сиделка постоянно']) delete p.rules['сиделка постоянно']; else p.rules['сиделка постоянно'] = {}
         say(g, p, p.rules['сиделка постоянно'] ? 'сиделка теперь постоянно' : 'теперь справляешься сам')
@@ -434,7 +441,11 @@ function* endTurn(g: G, p: Player): Flow {
       if (nurse === 'да') { addParam(g, p, 'возм', -t.segments.nurse, newCtx('правило')); p.rules['сиделка'] = {} } else addParam(g, p, 'физ', -t.segments.ancientWear, newCtx('правило'))
     }
   }
-  if (p.alive && !p.inst && p.seg >= SEGMENTS.indexOf('Молодость') && p.vozm <= t.caps.bondage) enterInst(g, p, 'кабала', 0)
+  if (p.alive && !p.inst && p.seg >= SEGMENTS.indexOf('Молодость') && p.vozm <= t.caps.bondage) {
+    // «Семейные сбережения»: один раз не попасть в кабалу.
+    if (yield* saveFromBondage(g, p)) say(g, p, '«Семейные сбережения»: в кабалу не попал')
+    else enterInst(g, p, 'кабала', 0)
+  }
   // Для угасания «Долга»: отрезок, когда Возможности были ниже нуля.
   if (p.vozm < 0) visit(p, 'в минусе')
   // Карантин — только на этот ход; «Судимость гаснет через один ход» — тоже.

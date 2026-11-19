@@ -6,6 +6,7 @@ import { runCheck } from './checks.ts'
 import { run } from './exec.ts'
 import { settle } from './meaning.ts'
 import { afterClass, afterGain } from './items.ts'
+import { deathSave, twoDraws } from './tricks.ts'
 import type { CharPole, Cls, Culture, Held, InstKind, Player, Race, Stat, Tag } from './types.ts'
 
 export const count = (p: Player, name: string, n = 1): void => { p.counters[name] = (p.counters[name] ?? 0) + n }
@@ -107,7 +108,7 @@ export function checkHealth(g: G, p: Player, ctx: Ctx): void {
   const t = g.c.tables
   const soft = ctx.source === 'действие' || p.inst?.kind === 'кабала'
   if (p.phys <= t.caps.death) {
-    if (soft) { p.phys = t.caps.floor; if (ctx.source === 'действие') breakdown(g, p) } else return death(g, p, 'физическое здоровье')
+    if (soft) { p.phys = t.caps.floor; if (ctx.source === 'действие') breakdown(g, p) } else if (!deathSave(g, p)) return death(g, p, 'физическое здоровье')
   }
   if (p.psy <= t.caps.death) {
     if (soft) { p.psy = t.caps.floor; if (ctx.source === 'действие') breakdown(g, p); return }
@@ -277,7 +278,9 @@ export function* gainItem(g: G, p: Player, name: string, opts: { adopted?: true 
   // «Партнёр» не приходит, если уже есть Партнёр или Супруг(а).
   if (name === 'Партнёр' && pairOf(g, p)) { say(g, p, 'пара уже есть: новый Партнёр не приходит'); return }
   const group = g.groups.has(name) ? name : undefined
-  const cardName = group ? drawBlind(g, `люди.${group}`, () => g.groups.get(group)!.flatMap((n) => Array<string>(Math.max(1, g.items.get(n)!.copies)).fill(n))) : name
+  const draw = () => drawBlind(g, `люди.${group}`, () => g.groups.get(group!)!.flatMap((n) => Array<string>(Math.max(1, g.items.get(n)!.copies)).fill(n)))
+  // «Тот, кто всех знает»: следующий Партнёр или Друг — две карты, берёшь одну.
+  const cardName = group ? yield* twoDraws(g, p, group, draw) : name
   const item = g.items.get(cardName)
   if (!item) throw new Error(`нет предмета «${cardName}»`)
   if (item.group === 'Партнёр' && pairOf(g, p)) {
