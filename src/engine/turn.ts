@@ -12,6 +12,7 @@ import { businessAtEntry, money } from './market.ts'
 import { whyNot } from './explain.ts'
 import { acculturate, decayStigmas, deportRisk, emigrate, naturalize } from './emigration.ts'
 import { backToFront, frontTurn, volunteerAsk, volunteerSides } from './war.ts'
+import { afterCard, atSegment } from './items.ts'
 import type { Action, Player } from './types.ts'
 
 const cellsOf = (g: G, seg: number): BoardCell[] => g.c.board.segments[seg].cells
@@ -62,6 +63,7 @@ export function* playCard(g: G, p: Player, card: Card, deck: string): Flow<'по
   if (card.miracle) p.flags['чудо'] = true
   if (card.tags.includes('#утрата')) visit(p, 'утрата')
   yield* run(g, p, card.effect, ctx)
+  if (p.alive) yield* afterCard(g, p, card.tags)
   // #закон: проваленная проверка в «жёсткой» стране — на d6 = 1 тюрьма («Тотальные институты»).
   const t = g.c.tables.inst
   const c = countryOf(g, p)
@@ -134,7 +136,8 @@ function* enterSegment(g: G, p: Player): Flow {
   // Жетоны ◆: три на входе в Молодость, неиспользованные сгорают на выходе.
   p.youthTokens = seg === 'Молодость' ? g.c.tables.youthTokens : 0
   if (seg === 'Молодость' && p.cls === 'Армия' && p.citizenship.includes(p.country)) yield* gainItem(g, p, 'Присяга')
-  if (seg === 'Зрелость' && p.cls === 'Армия' && has(g, p, 'Присяга') && p.stazh >= 5 && !has(g, p, 'Офицерское звание')) {
+  // «Старый офицер» — ключ к «Офицерскому званию»: аттестация и без пяти лет Стажа.
+  if (seg === 'Зрелость' && p.cls === 'Армия' && has(g, p, 'Присяга') && (p.stazh >= 5 || has(g, p, 'Старый офицер')) && !has(g, p, 'Офицерское звание')) {
     const stat = p.stats['Интеллект'] >= p.stats['Харизма'] ? 'Интеллект' as const : 'Харизма' as const
     const roll = roll3(g, p.predisp === stat ? 1 : 0)
     const ok = roll.sum + p.stats[stat] >= 12
@@ -146,6 +149,7 @@ function* enterSegment(g: G, p: Player): Flow {
   if (charLean(p, 'Аппетит')) { addParam(g, p, 'физ', -1, ctx); addParam(g, p, 'псих', 1, ctx) }
   rollFashion(g, countryOf(g, p))
   yield* itemsPerSeg(g, p)
+  yield* atSegment(g, p)
   yield* businessAtEntry(g, p)
   decayStigmas(g, p)
   if (seg !== 'Детство') { yield* acculturate(g, p); naturalize(g, p) }
@@ -227,7 +231,7 @@ function* instTurn(g: G, p: Player): Flow {
   if (inst.kind === 'кабала') {
     // Отработка: +2 возм. и по очереди −1 физ. и −1 псих.; здоровье здесь не падает ниже −9.
     const ctx = newCtx('правило')
-    addParam(g, p, 'возм', inst.workoff ?? t.bondage.perTurn, ctx)
+    addParam(g, p, 'возм', (inst.workoff ?? t.bondage.perTurn) + (has(g, p, 'Швейная машинка') ? 1 : 0), ctx)
     addParam(g, p, inst.turn % 2 ? 'физ' : 'псих', -1, ctx)
   }
   yield* drawCard(g, p, inst.kind)

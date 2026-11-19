@@ -5,6 +5,7 @@ import { charAxisOf, cultureLean, culturesOf, has, held, kindOf, pairOf, type Ct
 import { runCheck } from './checks.ts'
 import { run } from './exec.ts'
 import { settle } from './meaning.ts'
+import { afterClass, afterGain } from './items.ts'
 import type { CharPole, Cls, Culture, Held, InstKind, Player, Race, Stat, Tag } from './types.ts'
 
 export const count = (p: Player, name: string, n = 1): void => { p.counters[name] = (p.counters[name] ?? 0) + n }
@@ -163,6 +164,7 @@ export function setClass(g: G, p: Player, cls: Cls): boolean {
   if (cls === 'Армия') p.flags['Армия, война'] = true
   p.vozm = Math.min(p.vozm, vozmCap(g, p))
   if (cls === 'Мафия') fire(g, p, 'переход в Мафию')
+  afterClass(g, p, from, cls)
   return true
 }
 
@@ -349,6 +351,7 @@ export function* gainItem(g: G, p: Player, name: string, opts: { adopted?: true 
   if (item.group === 'Ребёнок') visit(p, 'ребёнок')
   if (item.kind === 'дело') count(p, 'своё дело открыто')
   if (item.onGain) yield* run(g, p, item.onGain, newCtx('правило'))
+  yield* afterGain(g, p, h)
   return h
 }
 const inSlotKind = (g: G, _kind: string, group?: string): boolean => !g.c.tables.slots.free.includes(group ?? '')

@@ -6,6 +6,7 @@ import { addParam, charStep, enterInst, gainItem, leaveInst, loseItem, rollDie, 
 import { firstCheck, previewCheck, runCheck, spend, strongIn, type CheckPreview } from './checks.ts'
 import { RULE_NOTES, runRule } from './rules.ts'
 import { frontLoss } from './war.ts'
+import { epidemicSoft } from './items.ts'
 import type { Player, Stat } from './types.ts'
 
 /** Попадает ли значение кубика в диапазон «1-2» или «6». */
@@ -36,7 +37,9 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
     const c = n.cap !== undefined ? { ...ctx, cap: n.cap } : ctx
     for (const [param, delta] of Object.entries(n.add)) {
       // Фронт: потеря физ. в событии меньше у офицера и при «Беречь себя»; «Боевые друзья» могут её отменить.
-      const d = param === 'физ' && delta < 0 && ctx.deck === 'фронт' && p.inst?.kind === 'фронт' ? yield* frontLoss(g, p, delta) : delta
+      let d = param === 'физ' && delta < 0 && ctx.deck === 'фронт' && p.inst?.kind === 'фронт' ? yield* frontLoss(g, p, delta) : delta
+      // «Фильтр-бочка Олан»: эпидемии бьют на 1 мягче.
+      if (param === 'физ' && d < 0) d = Math.min(0, d + epidemicSoft(g, p, ctx.card))
       addParam(g, p, param, d, c)
     }
   } else if ('say' in n) say(g, p, n.say)

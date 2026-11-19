@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { loadContent } from '../src/data/content.ts'
-import { gainItem } from '../src/engine/change.ts'
+import { gainItem, setClass } from '../src/engine/change.ts'
+import { atPowerChange, pensionStazh } from '../src/engine/items.ts'
 import { cond, newCtx } from '../src/engine/cond.ts'
 import type { Flow } from '../src/engine/core.ts'
 import { Engine } from '../src/engine/engine.ts'
@@ -86,5 +87,66 @@ describe('этап 3г: правила карт', () => {
     expect(priceOf(e.g, p, act('обряд'))).toBe(0)
     rule(e, p, 'обряд дорожает', '«Перекочёвка» +1 возм. навсегда')
     expect(priceOf(e.g, p, act('обряд'))).toBe(1)
+  })
+})
+
+describe('этап 3г: пассивные свойства предметов', () => {
+  it('«Карьерист» уходит, когда класс падает (d6 1–3); при росте класса — нет', () => {
+    let gone = 0
+    for (let seed = 1; seed <= 40; seed++) {
+      const { e, p } = lab(seed, { cls: 'Интеллигенция', citizenship: [0] })
+      p.items.push({ uid: 999, name: 'Карьерист', spouse: true })
+      setClass(e.g, p, 'Олигархи')
+      expect(p.items.some((h) => h.name === 'Карьерист')).toBe(true)
+      setClass(e.g, p, 'Народ')
+      if (!p.items.some((h) => h.name === 'Карьерист')) gone++
+    }
+    expect(gone).toBeGreaterThan(10)
+    expect(gone).toBeLessThan(30)
+  })
+
+  it('«Мастер цеха»: Стаж 5 даёт пенсию как Стаж 7', () => {
+    const { e, p } = lab(6, { stazhHire: 5 })
+    const before = pension(e.g, p)
+    drive(gainItem(e.g, p, 'Мастер цеха'))
+    expect(pension(e.g, p)).toBeGreaterThanOrEqual(before)
+    expect(pensionStazh(e.g, p)).toBe(7)
+  })
+
+  it('«Собутыльник»: «Привычка» на втором визите в бар; «Швейная машинка»: подработка +1', () => {
+    const { e, p } = lab(7, { seg: 3 })
+    drive(gainItem(e.g, p, 'Собутыльник'))
+    p.counters[`действие:бар:${p.seg}`] = 2
+    rule(e, p, 'привычка', 'бар')
+    expect(p.items.some((h) => h.name === 'Привычка')).toBe(true)
+  })
+
+  it('«Партбилет» при смене власти на d6 1–3 становится «Дурной славой»', () => {
+    let turned = 0
+    for (let seed = 1; seed <= 30; seed++) {
+      const { e, p } = lab(seed, { seg: 3 })
+      drive(gainItem(e.g, p, 'Партбилет'))
+      drive(atPowerChange(e.g, p, e.state.world.countries[0], 'Армия'))
+      if (!p.items.some((h) => h.name === 'Партбилет')) { turned++; expect(p.items.some((h) => h.name === 'Дурная слава')).toBe(true) }
+    }
+    expect(turned).toBeGreaterThan(5)
+    expect(turned).toBeLessThan(25)
+  })
+
+  it('«Человек из кабинета» уходит при любой смене власти; «Хозяин района» — если правила Мафия', () => {
+    const { e, p } = lab(8, { seg: 3 })
+    drive(gainItem(e.g, p, 'Человек из кабинета'))
+    drive(atPowerChange(e.g, p, e.state.world.countries[0], 'Армия'))
+    expect(p.items.some((h) => h.name === 'Человек из кабинета')).toBe(false)
+    drive(gainItem(e.g, p, 'Хозяин района'))
+    drive(atPowerChange(e.g, p, e.state.world.countries[0], 'Армия'))
+    expect(p.items.some((h) => h.name === 'Хозяин района')).toBe(true)
+  })
+
+  it('«Имя в спорте» в Старости не даёт бонуса; «Фамильное имя» гасит «Дурная слава»', () => {
+    const sport = real.items.find((i) => i.name === 'Имя в спорте')!
+    expect(JSON.stringify(sport.bonus)).toContain('Старость')
+    const name = real.items.find((i) => i.name === 'Фамильное имя')!
+    expect(JSON.stringify(name.bonus)).toContain('Дурная слава')
   })
 })

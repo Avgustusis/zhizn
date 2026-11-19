@@ -15,6 +15,7 @@ import { againstCulture, classesFor } from './setup.ts'
 import { emigrate } from './emigration.ts'
 import { afterDeclare, coupPeace, declareWar, endWar, warWorldEnd, warWorldStart } from './war.ts'
 import { nearMiss, socialWorld } from './social.ts'
+import { atPowerChange } from './items.ts'
 import type { Cls, Country, Player, Relation } from './types.ts'
 
 const alive = (p: Player | undefined): p is Player => !!p && p.alive && !p.finished
@@ -47,6 +48,9 @@ export function foresight(g: G): void {
   const t = g.c.tables.foresight
   const top = nextWorldCard(g, false)
   for (const p of g.s.players.filter(alive)) {
+    // «Радиоприёмник «Общая волна»: в диктатурах слышишь то, что глушат, — верх колоды «Мир».
+    const radio = p.items.some((h) => h.name === 'Радиоприёмник «Общая волна»') && g.c.tables.itemRules.artDanger.includes(g.s.world.countries[p.country].ideology)
+    if (radio && p.stats['Мудрость'] < t.card) { say(g, p, `радио ловит то, что глушат: «${top?.title ?? 'тишина'}»`); continue }
     if (p.stats['Мудрость'] < t.card) continue
     const c = g.s.world.countries[p.country]
     say(g, p, `предчувствие: «${top?.title ?? 'тишина'}»${p.stats['Мудрость'] >= t.stability ? `; стабильность страны ${c.stability}` : ''}`)
@@ -228,6 +232,7 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
     if (!p.alive) continue
     yield* run(g, p, card.sides![sideKey(ctx.side!)], ctx)
     side = ctx.side!
+    if (p.alive) yield* atPowerChange(g, p, c, oldDom)
     if (!p.alive) { turmoilCtx.delete(p.seat); continue }
     // 1) Победители могут перейти в новый доминирующий класс; в Олигархи — только «Везение», 🎲 Смекалка 18.
     if (side === 'победители' && p.cls !== c.dominant && !p.inst) {

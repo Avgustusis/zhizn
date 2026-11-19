@@ -11,6 +11,7 @@ import { run } from './exec.ts'
 import { chance, previewCheck, runCheck } from './checks.ts'
 import { policyIncome } from './social.ts'
 import { gateNote, gateOf, gateRoll } from './turn.ts'
+import { pensionStazh } from './items.ts'
 import { legalize } from './emigration.ts'
 import type { CharPole, Cls, Held, Player, Stat } from './types.ts'
 
@@ -80,6 +81,17 @@ export function* work(g: G, p: Player, kind: string): Flow {
         return
       }
     }
+    // «Серый импорт»: в стране ядра канал не работает — карта в сброс, −3 возм., d6 1–2 «Судимость»; иначе каждый ход d6 1 — партию взяли.
+    if (biz.name === 'Серый импорт') {
+      if (c.pos === 'ядро') {
+        say(g, p, '«Серый импорт»: в ядре канал не работает')
+        removeHeld(g, p, biz)
+        addParam(g, p, 'возм', -3, ctx)
+        if (rollDie(g, p, 6, '«Судимость» на 1–2') <= 2) yield* gainItem(g, p, 'Судимость')
+        return
+      }
+      if (rollDie(g, p, 6, '«Серый импорт»: партию взяли на 1') === 1) { say(g, p, 'партию взяли: дохода нет'); addStazh(p, false); return }
+    }
     const war = !!b.war && (c.war || g.s.war?.kind === 'мировая')
     const bonus = war ? b.war!.bonus : bizBonus(g, biz)
     let mod = (b.size === 'крупное' ? t.business.bigIdeology[c.ideology] : undefined) ?? t.business.ideology[c.ideology] ?? 0
@@ -96,12 +108,12 @@ export function* work(g: G, p: Player, kind: string): Flow {
       say(g, p, 'лечишься сам в своей клинике')
       addParam(g, p, 'физ', b.selfHeal.add, ctx)
     }
-    // Мафиозные дела без своих правил хода («Серый импорт», «Рекет»): d6 1 — потеря.
-    if (b.size === 'мафия' && !b.turn && rollDie(g, p, 6, `риск «${biz.name}»`) <= t.business.mafiaTurnRisk) yield* gainItem(g, p, 'Дурная слава')
+    // «Рекет»: каждый ход d6 1 — «Дурная слава» («Серый импорт» свой риск бросил выше).
+    if (biz.name === 'Рекет' && rollDie(g, p, 6, `риск «${biz.name}»`) <= t.business.mafiaTurnRisk) yield* gainItem(g, p, 'Дурная слава')
     return
   }
   if (kind === 'подработка' || weak) {
-    addParam(g, p, 'возм', Math.ceil(D / 2), ctx)
+    addParam(g, p, 'возм', Math.ceil(D / 2) + (kind === 'подработка' && has(g, p, 'Швейная машинка') ? 1 : 0), ctx)
     if (kind === 'подработка') legalize(g, p)
     if (rollDie(g, p, 6, 'износ') <= 4) hit(g, p, p.phys >= p.psy ? 'физ' : 'псих', 1, ctx)
     if (kind === 'работа') say(g, p, 'психика на исходе: работа приносит только доход подработки')
@@ -148,7 +160,7 @@ export function pension(g: G, p: Player): number {
   if (!t.segs.includes(segName(p)) || !p.citizenship.includes(p.country)) return 0
   // «Пенсия»: «работать дальше» — пенсии нет, пока работаешь.
   if (p.rules['работа на пенсии']) return 0
-  const base = t.table.find(([from]) => p.stazhHire >= from)?.[1] ?? 0
+  const base = t.table.find(([from]) => pensionStazh(g, p) >= from)?.[1] ?? 0
   if (!base) return 0
   return Math.min(base + p.pensionAdd, income(g, p))
 }

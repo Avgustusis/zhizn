@@ -7,6 +7,7 @@ import { CULTURE_AXES } from '../data/schema.ts'
 import { ask, clamp, countryOf, emit, roll3, say, step, type Flow, type G } from './core.ts'
 import { has, held, kindOf, newCtx, relation } from './cond.ts'
 import { chance } from './checks.ts'
+import { mentorStart, onArrive } from './items.ts'
 import { addParam, count, dropHeld, enterInst, gainItem, removeHeld, rollDie, setClass } from './change.ts'
 import type { Country, Culture, Player } from './types.ts'
 
@@ -268,6 +269,8 @@ export function* arrive(g: G, p: Player, dest: number, legal: boolean, kind: Kin
     if (h.name === 'Без документов') removeHeld(g, p, h)
   }
   if (!legal && !p.citizenship.includes(dest)) { yield* gainItem(g, p, 'Без документов'); p.counters['подработка без документов'] = 0 }
+  onArrive(g, p, back)
+  if (!back) mentorStart(g, p, 'новая страна')
   if (kind === 'бегство') say(g, p, 'беженец')
 }
 
