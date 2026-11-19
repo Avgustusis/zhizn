@@ -120,6 +120,13 @@ function* enterSegment(g: G, p: Player): Flow {
     const ok = roll.sum + p.phys + mod >= a.dc
     emit(g, { t: 'проверка', p: p.seat, stat: 'Выносливость', dice: roll.dice, kept: roll.sum, value: p.phys, mod, trump: 0, dc: a.dc, ok, adv: 0, what: 'вход в Древность: 3d6 + физ.' })
     if (!ok) { p.seg -= 1; p.cell = cellsOf(g, p.seg).length - 1; return death(g, p, 'возраст') }
+    // Сиделка — правило, а не карта: спрашиваем один раз; дальше — переключатель (решено 19.11).
+    const tt = t.segments
+    const nurse = yield* ask(g, p, 'действие', `Древность: −${tt.ancientWear} физ. каждый ход. Сиделка за ${tt.nurse} возм. за ход отменяет потерю (и ты живёшь не один). Как будешь жить? Переключить можно в любой ход.`, [
+      { id: 'постоянно', label: `сиделка постоянно: −${tt.nurse} возм. за ход`, note: 'пока хватает денег' },
+      { id: 'сам', label: `справляться самому: −${tt.ancientWear} физ. за ход` },
+    ], { force: true })
+    if (nurse === 'постоянно') p.rules['сиделка постоянно'] = {}
   }
   emit(g, { t: 'отрезок', p: p.seat, seg })
   expire(p)
@@ -242,18 +249,36 @@ export function priceOf(g: G, p: Player, a: Action): number {
 export function gateOf(g: G, p: Player, a: Action): { closed?: string; need?: number; rolls?: number; poles?: string } {
   if (!a.gate) return {}
   const t = g.c.tables.gate
+  const against = (pole: string) => `Это против твоих убеждений (${pole} сильно)`
   if (Array.isArray(a.gate)) {
     // Несколько черт («Контора»): любая на ±2 — закрыто; каждая на ±1 — своя проверка d6 4–6.
     const hit = a.gate.filter((x) => charLean(p, x.pole) > 0)
     const strong = hit.find((x) => charLean(p, x.pole) >= 2)
-    if (strong) return { closed: `не в твоём характере (${strong.pole})` }
+    if (strong) return { closed: against(strong.pole) }
     return hit.length ? { need: t.lux, rolls: hit.length, poles: hit.map((x) => x.pole).join(', ') } : {}
   }
   const lean = charLean(p, a.gate.pole)
   if (!lean) return {}
   if (a.gate.need) return { need: t.need[lean], poles: a.gate.pole }
-  if (lean >= 2) return a.gate.strongRoll ? { need: a.gate.strongRoll, poles: a.gate.pole } : { closed: `не в твоём характере (${a.gate.pole})` }
+  if (lean >= 2) return a.gate.strongRoll ? { need: a.gate.strongRoll, poles: a.gate.pole } : { closed: against(a.gate.pole) }
   return { need: t.lux, poles: a.gate.pole }
+}
+
+/** Подпись проверки характера у кнопки: «⚠ шанс 50%: d6 4–6 (Мера)». */
+export function gateNote(gate: ReturnType<typeof gateOf>): string {
+  if (!gate.need) return ''
+  const n = gate.rolls ?? 1
+  return `⚠ шанс ${Math.round(((7 - gate.need) / 6) ** n * 100)}%: d6 ${gate.need}–6${n > 1 ? ` × ${n}` : ''} (${gate.poles})`
+}
+
+/** Бросок характера у двери: true — прошёл. Бросок и итог — в журнале. */
+export function gateRoll(g: G, p: Player, gate: ReturnType<typeof gateOf>, place: string): boolean {
+  for (let i = 0; gate.need && i < (gate.rolls ?? 1); i++) {
+    const r = rollDie(g, p, 6, `характер (${gate.poles})`)
+    if (r < gate.need) { say(g, p, `${place}: характер (${gate.poles}) — d6 = ${r}, нужно ${gate.need}–6: дошёл до двери и раздумал`); return false }
+    say(g, p, `${place}: характер (${gate.poles}) — d6 = ${r}: прошёл`)
+  }
+  return true
 }
 
 /**
@@ -297,7 +322,7 @@ function* actions(g: G, p: Player): Flow {
       const price = priceOf(g, p, a)
       const gate = gateOf(g, p, a)
       const off = a.perSeg !== undefined && (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) >= a.perSeg ? 'уже было в этом отрезке'
-        : whyNot(g, p, a.requires) ?? gate.closed ?? (price > 0 && p.vozm < price ? 'нет денег' : undefined)
+        : whyNot(g, p, a.requires) ?? (a.refuse && !cond(g, p, a.refuse.unless) ? a.refuse.text : undefined) ?? gate.closed ?? (price > 0 && p.vozm < price ? 'нет денег' : undefined)
       const row = { a, price, gate, off, via: false }
       // Клептократия: незаконное можно сделать «по знакомству» — −1 возм. сверху, зато без риска.
       const klepto = a.illegal && countryOf(g, p).ideology === 'Клептократия'
@@ -307,7 +332,7 @@ function* actions(g: G, p: Player): Flow {
     const id = yield* ask(g, p, 'действие', `Что делаешь? Действий осталось: ${left.acts}${left.acts && !left.work ? ' (работа уже была)' : ''}${left.youth ? '; ещё ◆ рынок молодости' : ''}`, [
       ...shown.map(({ a, price, gate, off, via }) => ({
         id: via ? `${a.id}@знакомство` : a.id, label: via ? `${a.label} — по знакомству, без риска` : a.label, effect: a.effect, ...(off ? { off } : {}),
-        note: [a.slots.join(''), price ? `${price} возм.` : '', gate.need ? `характер (${gate.poles}): d6 ${gate.need}–6${(gate.rolls ?? 1) > 1 ? ` × ${gate.rolls}` : ''}, ${Math.round(((7 - gate.need) / 6) ** (gate.rolls ?? 1) * 100)}%` : '', a.note ?? ''].filter(Boolean).join(' · '),
+        note: [a.slots.join(''), price ? `${price} возм.` : '', gateNote(gate), a.note ?? ''].filter(Boolean).join(' · '),
       })),
       { id: 'конец', label: 'закончить ход' },
     ], { force: true })
@@ -315,10 +340,7 @@ function* actions(g: G, p: Player): Flow {
     const { a, gate, via } = shown.find((x) => (x.via ? `${x.a.id}@знакомство` : x.a.id) === id)!
     spendSlots(a)
     // Проверка характера: провал — действие потрачено, деньги не списываются.
-    let turned = false
-    for (let i = 0; gate.need && i < (gate.rolls ?? 1) && !turned; i++) turned = rollDie(g, p, 6, `характер: ${gate.poles}`) < gate.need
-    if (turned) {
-      say(g, p, 'дошёл до двери и раздумал')
+    if (!gateRoll(g, p, gate, a.place ?? a.label)) {
       if (a.tryCounts) p.counters[`действие:${a.id}:${p.seg}`] = (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) + 1
       continue
     }
@@ -359,11 +381,22 @@ export function* playerTurn(g: G, p: Player): Flow {
     // С Молодости можно эмигрировать вместо движения (концепция, «Виды отъезда»); в войну — уйти добровольцем.
     const canLeave = !p.inst && p.seg >= SEGMENTS.indexOf('Молодость')
     const volunteer = leave ? [] : volunteerSides(g, p)
-    const how = yield* ask(g, p, 'ход', `${p.name}: твой ход`, [
+    let how = 'сиделка'
+    while (how === 'сиделка') {
+      how = yield* ask(g, p, 'ход', `${p.name}: твой ход`, [
       { id: 'бросок', label: 'бросить кубик' },
-      ...(canLeave ? [{ id: 'эмиграция', label: 'эмигрировать вместо хода' }] : []),
+      // Из закрытой страны (госсоциализм, военная диктатура, полицейское государство) «по своей воле» не выпускают — только нелегально.
+      ...(canLeave ? [t.emigration.closed.includes(countryOf(g, p).ideology)
+        ? { id: 'эмиграция', label: 'уехать нелегально вместо хода', note: 'легально из твоей страны выпускают только бегством' }
+        : { id: 'эмиграция', label: 'эмигрировать вместо хода' }] : []),
       ...(volunteer.length ? [{ id: 'доброволец', label: 'уйти добровольцем на «Фронт» вместо хода' }] : []),
+      ...(segName(p) === 'Древность' ? [{ id: 'сиделка', label: p.rules['сиделка постоянно'] ? 'сиделка: сейчас постоянно — переключить на «сам»' : 'сиделка: сейчас «сам» — нанять постоянно', note: 'ход не тратится' }] : []),
     ], { force: true })
+      if (how === 'сиделка') {
+        if (p.rules['сиделка постоянно']) delete p.rules['сиделка постоянно']; else p.rules['сиделка постоянно'] = {}
+        say(g, p, p.rules['сиделка постоянно'] ? 'сиделка теперь постоянно' : 'теперь справляешься сам')
+      }
+    }
     if (how === 'эмиграция' && (yield* emigrate(g, p, { optional: true }))) {
       // Переезд занял ход: ни движения, ни клетки.
     } else if (how === 'доброволец') {
@@ -390,10 +423,10 @@ function* endTurn(g: G, p: Player): Flow {
   if (segName(p) === 'Древность') {
     if (p.noAging > 0) p.noAging -= 1
     else {
-      // Сиделка за 2 возм. отменяет потерю за ход (и даёт «живёшь не один» в этот ход).
-      const nurse = !p.inst && p.vozm >= t.segments.nurse
-        ? yield* ask(g, p, 'действие', `Древность: −${t.segments.ancientWear} физ. за ход. Нанять сиделку за ${t.segments.nurse} возм.?`, [{ id: 'да', label: `сиделка: −${t.segments.nurse} возм.` }, { id: 'нет', label: `без сиделки: −${t.segments.ancientWear} физ.` }], { force: true })
-        : 'нет'
+      // Сиделка за 2 возм. отменяет потерю за ход (и даёт «живёшь не один» в этот ход). Выбор — при входе в Древность.
+      const want = !!p.rules['сиделка постоянно'] && !p.inst
+      if (want && p.vozm < t.segments.nurse) say(g, p, `на сиделку не хватает (нужно ${t.segments.nurse} возм.): справляешься сам`)
+      const nurse = want && p.vozm >= t.segments.nurse ? 'да' : 'нет'
       if (nurse === 'да') { addParam(g, p, 'возм', -t.segments.nurse, newCtx('правило')); p.rules['сиделка'] = {} } else addParam(g, p, 'физ', -t.segments.ancientWear, newCtx('правило'))
     }
   }

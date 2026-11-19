@@ -66,6 +66,8 @@ CTYPES = ['Возраст', 'Отношения', 'Культура', 'Стра�
 GATES = {'Больница': (6, 1, 'need'), 'Больница+': (6, 1, 'need'), 'Психолог': (0, 1, 'need'), 'Психолог+': (0, 1, 'need'),
          'Курсы': (6, 1, 'lux'), 'Спортзал': (4, 1, 'lux'), 'Салон': (0, -1, 'lux'), 'Путешествие': (1, 1, 'lux'), 'Благотворительность': (1, 1, 'lux'),
          'Бордель': (2, -1, 'lux'), 'Бар': (4, -1, 'lux'), 'Обжорство': (4, -1, 'lux'), 'Казино': (5, -1, 'lux'), 'Знакомство': (0, -1, 'lux'), 'Хобби': (6, -1, 'lux')}
+BANKREQ = int(os.environ.get('BANKREQ', '3'))      # банк: нужен Стаж ≥ N, своё дело или класс Олигархи (утверждено 19.11; 0 — без условия)
+BANK_MICRO = float(os.environ.get('BANK_MICRO', '0.6'))   # отказали в банке — ИИ идёт в микрозаймы
 KONT_GATES = [(6, 1), (4, -1), (5, -1)]   # Беспечность, Мера, Выдержка
 PLACE_OF = lambda k: 'Салон' if k == 'Красота' else 'Спортзал' if k in ('Сила', 'Выносливость', 'Ловкость') else 'Курсы'
 IDEOS = ['Либеральная демократия', 'Социал-демократия', 'Теократия', 'Национализм', 'Госсоциализм', 'Военная диктатура', 'Клептократия']
@@ -1147,6 +1149,11 @@ class World:
             amt = 1 if p.cidx != p.birth_c else 2
             p.used_seg.add(('fam', seg)); s.do(p, 'Семья', **({'vozm': amt} if p.vozm < 0 else {'psy': amt})); return
         if p.vozm < -3 and p.psy > -5 and not p.items.get('Долг') and not p.items.get('Судимость') and ideo not in ('Госсоциализм', 'Вольница') and random.random() < 0.3:
+            if BANKREQ and not (p.stazh >= BANKREQ or getattr(p, 'biz', None) is not None or p.cls == 'Олигархи'):
+                s.stats['bank_refused'] += 1
+                if random.random() < BANK_MICRO: s.do(p, 'Микрозаймы', vozm=4); p.micro += 1; s.stats['micro_after_refuse'] += 1
+                return
+            s.stats['bank'] += 1
             s.do(p, 'Банк', vozm=4 if pos == 'ядро' else 3); p.debts += 5 if pos == 'ядро' else 4; return
         if p.vozm >= 5 and p.psy > -5:
             pr = MKT_PRICE + (PERI_SHOP if pos == 'периферия' else 0)
@@ -1386,7 +1393,8 @@ class World:
                         if p and p.alive and not p.done and p.cidx == ci:
                             card = random.choice(DECK['Смута']); s.stats['smuta_card'] += 1; s.cur_card = 'Смута | ' + str(card.get('Карта')); s.cur_full = ''
                             wn = p.wants
-                            if wn and 'side' in wn['flags']: side = random.choice(['Победители', 'Проигравшие'])
+                            if p.seg == 0 or (p.seg == 1 and c['pos'] != 'периферия'): side = 'Нейтралы'   # 19.11: сторону — с Молодости, на периферии с Юности
+                            elif wn and 'side' in wn['flags']: side = random.choice(['Победители', 'Проигравшие'])
                             else: side = random.choice(['Победители', 'Проигравшие', 'Нейтралы', 'Нейтралы'])
                             cls0 = p.cls; keep = {k: p.items.get(k, 0) > 0 for k in ('Присяга', 'Значок')}
                             exec_text(card.get('Для всех', ''), p, s, p.seg); exec_text(card.get(side, ''), p, s, p.seg)

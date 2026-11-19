@@ -48,7 +48,7 @@ function WorldBar({ e }: { e: Engine }) {
   )
 }
 
-function Sheet({ e, p, current }: { e: Engine; p: Player; current: boolean }) {
+function Sheet({ e, p, current, nurse }: { e: Engine; p: Player; current: boolean; nurse?: () => void }) {
   const s = e.state
   const country = s.world.countries[p.country]
   const cell = content.board.segments[p.seg].cells[p.cell]
@@ -61,6 +61,9 @@ function Sheet({ e, p, current }: { e: Engine; p: Player; current: boolean }) {
         <h3>{p.name}</h3>
         <span className="num">{SEGMENTS[p.seg]}, клетка {cell.n ?? 'Класс'} · {p.cls}{status ? ` · ${status}` : ''}</span>
       </header>
+      {p.seg === 5 && p.alive && (
+        <p className="num">сиделка: {p.rules['сиделка постоянно'] ? 'постоянно (−2 возм. за ход)' : 'сам (−1 физ. за ход)'} {nurse && <button onClick={nurse}>переключить</button>}</p>
+      )}
       <p className="vitals">
         <span>физ. <b>{signed(p.phys)}</b></span><span>псих. <b>{signed(p.psy)}</b></span><span>возм. <b>{signed(p.vozm)}</b></span><span>счастье <b>{p.happiness}</b></span>
       </p>
@@ -110,13 +113,16 @@ function CardPanel({ id, deck, who, result, pending, onClose }: { id: string; de
   )
 }
 
+/** Причины закрытия, которые игроку важно видеть сразу. */
+const SHOWN_OFF = /убеждений|Банк не верит|нет денег|не в твоём характере/
+
 /** Вариант ответа: проверка (тег, характеристика, сложность, поправки, шанс) и что будет — без выбора вслепую. */
 function OptionButton({ o, market, onPick }: { o: Option; market: boolean; onPick: () => void }) {
   const c = o.check
   const lines = o.effect ? renderNodes(o.effect) : []
   return (
     <div className="option">
-      <button onClick={onPick}>{o.label}{o.note ? <span className="num"> {o.note}</span> : null}</button>
+      <button onClick={onPick}>{o.label}{o.note ? <span className="num"> {o.note.split(' ‖ ').map((x, i) => <span key={i}>{i ? <br /> : null}{x}</span>)}</span> : null}</button>
       {c && (
         <p className="chk">
           🎲 {c.stat} {c.dc}{c.tags.length ? ` · ${c.tags.join(' ')}` : ''} · у тебя {c.stat} {c.value}
@@ -213,7 +219,7 @@ export default function Trial() {
       {s.war && <WarBar e={e} />}
       <details><summary>страны и «Общественный след»</summary><WorldBar e={e} /></details>
       {error && <p className="req">Ошибка движка: {error} (зерно {s.config.seed})</p>}
-      <div className="sheets">{s.players.map((p) => <Sheet key={p.seat} e={e} p={p} current={req?.player === p.seat} />)}</div>
+      <div className="sheets">{s.players.map((p) => <Sheet key={p.seat} e={e} p={p} current={req?.player === p.seat} nurse={req?.player === p.seat && req.options.some((o) => o.id === 'сиделка') ? () => answer('сиделка') : undefined} />)}</div>
 
       <div className="log">
         {log.map((ev, i) => { const d = describe(ev, s); return <p key={s.log.length - log.length + i} className={d.kind}>{d.text}</p> })}
@@ -229,10 +235,14 @@ export default function Trial() {
           <p className="q">{req.text}</p>
           <div className="options">
             {req.options.filter((o) => !o.off).map((o) => <OptionButton key={o.id} o={o} market={req.type === 'действие'} onPick={() => answer(o.id)} />)}
-            {req.options.some((o) => o.off) && (
+            {/* Закрытое характером, банком или деньгами — неактивной кнопкой с причиной; прочее — в свёрнутом списке. */}
+            {req.options.filter((o) => o.off && SHOWN_OFF.test(o.off)).map((o) => (
+              <div className="option" key={o.id}><button disabled>{o.label} <span className="num">— {o.off}{o.note ? o.note.split(' ‖ ').map((x, i) => <span key={i}><br />{x}</span>) : null}</span></button></div>
+            ))}
+            {req.options.some((o) => o.off && !SHOWN_OFF.test(o.off)) && (
               <details className="closed">
-                <summary>недоступно сейчас ({req.options.filter((o) => o.off).length})</summary>
-                {req.options.filter((o) => o.off).map((o) => <p key={o.id}>{o.label} <span className="num">— {o.off}</span></p>)}
+                <summary>недоступно сейчас ({req.options.filter((o) => o.off && !SHOWN_OFF.test(o.off)).length})</summary>
+                {req.options.filter((o) => o.off && !SHOWN_OFF.test(o.off)).map((o) => <p key={o.id}>{o.label} <span className="num">— {o.off}</span></p>)}
               </details>
             )}
           </div>

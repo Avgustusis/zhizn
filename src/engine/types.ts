@@ -54,6 +54,8 @@ export interface Action {
   gate?: { pole: CharPole; need?: true; strongRoll?: number } | { pole: CharPole }[]
   /** Попытка считается и тогда, когда проверка характера провалилась («Контора»: одна попытка за отрезок). */
   tryCounts?: true
+  /** Отказ с объяснением: условие не выполнено — кнопка неактивна с этой подписью («Банк не верит…»). */
+  refuse?: { unless: import('../data/schema.ts').Cond; text: string }
   /** Незаконное действие: в клептократии его можно сделать «по знакомству» — −1 возм. сверху, без риска. */
   illegal?: true
   effect: Node[]

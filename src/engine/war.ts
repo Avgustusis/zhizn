@@ -15,7 +15,7 @@ import { arrive } from './emigration.ts'
 import { addStazh } from './market.ts'
 import { settle } from './meaning.ts'
 import { classesFor } from './setup.ts'
-import { crisisCheck, flight, stab, turmoil } from './world.ts'
+import { crisisCheck, flight, stab, tooYoung, turmoil } from './world.ts'
 import type { Country, Player, War } from './types.ts'
 
 type Side = 0 | 1
@@ -634,9 +634,13 @@ function* regime(g: G, W: Country, L: Country): Flow {
   emit(g, { t: 'мир', text: `${L.name}: смена режима — ${L.ideology}; правит ${L.dominant}, отчуждён ${L.alienated}` })
   // Победители «Смуты» — принявшие новую власть.
   const sides = new Map<number, 'за' | 'против' | 'в стороне'>()
+  const harsh = g.c.tables.crisis.harsh.includes(L.ideology)
   for (const p of g.s.players.filter((x) => alive(x) && x.country === L.id && !x.inst)) {
-    const a = yield* ask(g, p, 'кризис', `${L.name}: победитель ставит свою власть (${L.ideology}). Твоя сторона?`, [
-      { id: 'за', label: 'принять новую власть' }, { id: 'против', label: 'сопротивляться' }, { id: 'в стороне', label: 'остаться в стороне' },
+    if (tooYoung(p, L)) { sides.set(p.seat, 'в стороне'); continue }
+    const a = yield* ask(g, p, 'кризис', `${L.name}: победитель ставит свою власть (${L.ideology}; правит ${L.dominant}). Твоя сторона в «Смуте»?`, [
+      { id: 'за', label: 'принять новую власть', note: 'среди победителей «Смуты»' },
+      { id: 'против', label: 'сопротивляться', note: `среди проигравших «Смуты»${harsh ? '; суровая власть — тюрьма d3' : ''}` },
+      { id: 'в стороне', label: 'остаться в стороне', note: `нейтрал${L.ideology === 'Военная диктатура' ? '; «кто не с нами»: 🎲 Смекалка 12, провал — как проигравший' : ''}` },
     ], { force: true })
     sides.set(p.seat, a as 'за' | 'против' | 'в стороне')
   }

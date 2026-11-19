@@ -95,12 +95,16 @@ export function answer(g: G, req: Request): string {
   const ids = open.map((o) => o.id)
   const best = (score: (o: Request['options'][number]) => number) => open.reduce((a, b) => (score(b) > score(a) ? b : a)).id
   switch (req.type) {
-    case 'ход': return ids[0]
+    case 'ход': {
+      // Сиделка — как в симуляции: держать, пока Возможностей 4 и больше.
+      if (ids.includes('сиделка') && !!p.rules['сиделка постоянно'] !== p.vozm >= 4) return 'сиделка'
+      return ids[0]
+    }
     case 'действие':
       // Контора: первое по списку дело (от дорогого к дешёвому), на которое хватает с запасом 3 возм.
       if (req.text.startsWith('Контора')) return open.find((o) => o.id !== 'нет' && p.vozm >= Number(o.label.match(/(\d+) возм/)?.[1] ?? 99) + 3)?.id ?? 'нет'
       if (ids.includes('конец')) return marketPick(g, p, ids, (id) => g.c.actions.find((a) => a.id === id)?.price?.find(() => true)?.n ?? 0)
-      if (ids.includes('да') && ids.includes('нет')) return p.vozm >= 4 ? 'да' : 'нет' // сиделка, как в симуляции: при 4+ возм.
+      if (ids.includes('постоянно')) return p.vozm >= 4 ? 'постоянно' : 'сам' // сиделка при входе в Древность: при 4+ возм.
       return ids[0]
     case 'карта': {
       // Своё дело с карты — как ИИ симуляции (biz.py: _get, card): только если дела нет или новое крупнее, деньги

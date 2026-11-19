@@ -6,6 +6,7 @@
 import { CULTURE_AXES } from '../data/schema.ts'
 import { ask, clamp, countryOf, emit, roll3, say, step, type Flow, type G } from './core.ts'
 import { has, held, kindOf, newCtx, relation } from './cond.ts'
+import { chance } from './checks.ts'
 import { addParam, count, dropHeld, enterInst, gainItem, removeHeld, rollDie, setClass } from './change.ts'
 import type { Country, Culture, Player } from './types.ts'
 
@@ -40,22 +41,28 @@ export const penaltyOf = (g: G, d: number): number => step(g.c.tables.emigration
 
 // ── Граница ─────────────────────────────────────────────────────────────
 
-/** Поправка к проверке границы (потолок ±3): союз, культура страны назначения, Диплом, деньги, связь там, Судимость. */
-export function borderMod(g: G, p: Player, dest: Country, invite = false): number {
+/** Поправки к проверке границы — по отдельности, для подписи («союз +2, Диплом +1»). Потолок ±3 — в borderMod. */
+export function borderParts(g: G, p: Player, dest: Country, invite = false): [string, number][] {
   const t = g.c.tables.emigration.border
   const prof = g.s.world.cultures[dest.mainCultures[0]]
   const ethno = prof[CULTURE_AXES.findIndex(([a]) => a === 'Этноцентризм')]
-  let m = 0
-  if (relation(g, p.country, dest.id) === 'союз') m += t.ally
-  if (ethno === -2) m += t.ethnoStrong
-  else if (ethno === -1) m += t.ethnoModerate
-  else if (ethno > 0) m += ethno
-  if (has(g, p, 'Диплом')) m += t.diploma
-  if (p.vozm >= t.rich) m += t.richAdd
-  if (invite) m += 1
-  if (p.items.some((h) => h.name === 'Земляк' || h.name.includes('за границей'))) m += t.link
-  if (has(g, p, 'Судимость')) m += t.record
-  return clamp(m, -t.cap, t.cap)
+  const out: [string, number][] = []
+  if (relation(g, p.country, dest.id) === 'союз') out.push(['союз', t.ally])
+  if (ethno === -2) out.push(['сильный Этноцентризм', t.ethnoStrong])
+  else if (ethno === -1) out.push(['Этноцентризм', t.ethnoModerate])
+  else if (ethno > 0) out.push(['Открытость', ethno])
+  if (has(g, p, 'Диплом')) out.push(['Диплом', t.diploma])
+  if (p.vozm >= t.rich) out.push([`Возм. ${t.rich}+`, t.richAdd])
+  if (invite) out.push(['приглашение', 1])
+  if (p.items.some((h) => h.name === 'Земляк' || h.name.includes('за границей'))) out.push(['связь в стране', t.link])
+  if (has(g, p, 'Судимость')) out.push(['Судимость', t.record])
+  return out
+}
+
+/** Поправка к проверке границы (потолок ±3): союз, культура страны назначения, Диплом, деньги, связь там, Судимость. */
+export function borderMod(g: G, p: Player, dest: Country, invite = false): number {
+  const t = g.c.tables.emigration.border
+  return clamp(borderParts(g, p, dest, invite).reduce((s, [, n]) => s + n, 0), -t.cap, t.cap)
 }
 
 /** Можно ли выехать легально: не госсоциализм и не военная диктатура, не во враждебную страну (если нет гражданства там). */
@@ -66,6 +73,79 @@ export function legalExit(g: G, p: Player, dest: number): boolean {
 
 // ── Переезд ─────────────────────────────────────────────────────────────
 
+const pct = (x: number) => `${Math.round(x * 100)}%`
+const signed = (n: number) => (n > 0 ? `+${n}` : `−${-n}`)
+
+/**
+ * Карточка страны в окне эмиграции (решено 19.11): можно ли, цена, шанс пройти границу с поправками,
+ * что едет с тобой, что под вопросом (с шансом), что останется; вражда — красная пометка.
+ */
+export function destCard(g: G, p: Player, c: Country, kind: Kind, o: EmigrateOptions = {}): string[] {
+  const t = g.c.tables.emigration
+  const rel = relation(g, p.country, c.id)
+  const home = c.id === p.birthCountry
+  const citizen = p.citizenship.includes(c.id) && rel !== 'вражда'
+  const lines: string[] = []
+  // 1. Можно ли.
+  const closed = t.closed.includes(countryOf(g, p).ideology) && !citizen
+  if (kind === 'бегство') lines.push('бегство: без цены и без границы; 🎲 Ловкость 15, провал — −3 физ. и половина Возможностей')
+  else if (o.noCheck) lines.push('без проверки границы')
+  else if (rel === 'вражда') lines.push('только нелегально (вражда)')
+  else if (closed) lines.push('нельзя легально: из твоей страны выпускают только бегством — только нелегально')
+  else lines.push('легально')
+  // 2. Цена.
+  const price = o.free || kind === 'бегство' ? 0 : Math.max(0, t.price[c.pos] - (o.invite ? 1 : 0))
+  const capital = o.keepClass || p.cls === 'Олигархи' || p.vozm >= t.capital
+  if (kind !== 'бегство') lines.push(`${price ? `${price} возм.` : 'даром'}${capital && p.cls !== 'Народ' ? ' · с капиталом: класс сохраняется' : ''}`)
+  // 3. Граница.
+  if (kind !== 'бегство' && !o.noCheck && rel !== 'вражда' && !closed) {
+    if (citizen) lines.push('граница: гражданство — 100%')
+    else {
+      const parts = borderParts(g, p, c, !!o.invite)
+      const mod = borderMod(g, p, c, !!o.invite)
+      lines.push(`граница: 3d6 ≥ ${t.border.dc}${parts.length ? ` (${parts.map(([k, n]) => `${k} ${signed(n)}`).join(', ')}${Math.abs(parts.reduce((s, [, n]) => s + n, 0)) > t.border.cap ? `, потолок ±${t.border.cap}` : ''})` : ''} → ${pct(chance(t.border.dc - mod))}; провал — вернёшься ни с чем или въедешь нелегально`)
+    }
+  }
+  if (!home) { const pen = penaltyOf(g, distance(g, p, c)); lines.push(pen ? `чужая культура: псих. ${pen}` : 'культура близка') } else lines.push('родина')
+  // 4. Что едет, что под вопросом, что останется.
+  const go: string[] = [], maybe: string[] = [], stay: string[] = []
+  const names = new Set(p.items.map((h) => h.name))
+  if (names.has('Диплом')) go.push('«Диплом»')
+  const spouse = p.items.find((h) => h.spouse)
+  if (spouse) go.push('Супруг(а)')
+  if (p.items.some((h) => g.items.get(h.name)?.group === 'Ребёнок')) go.push('дети')
+  const partner = p.items.find((h) => !h.spouse && g.items.get(h.name)?.group === 'Партнёр')
+  if (partner) maybe.push(`Партнёр «${partner.name}» — по твоему выбору`)
+  for (const h of p.items) {
+    const item = g.items.get(h.name)
+    if (!item) continue
+    if (item.group === 'Друг' || item.group === 'Наставник' || item.group === 'Покровитель') {
+      const lose = h.name === 'Друг детства' ? t.childhoodFriendLoss : t.linkLoss
+      maybe.push(`«${h.name}» — ${pct((6 - lose) / 6)}`)
+    } else if (item.kind === 'вещь') maybe.push(`вещь «${h.name}» — ${pct((6 - t.thingLoss) / 6)}`)
+    else if (item.kind === 'знакомый') stay.push(`«${h.name}»`)
+  }
+  for (const n of ['Присяга', 'Значок']) if (names.has(n)) stay.push(`«${n}»`)
+  for (const n of ['Судимость', 'Учёт']) if (names.has(n)) (rel === 'союз' ? go : stay).push(`«${n}»`)
+  if (names.has('Долг')) (rel === 'вражда' ? stay : go).push('«Долг»')
+  if (names.has('Дурная слава')) stay.push('«Дурная слава»')
+  if (names.has('Враг')) (rel === 'союз' ? go : stay).push('«Враг»')
+  if (!home && p.cls !== 'Народ') {
+    if (capital) go.push(`класс ${p.cls}`)
+    else if (p.cls === 'Мафия') go.push('класс Мафия — по выбору, Положение −1')
+    else if (p.cls === 'Интеллигенция' && names.has('Диплом')) maybe.push(`класс Интеллигенция — 🎲 Интеллект ${t.diplomaDc}: ${pct(chance(t.diplomaDc - p.stats['Интеллект'], p.predisp === 'Интеллект' ? 1 : 0))}`)
+    else stay.push(`класс ${p.cls} (станешь Народом)`)
+  }
+  if (!home) stay.push('семья родителей («Семья» письмами +1, «Деньги домой»)')
+  if (!home && ![...c.mainCultures, ...c.minorityCultures].some((k) => k === p.culture || k === p.culture2)) stay.push('обряд своей культуры (недоступен)')
+  lines.push(`едет: ${go.join(', ') || '—'}`)
+  if (maybe.length) lines.push(`под вопросом: ${maybe.join(', ')}`)
+  if (stay.length) lines.push(`останется: ${stay.join(', ')}`)
+  // 5. Вражда.
+  if (rel === 'вражда') lines.push('⚠ вражда: семья уезжает вся с тобой, иначе на d4 1–3 пропадает; вернуться — только в Мафию')
+  return lines
+}
+
 /** Переезд по правилам. Возвращает, переехал ли игрок. */
 export function* emigrate(g: G, p: Player, o: EmigrateOptions = {}): Flow<boolean> {
   const t = g.c.tables.emigration
@@ -73,15 +153,11 @@ export function* emigrate(g: G, p: Player, o: EmigrateOptions = {}): Flow<boolea
   const others = (o.choices ?? g.s.world.countries.map((c) => c.id)).filter((id) => id !== p.country)
   if (!others.length) return false
   const kind: Kind = o.kind ?? 'по своей воле'
-  // Куда: выбор игрока, с ценой, отношениями и дистанцией.
+  // Куда: у каждой страны — карточка: можно ли, цена, шанс границы, что едет с тобой (решено 19.11).
   const describeDest = (id: number) => {
     const c = g.s.world.countries[id]
-    const rel = relation(g, p.country, id)
-    const home = id === p.birthCountry
-    const pen = home ? 0 : penaltyOf(g, distance(g, p, c))
     const price = o.free || kind === 'бегство' ? 0 : Math.max(0, t.price[c.pos] - (o.invite ? 1 : 0))
-    const legal = kind === 'бегство' || o.noCheck || legalExit(g, p, id)
-    return { id: String(id), label: `${c.name}: ${c.pos}, ${c.ideology}`, note: [`${rel}`, price ? `${price} возм.` : 'даром', pen ? `псих. ${pen}` : 'культура близка', home ? 'родина' : '', legal ? '' : 'легально нельзя'].filter(Boolean).join(' · '), ...(price > 0 && price > p.vozm ? { off: 'нет денег' } : {}) }
+    return { id: String(id), label: `${c.name}: ${c.pos}, ${c.ideology}`, note: destCard(g, p, c, kind, o).join(' ‖ '), ...(price > 0 && price > p.vozm ? { off: 'нет денег' } : {}) }
   }
   const options = (o.dest !== undefined ? [o.dest] : others).map(describeDest)
   // Ни на одну страну не хватает денег — переезд не состоится.

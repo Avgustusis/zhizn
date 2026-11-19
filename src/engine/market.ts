@@ -10,6 +10,7 @@ import { addParam, charStep, count, enterInst, gainItem, removeHeld, rollDie, se
 import { run } from './exec.ts'
 import { previewCheck, runCheck } from './checks.ts'
 import { policyIncome } from './social.ts'
+import { gateNote, gateOf, gateRoll } from './turn.ts'
 import { legalize } from './emigration.ts'
 import type { CharPole, Cls, Held, Player, Stat } from './types.ts'
 
@@ -285,12 +286,17 @@ export function cityPiles(g: G): void {
 export function* acquaintance(g: G, p: Player): Flow {
   const t = g.c.tables.city
   const open = rings(g, p)
-  const options = g.c.buildings.filter((b) => b.deck && open.includes(b.ring)).map((b) => ({
-    id: b.id, label: `${b.name} (${b.ring})`, ...(p.counters[`здание:${b.id}:${p.seg}`] ? { off: 'уже был в этом отрезке' } : {}),
-  }))
-  if (!options.some((o) => !o.off)) { say(g, p, 'знакомиться негде: во всех доступных зданиях уже был в этом отрезке'); return }
+  // Характер закрывает не знакомство, а место: здание с точкой рынка проверяется, как это место (решено 19.11).
+  const gateFor = (market?: string) => { const a = g.c.actions.find((x) => x.place === market && x.gate); return a ? gateOf(g, p, a) : {} }
+  const options = g.c.buildings.filter((b) => b.deck && open.includes(b.ring)).map((b) => {
+    const gate = gateFor(b.market)
+    const off = p.counters[`здание:${b.id}:${p.seg}`] ? 'уже был в этом отрезке' : gate.closed
+    return { id: b.id, label: `${b.name} (${b.ring})`, ...(off ? { off } : {}), ...(gate.need ? { note: gateNote(gate) } : {}) }
+  })
+  if (!options.some((o) => !o.off)) { say(g, p, 'знакомиться негде: во всех доступных зданиях уже был в этом отрезке или туда не пускает характер'); return }
   const id = yield* ask(g, p, 'действие', 'Куда идёшь знакомиться?', options, { force: true })
   const b = g.c.buildings.find((x) => x.id === id)!
+  if (!gateRoll(g, p, gateFor(b.market), b.name)) return
   p.counters[`здание:${b.id}:${p.seg}`] = 1
   visit(p, b.name)
   const pile = g.s.piles[`знакомства.${b.id}`]
@@ -306,7 +312,7 @@ export function* acquaintance(g: G, p: Player): Flow {
     if (v) opts.push({ id: `ноль:${axis}`, label: `отойти от «${v < 0 ? CHAR_AXES[axis][0] : CHAR_AXES[axis][1]}» (шаг к нулю)` })
   }
   const unique = opts.filter((o, i) => opts.findIndex((x) => x.id === o.id) === i)
-  const a = yield* ask(g, p, 'карта', `«${m.title}»: как ты отозвался на эту встречу?`, unique, { force: true })
+  const a = yield* ask(g, p, 'карта', `${b.name}: «${m.title}». ${m.text} Как ты отозвался на эту встречу?`, unique, { force: true })
   if (a.startsWith('к:')) stepChar(g, p, a.slice(2) as CharPole)
   else {
     const axis = Number(a.slice(5))

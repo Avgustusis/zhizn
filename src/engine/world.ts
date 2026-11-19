@@ -6,7 +6,8 @@
 import type { Card, Node } from '../data/schema.ts'
 import { CULTURE_AXES } from '../data/schema.ts'
 import { ask, clamp, die, emit, pick, rnd, roll3, say, shuffle, todo, type Flow, type G } from './core.ts'
-import { cond, has, newCtx, relation, type Ctx } from './cond.ts'
+import { cond, has, kindOf, newCtx, relation, type Ctx } from './cond.ts'
+import { chance, spend } from './checks.ts'
 import { addParam, count, enterInst, fire, gainItem, removeHeld, rollDie, runDue, setClass, visit } from './change.ts'
 import { run } from './exec.ts'
 import { settle } from './meaning.ts'
@@ -89,30 +90,63 @@ export function* crisisCheck(g: G, c: Country, now: boolean): Flow {
 
 type Side = 'за' | 'против' | 'в стороне'
 
+/** Сторону в кризисе выбирают с Молодости, на периферии — с Юности (решено 19.11); младшие — нейтралы без вопроса. */
+export function tooYoung(p: Player, c: Country): boolean {
+  return p.seg === 0 || (p.seg === 1 && c.pos !== 'периферия')
+}
+
+const pct = (x: number) => `${Math.round(x * 100)}%`
+
 /** Кризис: каждый игрок страны объявляет сторону; исход 3d6 + влияние ≥ 11 — власть меняется. */
 function* crisis(g: G, c: Country): Flow {
   const t = g.c.tables.crisis
   const sides = new Map<number, Side>()
   let influence = 0
+  const odds = (shift: number) => chance(t.change - shift)
   for (const p of inCountry(g, c.id)) {
+    if (tooYoung(p, c)) { sides.set(p.seat, 'в стороне'); say(g, p, 'кризис: ещё мал для стороны — нейтрал'); continue }
     const forced = p.rules['смута']?.arg ?? ''
+    // Влияние: положение +2 — 1, +3 или Династия — 2; «влияние» с карты, «Офицерское звание», «Печатный станок» — ещё по 1.
+    let w = p.pos >= 3 || g.meanings.get(p.meaning?.id ?? '')?.deck === 'Династии' ? t.influence.pos3 : p.pos >= 2 ? t.influence.pos2 : 0
+    if (/влияние/.test(forced)) w += 1
+    for (const n of t.influence.items) if (has(g, p, n)) w += 1
+    const harsh = t.harsh.includes(c.ideology)
     let side: Side
     if (/на стороне/.test(forced)) side = 'за'
     else {
-      side = (yield* ask(g, p, 'кризис', `${c.name}: выступает класс ${c.alienated} против власти (${c.dominant}, ${c.ideology}). Твоя сторона?`, [
-        { id: 'за', label: 'поддержать выступление' }, { id: 'против', label: 'защищать власть' }, { id: 'в стороне', label: 'остаться в стороне' },
+      const head = `${c.name}: выступает класс ${c.alienated} против власти (${c.dominant}, ${c.ideology}). Власть сменится на 3d6 ≥ ${t.change}${influence ? ` с учётом влияния тех, кто уже решил (${influence > 0 ? '+' : ''}${influence})` : ''}. Твоё влияние ${w}. Твоя сторона?`
+      side = (yield* ask(g, p, 'кризис', head, [
+        { id: 'за', label: 'поддержать выступление', note: `смена власти ${pct(odds(influence + w))}; сменится — ты среди победителей «Смуты»; подавят — среди проигравших: ${-t.rebelCost} возм., «${t.rebelStigma}»${harsh ? ', тюрьма d3' : ''}` },
+        { id: 'против', label: 'защищать власть', note: `смена власти ${pct(odds(influence - w))}; подавят — ты на стороне власти; сменится — среди проигравших «Смуты»${harsh ? ' (суровая власть: тюрьма d3)' : ''}` },
+        { id: 'в стороне', label: 'остаться в стороне', note: `смена власти ${pct(odds(influence))}; нейтрал${c.ideology === 'Военная диктатура' ? '; «кто не с нами, тот против нас»: при смене — 🎲 Смекалка 12, провал — как проигравший' : ''}` },
       ], { force: true })) as Side
     }
     sides.set(p.seat, side)
     if (side === 'в стороне') continue
-    // Влияние: положение +2 — 1, +3 или Династия — 2; вложить 5 возм. — ещё 1; «влияние ±1» с карты.
-    let w = p.pos >= 3 || g.meanings.get(p.meaning?.id ?? '')?.deck === 'Династии' ? t.influence.pos3 : p.pos >= 2 ? t.influence.pos2 : 0
-    if (/влияние/.test(forced)) w += 1
+    const sign = side === 'за' ? 1 : -1
     if (p.vozm >= t.influence.invest) {
-      const a = yield* ask(g, p, 'кризис', `Вложить ${t.influence.invest} возм. в исход (влияние ещё ${t.influence.investAdd})?`, [{ id: 'да', label: `вложить ${t.influence.invest} возм.` }, { id: 'нет', label: 'нет' }], { force: true })
+      const a = yield* ask(g, p, 'кризис', `Вложить ${t.influence.invest} возм. в исход (влияние ещё ${t.influence.investAdd})?`, [
+        { id: 'да', label: `вложить ${t.influence.invest} возм.`, note: `смена власти ${pct(odds(influence + sign * (w + t.influence.investAdd)))}` },
+        { id: 'нет', label: 'нет', note: `смена власти ${pct(odds(influence + sign * w))}` },
+      ], { force: true })
       if (a === 'да') { addParam(g, p, 'возм', -t.influence.invest, newCtx('правило')); w += t.influence.investAdd }
     }
-    influence += side === 'за' ? w : -w
+    // Козырь «Верхов» и антикозырь «Дна»: влияние ±3.
+    for (const n of t.influence.trumps) {
+      const h = p.items.find((x) => x.name === n)
+      if (!h) continue
+      const a = yield* ask(g, p, 'козырь', `Сыграть «${n}»: влияние ещё ${t.influence.trumpAdd}?`, [
+        { id: 'да', label: `сыграть «${n}»`, note: `смена власти ${pct(odds(influence + sign * (w + t.influence.trumpAdd)))}${kindOf(g, h) === 'антикозырь' ? '; катастрофа на d6 1–2 — тюрьма' : ''}` },
+        { id: 'нет', label: 'оставить', note: `смена власти ${pct(odds(influence + sign * w))}` },
+      ], { force: true })
+      if (a !== 'да') continue
+      w += t.influence.trumpAdd
+      spend(g, p, h)
+      p.rules[`сыграно: ${n}`] = { arg: side }
+      const item = g.items.get(n)
+      if (item?.risk && rollDie(g, p, 6, `риск «${n}»`) <= 2) yield* run(g, p, item.risk, newCtx('правило'))
+    }
+    influence += sign * w
     delete p.rules['смута']
   }
   const roll = roll3(g).sum
@@ -143,8 +177,11 @@ export function* powerChange(g: G, c: Country, sides = new Map<number, Side>()):
   if (oldAli === 'Народ' && theism === -2) options.push('Теократия')
   c.ideology = pick(g, options)
   c.dominant = t.close[c.ideology].includes(oldAli) ? oldAli : classesFor(g, c.ideology).dominant
-  if (die(g, 6) <= t.oldDominantUpTo && oldDom !== c.dominant) c.alienated = oldDom
+  // Новый отчуждённый: d6 1–3 — бывший доминирующий; 4–6 — по таблице «Идеологии и классы» (совпал с доминирующим — перебросить).
+  const ar = die(g, 6)
+  if (ar <= t.oldDominantUpTo && oldDom !== c.dominant) c.alienated = oldDom
   else { let a = classesFor(g, c.ideology).alienated; while (a === c.dominant) a = classesFor(g, c.ideology).alienated; c.alienated = a }
+  emit(g, { t: 'мир', text: `${c.name}: новый отчуждённый: d6 = ${ar} → ${ar <= t.oldDominantUpTo ? (oldDom !== c.dominant ? `бывший доминирующий (${c.alienated})` : `бывший доминирующий снова правит — по таблице: ${c.alienated}`) : `по таблице «Идеологии и классы»: ${c.alienated}`}` })
   c.stability = Math.min(t.after, g.c.tables.world.stabilityCap[c.ideology] ?? t.after)
   c.powerChanges += 1
   delete c.embargo
@@ -198,6 +235,7 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
       const a = yield* ask(g, p, 'класс', `Перейти в новый доминирующий класс — ${c.dominant}?${c.dominant === 'Олигархи' ? ` Только через «Везение»: 🎲 Смекалка ${t.oligarchDc}.` : ''}`, [{ id: 'да', label: `перейти: ${c.dominant}` }, { id: 'нет', label: `остаться: ${p.cls}` }], { force: true })
       if (a === 'да') {
         if (c.dominant !== 'Олигархи') setClass(g, p, c.dominant)
+        else if (p.rules['сыграно: Место в списке']) { say(g, p, '«Место в списке»: переход без броска'); setClass(g, p, 'Олигархи') }
         else { const r = roll3(g).sum; if (r + p.stats['Смекалка'] >= t.oligarchDc) setClass(g, p, 'Олигархи'); else say(g, p, '«Везение» не случилось') }
       }
     }
@@ -205,7 +243,8 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
     const harsh = t.harsh.includes(c.ideology) || state.prison === 'для всех'
     if (harsh && state.prison !== 'нет' && !p.inst) {
       let jail = side === 'проигравшие'
-      if (!jail && side === 'нейтралы' && c.ideology === 'Военная диктатура') {
+      // «Кто не с нами…» на детей не действует: они нейтралы по возрасту (решено 19.11).
+      if (!jail && side === 'нейтралы' && c.ideology === 'Военная диктатура' && !tooYoung(p, c)) {
         const r = roll3(g).sum
         jail = r + p.stats['Смекалка'] + (ctx.penalty ?? 0) < t.neutralDc
         if (jail) { say(g, p, '«кто не с нами, тот против нас»'); yield* run(g, p, card.sides!.lose, { ...ctx, side: 'проигравшие' }) }
@@ -216,6 +255,13 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
         enterInst(g, p, 'тюрьма', turns, '#политика')
       }
     }
+    // «На баррикады» сыгран и сторона победила — класс на шаг выше; «Место в списке» — переход без броска (выше).
+    if (side === 'победители' && p.rules['сыграно: На баррикады'] && p.alive) {
+      const ladder = g.c.tables.work.ladder
+      const up = (Object.keys(ladder) as Cls[]).filter((k) => ladder[k] === ladder[p.cls] + 1)
+      if (up.length) { const to = up.includes(c.dominant) ? c.dominant : up[0]; say(g, p, `«На баррикады»: класс на шаг выше — ${to}`); setClass(g, p, to) }
+    }
+    delete p.rules['сыграно: Место в списке']; delete p.rules['сыграно: На баррикады']
     // Журнал.
     if (side !== 'нейтралы') count(p, 'сторона в Смуте')
     if (side === 'победители') count(p, 'победа в Смуте')

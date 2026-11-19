@@ -596,7 +596,8 @@ class World2(World):
             if p and p.alive and not p.done and p.cidx == ci:
                 card = random.choice(DECK['Смута']); s.stats['smuta_card'] += 1; s.cur_card = 'Смута | ' + str(card.get('Карта')); s.cur_full = ''
                 wn = p.wants
-                if wn and 'side' in wn['flags']: side = random.choice(['Победители', 'Проигравшие'])
+                if p.seg == 0 or (p.seg == 1 and c['pos'] != 'периферия'): side = 'Нейтралы'; s.stats['smuta_child_neutral'] += 1   # 19.11
+                elif wn and 'side' in wn['flags']: side = random.choice(['Победители', 'Проигравшие'])
                 else: side = random.choice(['Победители', 'Проигравшие', 'Нейтралы', 'Нейтралы'])
                 cls0 = p.cls; keep = {k: p.items.get(k, 0) > 0 for k in ('Присяга', 'Значок')}
                 exec_text(card.get('Для всех', ''), p, s, p.seg); exec_text(card.get(side, ''), p, s, p.seg)
