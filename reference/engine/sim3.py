@@ -44,7 +44,7 @@ HRAM_WED = E('HRAM_WED', '1') == '1'    # карта «Храм или бюро�
 PILOT = E('PILOT', '')
 REFUSE = E('REFUSE', 'smart'); CRISIS = E('CRISIS', 'smart')
 MATCH_T = int(os.environ.get('MATCH_T', '9'))   # 19.11: сватовство — 🎲 Сплочённость 9 (0 — по-старому, без броска)
-MATCH_W = int(os.environ.get('MATCH_W', '2'))   # успех — d6 ≥ W: сразу свадьба (как было)
+MATCH_W = int(os.environ.get('MATCH_W', '1'))   # успех — d6 ≥ W: сразу свадьба (19.11: всегда — сватают, чтобы женить)
 MATCH_FB = int(os.environ.get('MATCH_FB', '1'))   # провал сватовства — сразу путь А
 MATCH_IDEO = {'Теократия': 2, 'Национализм': 1, 'Вольница': 1, 'Либеральная демократия': -1, 'Технократия': -1}
 PART_REL_WED = E('PART_REL_WED', '1') == '1'   # «через родню»: d6 2–6 — сразу свадьба

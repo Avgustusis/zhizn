@@ -32,8 +32,8 @@ export function value(p: Player, nodes: Node[] | undefined, depth = 0): number {
     else if ('cases' in n) v += Math.max(...n.cases.map((c) => value(p, c.then, depth + 1)), value(p, n.else, depth + 1))
     else if ('choose' in n) v += Math.max(...n.choose.map((o) => value(p, o.then, depth + 1)))
     else if ('cls' in n) v += 1
-    // Свадьба — как в симуляции (engine3.value: _spouse = 1).
-    else if ('rule' in n && n.rule === 'свадьба') v += 1
+    // Пара и свадьба дороже денег (сверка 19.11: у ИИ автора партнёр ≈ +2 псих., свадьба ≈ +3).
+    else if ('rule' in n && (n.rule === 'свадьба' || n.rule === 'сватовство')) v += 3
   }
   return v
 }
@@ -129,7 +129,16 @@ export function answer(g: G, req: Request): string {
       return best((o) => value(p, o.effect))
     }
     case 'козырь': case 'отмена': return ids.includes('да') ? 'да' : ids.find((x) => x !== 'нет') ?? ids[0]
-    case 'сброс': return 'нет'
+    case 'сброс': {
+      // Ради партнёра ИИ освобождает ячейку: сперва «Знакомый», потом «Друг», потом любая связь (сверка 19.11: пара дороже).
+      const want = req.text.match(/Взять «([^»]+)»/)?.[1]
+      if (want && g.items.get(want)?.group === 'Партнёр') {
+        const drop = (pred: (n: string) => boolean) => open.find((o) => o.id !== 'нет' && pred(o.label.match(/«([^»]+)»/)?.[1] ?? ''))
+        const it = (n: string) => g.items.get(n)
+        return (drop((n) => it(n)?.kind === 'знакомый') ?? drop((n) => it(n)?.group === 'Друг') ?? drop((n) => it(n)?.group !== 'Партнёр'))?.id ?? 'нет'
+      }
+      return 'нет'
+    }
     case 'класс': {
       const to = req.options.find((o) => o.id === 'да')?.label ?? ''
       const ladder = g.c.tables.work.ladder

@@ -359,7 +359,7 @@ export function matchNote(g: G, p: Player): string {
   return `−${t.price} возм.; 🎲 3d6 + Сплочённость ${p.coh >= 0 ? '+' : '−'}${Math.abs(p.coh)}${m.parts.length ? ` + поправки ${m.total >= 0 ? '+' : '−'}${Math.abs(m.total)} (${m.parts.join(', ')}${m.parts.length > 1 ? `; потолок ±${t.cap}` : ''})` : ''} ≥ ${t.dc} · шанс ${Math.round(ch * 100)}%`
 }
 
-/** Сватовство через родню: −1 возм., 3d6 + Сплочённость + поправки ≥ 9. Успех — Партнёр класса семьи, Сплочённость +1, d6 2–6 свадьба. */
+/** Сватовство через родню: −1 возм., 3d6 + Сплочённость + поправки ≥ 9. Успех — Партнёр класса семьи, Сплочённость +1 и сразу свадьба. */
 export function* matchmaking(g: G, p: Player, ctx: Ctx): Flow<boolean> {
   const t = g.c.tables.matchmaking
   const m = matchMods(g, p)
@@ -371,7 +371,9 @@ export function* matchmaking(g: G, p: Player, ctx: Ctx): Flow<boolean> {
   const h = yield* gainItem(g, p, 'Партнёр')
   if (h?.person) { h.person.cls = p.familyCls; say(g, p, `партнёр из класса семьи — ${p.familyCls}`) }
   addParam(g, p, 'Сплочённость', 1, ctx)
-  if (rollDie(g, p, 6, `сразу свадьба на ${t.weddingFrom}–6`) >= t.weddingFrom) yield* wed(g, p)
+  // Сватают, чтобы женить: удачное сватовство — сразу свадьба (19.11, поздний вечер).
+  say(g, p, 'сватают, чтобы женить: свадьба')
+  yield* wed(g, p)
   return true
 }
 
