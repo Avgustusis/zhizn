@@ -7,6 +7,7 @@ import { newCtx } from './cond.ts'
 import type { Player, Seg } from './types.ts'
 
 const GREY = 'серость'
+import { dynastyRefusal, greyPsy } from './poles.ts'
 
 /** Карта смысла игрока: из колоды или приписанная стандартному наследнику. */
 export function meaningOf(g: G, p: Player): Pick<Meaning, 'title' | 'tags' | 'conds'> | undefined {
@@ -88,6 +89,8 @@ export function verdict(g: G, p: Player, m: Pick<Meaning, 'tags'>, id: string): 
 // ── Карты смысла ────────────────────────────────────────────────────────
 
 function setMeaning(g: G, p: Player, id: string, from: NonNullable<Player['meaning']>['from'], locked = false): void {
+  // Серость: Традиция — мягче (сценарий задан), Самовыражение — жёстче.
+  if (id === GREY && greyPsy(g, p)) { say(g, p, greyPsy(g, p) > 0 ? 'Серость мягче: сценарий жизни задан' : 'Серость жёстче: от тебя ждали, что найдёшь себя'); addParam(g, p, 'псих', greyPsy(g, p), newCtx('правило')) }
   // Старая карта возвращается под низ своей колоды.
   if (p.meaning) {
     const old = g.meanings.get(p.meaning.id)
@@ -116,12 +119,12 @@ function drawMeaning(g: G, p: Player, pile: 'смыслы' | 'династии')
 }
 
 /** Бросок на смысл: 3d6 + поправка Мудрости (с Юности) + Наставник. */
-function meaningRoll(g: G, p: Player, seg: Seg, forceAdv = false): boolean {
+function meaningRoll(g: G, p: Player, seg: Seg, forceAdv = false, extra = 0): boolean {
   const t = g.c.tables.meaning
   const need = t.need[seg]
   if (need === undefined) return false
   const child = seg === 'Детство'
-  const mod = (child ? 0 : step(g.c.tables.statMod, p.stats['Мудрость'])) + (has(g, p, 'Наставник') ? t.mentorAdd : 0)
+  const mod = (child ? 0 : step(g.c.tables.statMod, p.stats['Мудрость'])) + (has(g, p, 'Наставник') ? t.mentorAdd : 0) + extra
   const adv = forceAdv || (!child && p.predisp === 'Мудрость') ? 1 : 0
   const roll = roll3(g, adv)
   const ok = roll.sum + mod >= need
@@ -155,7 +158,8 @@ function* refusal(g: G, p: Player, seg: Seg): Flow {
   ], { force: true })
   if (a === 'принять') { delete p.refusing; m.locked = true; return }
   p.refusing = true
-  if (meaningRoll(g, p, seg)) {
+  // Коллективизм — отказаться труднее, Индивидуализм — легче.
+  if (meaningRoll(g, p, seg, false, dynastyRefusal(g, p))) {
     delete p.refusing
     // Отказ удался: три Случайные карты, одна на выбор; менять её в кризис нельзя.
     const ids: string[] = []

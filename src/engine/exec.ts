@@ -8,6 +8,7 @@ import { RULE_NOTES, runRule } from './rules.ts'
 import { frontLoss } from './war.ts'
 import { epidemicSoft } from './items.ts'
 import { keepClass, saveVozm } from './tricks.ts'
+import { poleDelta } from './poles.ts'
 import type { Player, Stat } from './types.ts'
 
 /** Попадает ли значение кубика в диапазон «1-2» или «6». */
@@ -39,6 +40,8 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
     for (const [param, delta] of Object.entries(n.add)) {
       // Фронт: потеря физ. в событии меньше у офицера и при «Беречь себя»; «Боевые друзья» могут её отменить.
       let d = param === 'физ' && delta < 0 && ctx.deck === 'фронт' && p.inst?.kind === 'фронт' ? yield* frontLoss(g, p, delta) : delta
+      // Полюса культуры: Порядок — катастрофы мягче, Риск — Возможности крупнее, Цинизм — обман слабее.
+      d = poleDelta(g, p, param, d, ctx)
       // «Фильтр-бочка Олан»: эпидемии бьют на 1 мягче.
       if (param === 'физ' && d < 0) d = Math.min(0, d + epidemicSoft(g, p, ctx.card))
       // «Офшор», «Сосед-электрик»: потеря Возможностей на картах.

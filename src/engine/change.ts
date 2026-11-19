@@ -7,6 +7,7 @@ import { run } from './exec.ts'
 import { settle } from './meaning.ts'
 import { afterClass, afterGain } from './items.ts'
 import { deathSave, twoDraws } from './tricks.ts'
+import { freeDivorce } from './poles.ts'
 import type { CharPole, Cls, Culture, Held, InstKind, Player, Race, Stat, Tag } from './types.ts'
 
 export const count = (p: Player, name: string, n = 1): void => { p.counters[name] = (p.counters[name] ?? 0) + n }
@@ -385,6 +386,8 @@ export function* dropHeld(g: G, p: Player, h: Held, price: boolean, widowed = fa
   removeHeld(g, p, h)
   // Супруг(а) уходит — развод; на карте #утрата — вдовство, в журнал разводов не идёт.
   if (h.spouse && !widowed) count(p, 'развод')
+  // Секуляризм: развод без штрафа.
+  if (h.spouse && !widowed && freeDivorce(g, p)) { say(g, p, 'светская культура: развод без штрафа'); return }
   const cost = price ? g.c.tables.dropPrice[key] : undefined
   if (!cost) return
   const ctx = newCtx('правило')

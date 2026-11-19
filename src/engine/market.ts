@@ -12,6 +12,7 @@ import { chance, previewCheck, runCheck } from './checks.ts'
 import { policyIncome } from './social.ts'
 import { gateNote, gateOf, gateRoll } from './turn.ts'
 import { pensionStazh } from './items.ts'
+import { burnout } from './poles.ts'
 import { legalize } from './emigration.ts'
 import type { CharPole, Cls, Held, Player, Stat } from './types.ts'
 
@@ -132,6 +133,8 @@ export function* work(g: G, p: Player, kind: string): Flow {
   // Переработка
   addParam(g, p, 'возм', D * 2 + 1 + (t.ideologyIncome.overtime[c.ideology] ?? 0), ctx)
   addStazh(p, true)
+  // Усердие: риск выгорания.
+  if (burnout(g, p)) { say(g, p, 'Усердие: выгорание'); addParam(g, p, 'псих', burnout(g, p), ctx) }
   if (p.rules['работа на пенсии']) { say(g, p, 'работа на пенсии: ещё −1 физ.'); addParam(g, p, 'физ', -1, ctx) }
   const r = rollDie(g, p, 6, 'износ')
   if (own === 'риск') {

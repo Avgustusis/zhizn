@@ -121,6 +121,11 @@ const heal = (base: number): Node => ({ if: HOSP_GOOD, then: [{ add: { 'физ':
 /** Наценка больницы: либеральная демократия и клептократия +1, национализм — меньшинствам +1. */
 const HOSP_DEAR: Cond = { any: [LIB, ideo('Клептократия'), all(ideo('Национализм'), { minority: true })] }
 const hospPrice = (n: number) => [{ if: HOSP_DEAR, n: n + 1 }, { n }]
+/** Фамилизм: Семья выгоднее на 1; Институции — слабее на 1 (концепция, «Культура»). */
+const FAMILISM = (param: 'возм' | 'псих'): Node => ({ cases: [{ if: { culture: 'Фамилизм' }, then: [{ add: { [param]: 1 } }] }, { if: { culture: 'Институции' }, then: [{ add: { [param]: -1 } }] }] })
+/** Фамилизм: банк дороже (платёж +1); Институции — дешевле (платёж −1). */
+const BANK_CULTURE: Node = { cases: [{ if: { culture: 'Фамилизм' }, then: [{ add: { 'возм': -1 } }] }, { if: { culture: 'Институции' }, then: [{ add: { 'возм': 1 } }] }] }
+
 /** Полицейское государство: психолог пишет в досье — d6 1, стигма «Учёт». */
 const POLICE_FILE: Node = { if: ideo('Полицейское государство'), then: [{ die: 6, out: { '1': [{ say: 'запись в досье' }, { gain: 'Учёт' }] } }] }
 
@@ -216,8 +221,8 @@ const places: Action[] = [
     refuse: { unless: { any: [{ p: 'Стаж', gte: 3 }, { ownBusiness: true }, { cls: ['Олигархи'] }] }, text: 'Банк не верит: нужен Стаж 3+, своё дело или класс Олигархи — есть «Микрозаймы»' },
     effect: [{
       if: { pos: ['ядро'] },
-      then: [{ add: { 'возм': 4 } }, { later: { when: 'вход в следующий отрезок', then: [{ say: 'платёж по кредиту' }, { add: { 'возм': -5 } }] } }],
-      else: [{ add: { 'возм': 3 } }, { later: { when: 'вход в следующий отрезок', then: [{ say: 'платёж по кредиту' }, { add: { 'возм': -4 } }] } }],
+      then: [{ add: { 'возм': 4 } }, { later: { when: 'вход в следующий отрезок', then: [{ say: 'платёж по кредиту' }, { add: { 'возм': -5 } }, BANK_CULTURE] } }],
+      else: [{ add: { 'возм': 3 } }, { later: { when: 'вход в следующий отрезок', then: [{ say: 'платёж по кредиту' }, { add: { 'возм': -4 } }, BANK_CULTURE] } }],
     }],
   },
   {
@@ -226,8 +231,8 @@ const places: Action[] = [
     note: 'за границей — письмами: +1',
     effect: [{
       choose: [
-        { label: '+2 возм.', then: [{ if: { emigrant: true }, then: [{ add: { 'возм': 1 } }], else: [{ add: { 'возм': 2 } }] }] },
-        { label: '+2 псих.', then: [{ if: { emigrant: true }, then: [{ add: { 'псих': 1 } }], else: [{ add: { 'псих': 2 } }] }] },
+        { label: '+2 возм.', then: [{ if: { emigrant: true }, then: [{ add: { 'возм': 1 } }], else: [{ add: { 'возм': 2 } }] }, FAMILISM('возм')] },
+        { label: '+2 псих.', then: [{ if: { emigrant: true }, then: [{ add: { 'псих': 1 } }], else: [{ add: { 'псих': 2 } }] }, FAMILISM('псих')] },
       ],
     }],
   },

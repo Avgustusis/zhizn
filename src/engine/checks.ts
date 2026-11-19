@@ -7,6 +7,7 @@ import { cond, countryProfile, cultureLean, effStat, isMinority, kindOf, pairOf,
 import { count, removeHeld, rollDie } from './change.ts'
 import { run } from './exec.ts'
 import { cigarettesOk } from './tricks.ts'
+import { dignityStats } from './poles.ts'
 import type { Held, Player, Stat, Tag } from './types.ts'
 
 // ── Шансы ───────────────────────────────────────────────────────────────
@@ -171,7 +172,7 @@ export function* runCheck(g: G, p: Player, check: Check, ctx: Ctx, askStat = fal
     if (m.auto) auto = true
   }
   // Какой характеристикой бросать: та, с которой шанс выше.
-  const options = [...(Array.isArray(check.stat) ? check.stat : [check.stat]).map((stat) => ({ stat, dc: dcBase })), ...(check.or ?? [])]
+  const options = [...(Array.isArray(check.stat) ? check.stat : [check.stat]).map((stat) => ({ stat, dc: dcBase })), ...(check.or ?? []), ...(Array.isArray(check.stat) ? [] : dignityStats(g, p, check.stat, ctx.tags).map((stat) => ({ stat, dc: dcBase })))]
   const rate = (o: { stat: Stat; dc: number }) => {
     const s = situational(g, p, o.stat, ctx)
     const a = net(adv || s.adv || p.predisp === o.stat, dis || s.dis || !!ctx.dis)
@@ -268,7 +269,7 @@ export function previewCheck(g: G, p: Player, check: Check, ctx: Ctx): CheckPrev
     if (m.dis) dis = true
     if (m.auto) auto = true
   }
-  const options = [...(Array.isArray(check.stat) ? check.stat : [check.stat]).map((stat) => ({ stat, dc: dcBase })), ...(check.or ?? [])]
+  const options = [...(Array.isArray(check.stat) ? check.stat : [check.stat]).map((stat) => ({ stat, dc: dcBase })), ...(check.or ?? []), ...(Array.isArray(check.stat) ? [] : dignityStats(g, p, check.stat, ctx.tags).map((stat) => ({ stat, dc: dcBase })))]
   const rated = options.map((o) => {
     const s = situational(g, p, o.stat, ctx)
     const a = net(adv || s.adv || p.predisp === o.stat, dis || s.dis || !!ctx.dis)

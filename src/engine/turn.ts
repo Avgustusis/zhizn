@@ -14,6 +14,7 @@ import { acculturate, decayStigmas, deportRisk, emigrate, naturalize } from './e
 import { backToFront, frontTurn, volunteerAsk, volunteerSides } from './war.ts'
 import { afterCard, atSegment } from './items.ts'
 import { pawn, sellable } from './life.ts'
+import { afterCardPoles, disasterMiss, familismPrice } from './poles.ts'
 import { anytimePlays, cancelWarCard, peekTop, playMenu, saveFromBondage, travelDiscount } from './tricks.ts'
 import type { Action, Player } from './types.ts'
 
@@ -64,12 +65,15 @@ export function* playCard(g: G, p: Player, card: Card, deck: string): Flow<'по
     const a = yield* ask(g, p, 'отмена', `${card.title}. Отменить карту козырем «${trump.name}»?`, [{ id: 'да', label: `сыграть «${trump.name}»` }, { id: 'нет', label: 'оставить' }], { card: card.id, force: true })
     if (a === 'да') { spend(g, p, trump); return 'под низ' }
   }
+  // «Катастрофа мимо»: следующая карта «Судьбы» не разыгрывается.
+  if (disasterMiss(g, p, deck)) return 'под низ'
   // «Друг в Генштабе»: отменить одну карту #война для себя и семьи.
   if (yield* cancelWarCard(g, p, card.tags, ctx)) { say(g, p, '«Друг в Генштабе»: карта отменена'); return 'под низ' }
   if (card.miracle) p.flags['чудо'] = true
   if (card.tags.includes('#утрата')) visit(p, 'утрата')
   yield* run(g, p, card.effect, ctx)
   if (p.alive) yield* afterCard(g, p, card.tags)
+  if (p.alive) for (const [k, v] of afterCardPoles(g, p, card.tags, !!ctx.shared.failed)) addParam(g, p, k, v, newCtx('правило'))
   // #закон: проваленная проверка в «жёсткой» стране — на d6 = 1 тюрьма («Тотальные институты»).
   const t = g.c.tables.inst
   const c = countryOf(g, p)
@@ -252,7 +256,9 @@ function* instTurn(g: G, p: Player): Flow {
 
 /** Цена действия: первая подходящая строка; нет строк — даром. */
 export function priceOf(g: G, p: Player, a: Action): number {
-  return a.price?.find((x) => cond(g, p, x.if))?.n ?? 0
+  const n = a.price?.find((x) => cond(g, p, x.if))?.n ?? 0
+  // Фамилизм — психолог дороже, Институции — дешевле (платное остаётся платным).
+  return n > 0 ? Math.max(1, n + familismPrice(g, p, a.place)) : n
 }
 
 /** Подсказка о доступе по характеру: шанс пройти проверку или «закрыто». */

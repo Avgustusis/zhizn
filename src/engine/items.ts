@@ -8,6 +8,7 @@ import { countryOf, pick, say, type Flow, type G } from './core.ts'
 import { has, held, kindOf, newCtx } from './cond.ts'
 import { addParam, count, dropHeld, gainItem, removeHeld, rollDie } from './change.ts'
 import type { Cls, Country, Held, Player } from './types.ts'
+import { rivalry } from './poles.ts'
 
 const T = (g: G) => g.c.tables.itemRules
 
@@ -34,6 +35,7 @@ export function* afterGain(g: G, p: Player, h: Held): Flow {
 export function afterClass(g: G, p: Player, from: Cls, to: Cls): void {
   const ladder = g.c.tables.work.ladder
   mentorStart(g, p, 'новая работа')
+  rivalry(g, p, from, to)
   if (ladder[to] >= ladder[from]) return
   const h = p.items.find((x) => x.name === 'Карьерист')
   if (h && rollDie(g, p, 6, '«Карьерист»: класс упал — уходит на 1–3') <= 3) {
