@@ -153,6 +153,8 @@ export function rollDie(g: G, p: Player, n: number, why: string): number {
 export function setClass(g: G, p: Player, cls: Cls): boolean {
   if (cls === p.cls) return false
   if ((cls === 'Армия' || cls === 'Полиция') && !p.citizenship.includes(p.country)) { say(g, p, `без гражданства в класс ${cls} не берут`); return false }
+  // «Учёт»: закрыты Армия и Полиция (каталог стигм).
+  if ((cls === 'Армия' || cls === 'Полиция') && has(g, p, 'Учёт')) { say(g, p, `с «Учётом» в класс ${cls} не берут`); return false }
   const from = p.cls
   const key = { 'Армия': ['Присяга', 'Офицерское звание'], 'Полиция': ['Значок'] }[from as string] ?? []
   for (const k of key) for (const h of held(g, p, k)) removeHeld(g, p, h)
