@@ -15,7 +15,7 @@ import { crisisCheck, flight, turmoilRule } from './world.ts'
 import { emigrationRule } from './emigration.ts'
 import { draftCheck, frontNow, warRule } from './war.ts'
 import { traceRule } from './social.ts'
-import { chronicle, giveAll, giveItem, keepOneThing, loseClose, pawn, retire, riteCost, upbringingBonus } from './life.ts'
+import { chronicle, giveAll, giveItem, keepOneThing, loseClose, retire, riteCost, upbringingBonus } from './life.ts'
 import { newCtx } from './cond.ts'
 import type { Player } from './types.ts'
 
@@ -112,7 +112,6 @@ const RULES: Record<string, Rule> = {
   'работа на пенсии'(g, p) { retire(g, p, 'работа на пенсии') },
   'учить молодых'(g, p) { retire(g, p, 'учить молодых') },
   *'оставить одну вещь'(g, p) { yield* keepOneThing(g, p) },
-  *'скупка'(g, p) { yield* pawn(g, p) },
   *'утрата близкого'(g, p) { yield* loseClose(g, p) },
   *'отдать предмет'(g, p, _arg, ctx) { yield* giveItem(g, p, ctx) },
   'отдать всё'(g, p, arg) { giveAll(g, p, arg ?? '') },

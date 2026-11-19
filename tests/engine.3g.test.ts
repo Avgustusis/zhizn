@@ -134,14 +134,24 @@ describe('этап 3г: пассивные свойства предметов',
     expect(turned).toBeLessThan(25)
   })
 
-  it('«Человек из кабинета» уходит при любой смене власти; «Хозяин района» — если правила Мафия', () => {
-    const { e, p } = lab(8, { seg: 3 })
-    drive(gainItem(e.g, p, 'Человек из кабинета'))
-    drive(atPowerChange(e.g, p, e.state.world.countries[0], 'Армия'))
-    expect(p.items.some((h) => h.name === 'Человек из кабинета')).toBe(false)
+  it('покровители (20.11): «Человек из кабинета» при любой смене власти — d6 1–3; «Меценат» при госсоциализме — всегда', () => {
+    let lost = 0
+    for (let seed = 1; seed <= 40; seed++) {
+      const { e, p } = lab(seed, { seg: 3 })
+      drive(gainItem(e.g, p, 'Человек из кабинета'))
+      drive(atPowerChange(e.g, p, e.state.world.countries[0], 'Армия'))
+      if (!p.items.some((h) => h.name === 'Человек из кабинета')) lost++
+    }
+    expect(lost).toBeGreaterThan(10)
+    expect(lost).toBeLessThan(30)
+    const { e, p } = lab(9, { seg: 3 })
     drive(gainItem(e.g, p, 'Хозяин района'))
     drive(atPowerChange(e.g, p, e.state.world.countries[0], 'Армия'))
     expect(p.items.some((h) => h.name === 'Хозяин района')).toBe(true)
+    drive(gainItem(e.g, p, 'Меценат'))
+    e.state.world.countries[0].ideology = 'Госсоциализм'
+    drive(atPowerChange(e.g, p, e.state.world.countries[0], 'Олигархи'))
+    expect(p.items.some((h) => h.name === 'Меценат')).toBe(false)
   })
 
   it('«Имя в спорте» в Старости не даёт бонуса; «Фамильное имя» гасит «Дурная слава»', () => {

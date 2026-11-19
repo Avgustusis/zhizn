@@ -56,9 +56,12 @@ export function* keepOneThing(g: G, p: Player): Flow {
   for (const h of things) if (String(h.uid) !== keep) yield* sellThing(g, p, h)
 }
 
-/** Скупка (рынок): продать одну вещь. */
+/** Вещи, которые берёт скупка. */
+export const sellable = (g: G, p: Player): Held[] => p.items.filter((h) => kindOf(g, h) === 'вещь' && sellPrice(g, p, h) !== undefined)
+
+/** Скупка: в свой ход продать вещь за цену с карты — бесплатно, без действия (каталог «Предметы»). */
 export function* pawn(g: G, p: Player): Flow {
-  const things = p.items.filter((h) => kindOf(g, h) === 'вещь' && sellPrice(g, p, h) !== undefined)
+  const things = sellable(g, p)
   if (!things.length) { say(g, p, 'продавать нечего'); return }
   const id = yield* ask(g, p, 'предмет', 'Скупка: что продаёшь?', [
     ...things.map((h) => ({ id: String(h.uid), label: `«${h.name}» — ${sellPrice(g, p, h)} возм.`, ...(T(g).sell[h.name]?.note ? { note: T(g).sell[h.name]!.note } : {}) })),

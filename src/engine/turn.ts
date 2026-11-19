@@ -13,6 +13,7 @@ import { whyNot } from './explain.ts'
 import { acculturate, decayStigmas, deportRisk, emigrate, naturalize } from './emigration.ts'
 import { backToFront, frontTurn, volunteerAsk, volunteerSides } from './war.ts'
 import { afterCard, atSegment } from './items.ts'
+import { pawn, sellable } from './life.ts'
 import { anytimePlays, cancelWarCard, peekTop, playMenu, saveFromBondage, travelDiscount } from './tricks.ts'
 import type { Action, Player } from './types.ts'
 
@@ -343,9 +344,12 @@ function* actions(g: G, p: Player): Flow {
         id: via ? `${a.id}@знакомство` : a.id, label: via ? `${a.label} — по знакомству, без риска` : a.label, effect: a.effect, ...(off ? { off } : {}),
         note: [a.slots.join(''), price ? `${price} возм.` : '', gateNote(gate), a.note ?? ''].filter(Boolean).join(' · '),
       })),
+      // Скупка (каталог «Предметы»: «в свой ход любую вещь можно продать за цену с карты») — бесплатно, без действия.
+      ...(sellable(g, p).length ? [{ id: 'скупка', label: 'продать вещь в скупку', note: 'бесплатно, действие не тратится' }] : []),
       { id: 'конец', label: 'закончить ход' },
     ], { force: true })
     if (id === 'конец') return
+    if (id === 'скупка') { yield* pawn(g, p); continue }
     const { a, gate, via } = shown.find((x) => (x.via ? `${x.a.id}@знакомство` : x.a.id) === id)!
     spendSlots(a)
     // Проверка характера: провал — действие потрачено, деньги не списываются.
@@ -391,7 +395,7 @@ export function* playerTurn(g: G, p: Player): Flow {
     const canLeave = !p.inst && p.seg >= SEGMENTS.indexOf('Молодость')
     const volunteer = leave ? [] : volunteerSides(g, p)
     let how = 'сиделка'
-    while (how === 'сиделка' || how === 'сыграть') {
+    while (how === 'сиделка' || how === 'сыграть' || how === 'скупка') {
       how = yield* ask(g, p, 'ход', `${p.name}: твой ход`, [
       { id: 'бросок', label: 'бросить кубик' },
       // Из закрытой страны (госсоциализм, военная диктатура, полицейское государство) «по своей воле» не выпускают — только нелегально.
@@ -399,10 +403,12 @@ export function* playerTurn(g: G, p: Player): Flow {
         ? { id: 'эмиграция', label: 'уехать нелегально вместо хода', note: 'легально из твоей страны выпускают только бегством' }
         : { id: 'эмиграция', label: 'эмигрировать вместо хода' }] : []),
       ...(volunteer.length ? [{ id: 'доброволец', label: 'уйти добровольцем на «Фронт» вместо хода' }] : []),
+      ...(sellable(g, p).length ? [{ id: 'скупка', label: 'продать вещь в скупку', note: 'бесплатно, ход не тратится' }] : []),
       ...(anytimePlays(g, p).length ? [{ id: 'сыграть', label: 'сыграть карту (козырь, вещь, знакомый)', note: 'ход не тратится' }] : []),
       ...(segName(p) === 'Древность' ? [{ id: 'сиделка', label: p.rules['сиделка постоянно'] ? 'сиделка: сейчас постоянно — переключить на «сам»' : 'сиделка: сейчас «сам» — нанять постоянно', note: 'ход не тратится' }] : []),
     ], { force: true })
       if (how === 'сыграть') yield* playMenu(g, p)
+      if (how === 'скупка') yield* pawn(g, p)
       if (how === 'сиделка') {
         if (p.rules['сиделка постоянно']) delete p.rules['сиделка постоянно']; else p.rules['сиделка постоянно'] = {}
         say(g, p, p.rules['сиделка постоянно'] ? 'сиделка теперь постоянно' : 'теперь справляешься сам')
