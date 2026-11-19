@@ -76,7 +76,10 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
   } else if ('check' in n) {
     const ok = yield* runCheck(g, p, n.check, ctx, usesStat([...n.success, ...n.failure]))
     yield* run(g, p, ok ? n.success : n.failure, ctx)
-  } else if ('gain' in n) yield* gainItem(g, p, n.gain, n.adopted ? { adopted: true } : {})
+  } else if ('gain' in n) {
+    const h = yield* gainItem(g, p, n.gain, n.adopted ? { adopted: true } : {})
+    if (h && ctx.card) h.origin = ctx.card
+  }
   else if ('lose' in n) yield* loseItem(g, p, n.lose, !!n.price, ctx.tags.includes('#утрата'))
   else if ('rule' in n) yield* runRule(g, p, n.rule, n.arg, ctx)
   else if ('charStep' in n) charStep(g, p, n.charStep, n.n ?? 1)

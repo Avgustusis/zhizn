@@ -15,6 +15,7 @@ import { crisisCheck, flight, turmoilRule } from './world.ts'
 import { emigrationRule } from './emigration.ts'
 import { draftCheck, frontNow, warRule } from './war.ts'
 import { traceRule } from './social.ts'
+import { chronicle, giveAll, giveItem, keepOneThing, loseClose, pawn, retire, riteCost, upbringingBonus } from './life.ts'
 import { newCtx } from './cond.ts'
 import type { Player } from './types.ts'
 
@@ -105,6 +106,18 @@ const RULES: Record<string, Rule> = {
   *'стать проигравшим'(g, p, arg) { yield* turmoilRule(g, p, 'стать проигравшим', arg) },
   *'донос на нейтрала'(g, p, arg) { yield* turmoilRule(g, p, 'донос на нейтрала', arg) },
   *'люстрация'(g, p, arg) { yield* turmoilRule(g, p, 'люстрация', arg) },
+  // ── Этап 3г: пенсия, вещи, утраты, «Летопись» ──
+  'пенсия'(g, p) { retire(g, p, 'пенсия') },
+  'работа на пенсии'(g, p) { retire(g, p, 'работа на пенсии') },
+  'учить молодых'(g, p) { retire(g, p, 'учить молодых') },
+  *'оставить одну вещь'(g, p) { yield* keepOneThing(g, p) },
+  *'скупка'(g, p) { yield* pawn(g, p) },
+  *'утрата близкого'(g, p) { yield* loseClose(g, p) },
+  *'отдать предмет'(g, p, _arg, ctx) { yield* giveItem(g, p, ctx) },
+  'отдать всё'(g, p, arg) { giveAll(g, p, arg ?? '') },
+  'летопись'(g, p, arg) { chronicle(g, p, arg) },
+  'итог воспитания'(g, p, arg) { upbringingBonus(g, p, arg) },
+  'обряд дорожает'(g, p, arg) { riteCost(g, p, arg) },
   // ── Общественный след (18.11) ──
   'след'(g, p, arg) { traceRule(g, p, arg) },
   // ── Война (этап 3в) ──

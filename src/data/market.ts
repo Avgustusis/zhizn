@@ -29,7 +29,9 @@ const DOCS = not(has('Без документов'))
 const CALM = psyFrom(-4)
 /** Психика −8 и ниже закрывает вдобавок любую работу и храм (Усердие держится на работе до −8). */
 const ON_FEET = psyFrom(-7)
-const WORKS = { any: [psyFrom(-7), { all: [{ char: 'Усердие' }, psyFrom(-8)] }] } as Cond
+const WORKS = { all: [{ any: [psyFrom(-7), { all: [{ char: 'Усердие' }, psyFrom(-8)] }] }, { not: { rule: 'на пенсии' } }] } as Cond
+/** Развилка «Пенсия»: «учить молодых» — из работ только Подработка (решено в 3г по тексту карты). */
+const TEACHING = { rule: 'учит молодых' } as Cond
 /** Физическое −5 и ниже закрывает спортзал, путешествие, переработку, бордель. */
 const BODY = physFrom(-4)
 /** Ловушка незаконна (идеологии из «Поправок по идеологии»); на периферии рынок не регулируется. */
@@ -49,27 +51,33 @@ const work: Action[] = [
   },
   {
     id: 'работа', label: 'Работа', slots: ['■'], place: 'Завод',
-    requires: all(NO_BREAK, DOCS, WORKS, { ownBusiness: false }, not(rule('студент')), not(rule('только подработка'))),
+    requires: all(NO_BREAK, DOCS, WORKS, { ownBusiness: false }, not(rule('студент')), not(rule('только подработка')), not(TEACHING)),
     note: 'доход Д + 1, отметка Стажа; износ по d6. При психике −5 и ниже — только доход Подработки',
     effect: [{ rule: 'работа', arg: 'работа' }],
   },
   {
     id: 'переработка', label: 'Переработка', slots: ['■'], place: 'Завод',
-    requires: all(NO_BREAK, DOCS, CALM, BODY, not(OLD), { ownBusiness: false }, not(rule('студент')), not(rule('только подработка')), not(rule('только работа'))),
+    requires: all(NO_BREAK, DOCS, CALM, BODY, not(OLD), { ownBusiness: false }, not(rule('студент')), not(rule('только подработка')), not(rule('только работа')), not(TEACHING), not(rule('на пенсии'))),
     note: 'доход Д × 2 + 1, отметка Стажа; износ сильнее',
     effect: [{ rule: 'работа', arg: 'переработка' }],
   },
   {
     id: 'дело', label: 'Своё дело', slots: ['■'], place: 'Барахолка',
-    requires: all(NO_BREAK, DOCS, ON_FEET, { ownBusiness: true }, not(rule('студент'))),
+    requires: all(NO_BREAK, DOCS, ON_FEET, { ownBusiness: true }, not(rule('студент')), not(rule('на пенсии')), not(TEACHING)),
     note: 'доход Д + бонус дела + поправка идеологии; износа нет; пустая отметка Стажа',
     effect: [{ rule: 'работа', arg: 'дело' }],
+  },
+  {
+    // Скупка (концепция, «Вещи»: «можно продать в скупку»): одна вещь за действие, цена — по каталогу.
+    id: 'скупка', label: 'Скупка: продать вещь', slots: ['▲'], place: 'Барахолка', requires: all(NO_BREAK, { hasKind: 'вещь' }),
+    note: 'цена — по каталогу вещей; бивень и контрабанда — d6 1 «Судимость»; фамильное серебро — Сплочённость −1',
+    effect: [{ rule: 'скупка' }],
   },
   {
     // Решено 18.11: открыть дело самому — ■ вместо Работы, Молодость–Старость, одна попытка за отрезок.
     id: 'контора', label: 'Контора: открыть своё дело', slots: ['■'], place: 'Контора', perSeg: 1, tryCounts: true,
     gate: [{ pole: 'Беспечность' }, { pole: 'Мера' }, { pole: 'Выдержка' }],
-    requires: all(NO_BREAK, DOCS, ON_FEET, { ownBusiness: false }, { seg: ['Молодость', 'Зрелость', 'Старость'] }, not(rule('студент'))),
+    requires: all(NO_BREAK, DOCS, ON_FEET, { ownBusiness: false }, { seg: ['Молодость', 'Зрелость', 'Старость'] }, not(rule('студент')), not(rule('на пенсии')), not(TEACHING)),
     note: 'выбираешь законное дело по классу, платишь, проверка; провал — половина цены назад, −1 псих.',
     tags: ['#своёдело'],
     effect: [{ rule: 'контора' }],
@@ -277,6 +285,8 @@ const places: Action[] = [
   {
     id: 'обряд', label: 'Обряд своей культуры (даром, раз в отрезок)', slots: ['▲'], place: 'Обряд культуры', perSeg: 1,
     requires: { diaspora: false }, note: 'открыт даже в глубокой депрессии', effect: [{ rule: 'обряд' }],
+    // «Ледоход» (Сарды): обряд дорожает на 1 возм. навсегда.
+    price: [{ if: rule('обряд дорожает'), n: 1 }],
   },
   {
     id: 'двор', label: 'Двор: даром, +1 псих. (раз в отрезок)', slots: ['▲'], place: 'Двор', perSeg: 1,

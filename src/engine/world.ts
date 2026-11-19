@@ -228,8 +228,7 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
     if (!p.alive) continue
     yield* run(g, p, card.sides![sideKey(ctx.side!)], ctx)
     side = ctx.side!
-    turmoilCtx.delete(p.seat)
-    if (!p.alive) continue
+    if (!p.alive) { turmoilCtx.delete(p.seat); continue }
     // 1) Победители могут перейти в новый доминирующий класс; в Олигархи — только «Везение», 🎲 Смекалка 18.
     if (side === 'победители' && p.cls !== c.dominant && !p.inst) {
       const a = yield* ask(g, p, 'класс', `Перейти в новый доминирующий класс — ${c.dominant}?${c.dominant === 'Олигархи' ? ` Только через «Везение»: 🎲 Смекалка ${t.oligarchDc}.` : ''}`, [{ id: 'да', label: `перейти: ${c.dominant}` }, { id: 'нет', label: `остаться: ${p.cls}` }], { force: true })
@@ -247,7 +246,13 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
       if (!jail && side === 'нейтралы' && c.ideology === 'Военная диктатура' && !tooYoung(p, c)) {
         const r = roll3(g).sum
         jail = r + p.stats['Смекалка'] + (ctx.penalty ?? 0) < t.neutralDc
-        if (jail) { say(g, p, '«кто не с нами, тот против нас»'); yield* run(g, p, card.sides!.lose, { ...ctx, side: 'проигравшие' }) }
+        if (jail) {
+          say(g, p, '«кто не с нами, тот против нас»')
+          // Строка проигравших читается с теми же правилами карты («стать нейтралом», «правило тюрьмы»).
+          const lose = { ...ctx, side: 'проигравшие' as const }
+          turmoilCtx.set(p.seat, { state, ctx: lose })
+          yield* run(g, p, card.sides!.lose, lose)
+        }
       }
       if (jail) {
         const t2 = g.c.tables.inst.prison
@@ -262,6 +267,7 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
       if (up.length) { const to = up.includes(c.dominant) ? c.dominant : up[0]; say(g, p, `«На баррикады»: класс на шаг выше — ${to}`); setClass(g, p, to) }
     }
     delete p.rules['сыграно: Место в списке']; delete p.rules['сыграно: На баррикады']
+    turmoilCtx.delete(p.seat)
     // Журнал.
     if (side !== 'нейтралы') count(p, 'сторона в Смуте')
     if (side === 'победители') count(p, 'победа в Смуте')

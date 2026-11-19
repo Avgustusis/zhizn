@@ -111,6 +111,7 @@ export function* work(g: G, p: Player, kind: string): Flow {
   if (kind === 'работа') {
     addParam(g, p, 'возм', D + 1, ctx)
     addStazh(p, true)
+    if (p.rules['работа на пенсии']) { say(g, p, 'работа на пенсии: ещё −1 физ.'); addParam(g, p, 'физ', -1, ctx) }
     const r = rollDie(g, p, 6, 'износ')
     if (own === 'риск') { if (r <= t.work.mafiaRisk['работа']) yield* gainItem(g, p, 'Дурная слава'); return }
     if (r <= 2) { hit(g, p, 'физ', 1, ctx); hit(g, p, 'псих', 1, ctx) } else if (r <= 4) hit(g, p, rollDie(g, p, 6, 'износ: какое здоровье') >= 5 ? other : own, 1, ctx)
@@ -119,6 +120,7 @@ export function* work(g: G, p: Player, kind: string): Flow {
   // Переработка
   addParam(g, p, 'возм', D * 2 + 1 + (t.ideologyIncome.overtime[c.ideology] ?? 0), ctx)
   addStazh(p, true)
+  if (p.rules['работа на пенсии']) { say(g, p, 'работа на пенсии: ещё −1 физ.'); addParam(g, p, 'физ', -1, ctx) }
   const r = rollDie(g, p, 6, 'износ')
   if (own === 'риск') {
     hit(g, p, 'физ', 1, ctx); hit(g, p, 'псих', 1, ctx)
@@ -144,6 +146,8 @@ export function addStazh(p: Player, hire: boolean): void {
 export function pension(g: G, p: Player): number {
   const t = g.c.tables.pension
   if (!t.segs.includes(segName(p)) || !p.citizenship.includes(p.country)) return 0
+  // «Пенсия»: «работать дальше» — пенсии нет, пока работаешь.
+  if (p.rules['работа на пенсии']) return 0
   const base = t.table.find(([from]) => p.stazhHire >= from)?.[1] ?? 0
   if (!base) return 0
   return Math.min(base + p.pensionAdd, income(g, p))
