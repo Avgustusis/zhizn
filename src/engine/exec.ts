@@ -4,7 +4,7 @@ import { ask, countryOf, clamp, emit, say, type Flow, type G } from './core.ts'
 import { cond, has, type Ctx } from './cond.ts'
 import { addParam, charStep, enterInst, gainItem, leaveInst, loseItem, rollDie, setClass, setParam, statCap } from './change.ts'
 import { firstCheck, previewCheck, runCheck, spend, strongIn, type CheckPreview } from './checks.ts'
-import { runRule } from './rules.ts'
+import { RULE_NOTES, runRule } from './rules.ts'
 import { frontLoss } from './war.ts'
 import type { Player, Stat } from './types.ts'
 
@@ -63,6 +63,7 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
     const forced = bound.some(Boolean)
     const options = n.choose.map((o, i) => ({
       id: String(i), label: o.label, effect: o.then,
+      ...((): { note?: string } => { const r = o.then.find((x) => 'rule' in x && RULE_NOTES[x.rule]) as { rule: string } | undefined; return r ? { note: RULE_NOTES[r.rule](g, p) } : {} })(),
       ...((): { check?: CheckPreview } => { const c = firstCheck(o.then); return c ? { check: previewCheck(g, p, c, ctx) } : {} })(),
       ...(!cond(g, p, o.if, ctx) ? { off: 'недоступно' } : forced && !bound[i] ? { off: 'не в твоём характере' } : {}),
     }))

@@ -32,6 +32,8 @@ export function value(p: Player, nodes: Node[] | undefined, depth = 0): number {
     else if ('cases' in n) v += Math.max(...n.cases.map((c) => value(p, c.then, depth + 1)), value(p, n.else, depth + 1))
     else if ('choose' in n) v += Math.max(...n.choose.map((o) => value(p, o.then, depth + 1)))
     else if ('cls' in n) v += 1
+    // Свадьба — как в симуляции (engine3.value: _spouse = 1).
+    else if ('rule' in n && n.rule === 'свадьба') v += 1
   }
   return v
 }
@@ -107,6 +109,10 @@ export function answer(g: G, req: Request): string {
       if (ids.includes('постоянно')) return p.vozm >= 4 ? 'постоянно' : 'сам' // сиделка при входе в Древность: при 4+ возм.
       return ids[0]
     case 'карта': {
+      // Нет партнёра — сватовство, как ИИ симуляции (sim3.partnership: путь Б почти всегда); провал — сразу путь А.
+      const match = open.find((o) => JSON.stringify(o.effect ?? []).includes('"rule":"сватовство"'))
+      if (match) return match.id
+      if (req.text.startsWith('Не сошлись')) return 'да'
       // Своё дело с карты — как ИИ симуляции (biz.py: _get, card): только если дела нет или новое крупнее, деньги
       // на цену и ещё 2 в запасе, и то в 65% случаев. Случайность — из номера хода.
       const bizOpt = open.find((o) => bizGain(g, o.effect))

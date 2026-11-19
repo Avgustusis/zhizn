@@ -4,11 +4,11 @@
  * Сами действия и их цены — данные: src/data/market.ts.
  */
 import { CHAR_AXES } from '../data/schema.ts'
-import { ask, countryOf, die, say, segName, shuffle, step, type Flow, type G } from './core.ts'
-import { charAxisOf, has, isMinority, kindOf, newCtx, pairOf, type Ctx } from './cond.ts'
-import { addParam, charStep, count, enterInst, gainItem, removeHeld, rollDie, setClass, visit } from './change.ts'
+import { ask, countryOf, die, emit, roll3, say, segName, shuffle, step, type Flow, type G } from './core.ts'
+import { charAxisOf, cultureAxisOf, has, isMinority, kindOf, newCtx, pairOf, type Ctx } from './cond.ts'
+import { addParam, charStep, count, enterInst, gainItem, removeHeld, rollDie, setClass, visit, wed } from './change.ts'
 import { run } from './exec.ts'
-import { previewCheck, runCheck } from './checks.ts'
+import { chance, previewCheck, runCheck } from './checks.ts'
 import { policyIncome } from './social.ts'
 import { gateNote, gateOf, gateRoll } from './turn.ts'
 import { legalize } from './emigration.ts'
@@ -331,6 +331,49 @@ export function* acquaintance(g: G, p: Player): Flow {
 }
 /** Шаг характера — через общий charStep: с журналом и пределом ±2. */
 const stepChar = (g: G, p: Player, pole: CharPole): void => charStep(g, p, pole)
+
+// ── Сватовство (19.11) ──────────────────────────────────────────────────
+
+/** Поправки сватовства: личная культура (Традиция, Фамилизм — за; Самовыражение, Институции — против), идеология, позиция; потолок ±3. */
+export function matchMods(g: G, p: Player): { total: number; parts: string[] } {
+  const t = g.c.tables.matchmaking
+  const prof = p.ownProfile ?? g.s.world.cultures[p.culture]
+  const c = countryOf(g, p)
+  const parts: [string, number][] = []
+  for (const [pole, per] of Object.entries(t.culture)) {
+    const [axis, sign] = cultureAxisOf(pole)
+    const lean = Math.max(0, prof[axis] * sign)
+    if (lean) parts.push([pole, per * lean])
+  }
+  if (t.ideology[c.ideology]) parts.push([c.ideology, t.ideology[c.ideology]!])
+  if (t.position[c.pos]) parts.push([c.pos, t.position[c.pos]!])
+  const sum = parts.reduce((s, [, n]) => s + n, 0)
+  return { total: Math.max(-t.cap, Math.min(t.cap, sum)), parts: parts.map(([k, n]) => `${k} ${n > 0 ? '+' : '−'}${Math.abs(n)}`) }
+}
+
+/** Подпись у варианта «сватовство»: шанс и поправки. */
+export function matchNote(g: G, p: Player): string {
+  const t = g.c.tables.matchmaking
+  const m = matchMods(g, p)
+  const ch = chance(t.dc - p.coh - m.total)
+  return `−${t.price} возм.; 🎲 3d6 + Сплочённость ${p.coh >= 0 ? '+' : '−'}${Math.abs(p.coh)}${m.parts.length ? ` + поправки ${m.total >= 0 ? '+' : '−'}${Math.abs(m.total)} (${m.parts.join(', ')}${m.parts.length > 1 ? `; потолок ±${t.cap}` : ''})` : ''} ≥ ${t.dc} · шанс ${Math.round(ch * 100)}%`
+}
+
+/** Сватовство через родню: −1 возм., 3d6 + Сплочённость + поправки ≥ 9. Успех — Партнёр класса семьи, Сплочённость +1, d6 2–6 свадьба. */
+export function* matchmaking(g: G, p: Player, ctx: Ctx): Flow<boolean> {
+  const t = g.c.tables.matchmaking
+  const m = matchMods(g, p)
+  addParam(g, p, 'возм', -t.price, ctx)
+  const roll = roll3(g)
+  const ok = roll.sum + p.coh + m.total >= t.dc
+  emit(g, { t: 'проверка', p: p.seat, stat: 'Харизма', dice: roll.dice, kept: roll.sum, value: p.coh, mod: m.total, trump: 0, dc: t.dc, ok, adv: 0, what: 'сватовство: 3d6 + Сплочённость' })
+  if (!ok) { say(g, p, 'не сошлись'); addParam(g, p, 'псих', t.failPsy, ctx); count(p, 'сватовство не удалось'); return false }
+  const h = yield* gainItem(g, p, 'Партнёр')
+  if (h?.person) { h.person.cls = p.familyCls; say(g, p, `партнёр из класса семьи — ${p.familyCls}`) }
+  addParam(g, p, 'Сплочённость', 1, ctx)
+  if (rollDie(g, p, 6, `сразу свадьба на ${t.weddingFrom}–6`) >= t.weddingFrom) yield* wed(g, p)
+  return true
+}
 
 // ── Прочее ──────────────────────────────────────────────────────────────
 

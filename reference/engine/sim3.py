@@ -43,6 +43,10 @@ GS_EDU = E('GS_EDU', 'R')                # льготы госсоциализм
 HRAM_WED = E('HRAM_WED', '1') == '1'    # карта «Храм или бюро» = свадьба
 PILOT = E('PILOT', '')
 REFUSE = E('REFUSE', 'smart'); CRISIS = E('CRISIS', 'smart')
+MATCH_T = int(os.environ.get('MATCH_T', '9'))   # 19.11: сватовство — 🎲 Сплочённость 9 (0 — по-старому, без броска)
+MATCH_W = int(os.environ.get('MATCH_W', '2'))   # успех — d6 ≥ W: сразу свадьба (как было)
+MATCH_FB = int(os.environ.get('MATCH_FB', '1'))   # провал сватовства — сразу путь А
+MATCH_IDEO = {'Теократия': 2, 'Национализм': 1, 'Вольница': 1, 'Либеральная демократия': -1, 'Технократия': -1}
 PART_REL_WED = E('PART_REL_WED', '1') == '1'   # «через родню»: d6 2–6 — сразу свадьба
 CHILD_FORK = E('CHILD_FORK', '1') == '1'       # «Ребёнок» напечатан на поле (Зрелость, клетка 10), d6 2–6
 TRAVEL_KID = E('TRAVEL_KID', '1') == '1'       # путешествие с парой: по желанию d6 5–6 — ребёнок
@@ -348,6 +352,7 @@ class Player:
         if s.items.get('Партнёр', 0) <= 0 or s.items.get('Супруг', 0) > 0: return False
         s.items['Партнёр'] = 0; s.items['Супруг'] = 1; s.sp = s.pt or dict(cls=s.cls, cult=True, race=True)
         s.log['wed'] += 1
+        if s.log['wed'] == 1: s.w.stats['wed_first'] += 1
         if 'wed_seg' not in s.log or s.log['wed'] == 1: s.log['wed_seg'] = s.seg
         s.w.stats['wed_' + SEGS[s.seg]] += 1
         return True
@@ -859,7 +864,21 @@ class World:
             if roll3() + p.st['Красота'] + (1 if p.st['Харизма'] >= 6 else 0) >= 12: p.add_partner('event')
             else: p.psy -= 1
             return
-        s.stats['part_none_B'] += 1; p.add_partner('relatives'); p.coh = min(3, p.coh + 1)
+        s.stats['part_none_B'] += 1
+        if MATCH_T:   # 19.11: сватовство через родню — проверка 3d6 + Сплочённость + поправки (культура, идеология, позиция; потолок ±3)
+            c = s.countries[p.cidx]; pr = s.cprof[p.culture]
+            trad = -pr[5] > 0
+            m = -pr[5] - pr[6] + MATCH_IDEO.get(c['ideo'], 0) + {'периферия': 1, 'ядро': -1}.get(c['pos'], 0)
+            m = max(-3, min(3, m)); p.vozm -= 1
+            if roll3() + p.coh + m >= MATCH_T:
+                s.stats['match_ok'] += 1; p.add_partner('relatives'); p.coh = min(3, p.coh + 1)
+                if d6() >= MATCH_W and p.wed(): s.stats['wed_rel'] += 1
+            else:
+                s.stats['match_fail'] += 1; p.psy -= 1
+                if MATCH_FB:   # не сошлись — можно сразу искать самому (путь А)
+                    if roll3() + p.st['Красота'] + (1 if p.st['Харизма'] >= 6 else 0) >= 12: p.add_partner('event'); s.stats['match_fb_ok'] += 1
+            return
+        p.add_partner('relatives'); p.coh = min(3, p.coh + 1)
         if PART_REL_WED and d6() >= 2 and p.wed(): s.stats['wed_rel'] += 1
 
     # ---------- рынок (как в sim2, плюс журнал и игра на смысл) ----------

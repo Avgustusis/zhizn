@@ -2,11 +2,14 @@
  * Особые правила карт (шаг `rule`): то, что делает код, а не общий эффект.
  * Написанные правила — в таблице ниже. Остальные движок не пропускает молча: считает в `state.todo`.
  */
-import { clamp, countryOf, pick, say, todo, type Flow, type G } from './core.ts'
+import { ask, clamp, countryOf, pick, say, todo, type Flow, type G } from './core.ts'
+import type { Check } from '../data/schema.ts'
+import { previewCheck } from './checks.ts'
+import { run } from './exec.ts'
 import type { Ctx } from './cond.ts'
 import { kindOf } from './cond.ts'
 import { addParam, charStep, gainItem, removeHeld, wed } from './change.ts'
-import { acquaintance, burn, kontora, lawTrap, partnerClass, rite, work } from './market.ts'
+import { acquaintance, burn, kontora, lawTrap, matchmaking, matchNote, partnerClass, rite, work } from './market.ts'
 import { foundNow, searchNow } from './meaning.ts'
 import { crisisCheck, flight, turmoilRule } from './world.ts'
 import { emigrationRule } from './emigration.ts'
@@ -66,6 +69,14 @@ const RULES: Record<string, Rule> = {
     if (p.counters['обжорство: подряд'] === 3) charStep(g, p, 'Аппетит')
   },
   *'знакомство'(g, p) { yield* acquaintance(g, p) },
+  // Сватовство (19.11): проверка Сплочённости; провал — «не сошлись», и можно тут же искать самому (путь А развилки).
+  *'сватовство'(g, p, _arg, ctx) {
+    if (yield* matchmaking(g, p, ctx)) return
+    const a = yield* ask(g, p, 'карта', 'Не сошлись. Искать самому прямо сейчас (путь А: 🎲 Красота 12, Харизма 6+ — +1)?', [
+      { id: 'да', label: 'искать всерьёз', check: previewCheck(g, p, SEARCH, ctx) }, { id: 'нет', label: 'не сейчас' },
+    ], { card: ctx.card, force: true })
+    if (a === 'да') yield* run(g, p, [{ check: SEARCH, success: [{ gain: 'Партнёр', blind: true }], failure: [{ add: { 'псих': -1 } }] }], ctx)
+  },
   *'контора'(g, p) { yield* kontora(g, p) },
   *'обряд'(g, p) { yield* rite(g, p) },
   'без рынка'(_g, p) { p.rules['без рынка'] = { arg: String(p.turns + 1) } },
@@ -105,6 +116,12 @@ const RULES: Record<string, Rule> = {
   *'отпуск'(g, p, arg) { yield* warRule(g, p, 'отпуск', arg) },
   *'проверка кризиса'(g, p, _arg, ctx) { yield* crisisCheck(g, g.s.world.countries[ctx.target ?? p.country], true) },
 }
+
+/** Путь А развилки «Партнёрство»: искать всерьёз. */
+const SEARCH: Check = { stat: 'Красота', dc: 12, mods: [{ if: { p: 'Харизма', gte: 6 }, add: 1 }] }
+
+/** Подписи у вариантов выбора, которые ведут к правилу (шанс и поправки, которых нет в обычной проверке). */
+export const RULE_NOTES: Record<string, (g: G, p: Player) => string> = { 'сватовство': matchNote }
 
 export function* runRule(g: G, p: Player, rule: string, arg: string | undefined, ctx: Ctx): Flow {
   if (UNTIL_SEG.includes(rule)) { p.rules[rule] = { ...(arg ? { arg } : {}), seg: p.seg }; return }

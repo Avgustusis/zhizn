@@ -6,6 +6,9 @@ import { Engine } from '../src/engine/engine.ts'
 import { answer } from '../src/engine/ai/simple.ts'
 import { destCard, emigrate } from '../src/engine/emigration.ts'
 import { gateNote, gateOf } from '../src/engine/turn.ts'
+import { matchMods, matchNote } from '../src/engine/market.ts'
+import { runRule } from '../src/engine/rules.ts'
+import { newCtx } from '../src/engine/cond.ts'
 import { crisisCheck, powerChange, tooYoung } from '../src/engine/world.ts'
 import type { Content, Player, Request } from '../src/engine/types.ts'
 
@@ -100,17 +103,58 @@ describe('правки 19.11', () => {
   })
 
   it('сиделка: вопрос один раз при входе в Древность, дальше — настройка; переключатель в вопросе хода', () => {
-    // Зерно 2: простой ИИ доживает до Древности.
-    const e = new Engine(real, { mode: 'поколение', seed: 2, seats: [{ name: 'И1' }] }, { checkpoints: false })
-    let entry = 0, toggles = 0
-    while (e.pending) {
-      const r = e.pending
-      if (r.text.startsWith('Древность:')) entry++
-      if (r.type === 'ход' && r.options.some((o) => o.id === 'сиделка')) toggles++
-      e.answer(answer(e.g, r))
+    // Первое зерно, где простой ИИ доживает до Древности.
+    for (let seed = 1; seed <= 40; seed++) {
+      const e = new Engine(real, { mode: 'поколение', seed, seats: [{ name: 'И1' }] }, { checkpoints: false })
+      let entry = 0, toggles = 0
+      while (e.pending) {
+        const r = e.pending
+        if (r.text.startsWith('Древность:')) entry++
+        if (r.type === 'ход' && r.options.some((o) => o.id === 'сиделка')) toggles++
+        e.answer(answer(e.g, r))
+      }
+      if (e.state.players[0].seg !== 5) continue
+      expect(entry).toBe(1)
+      expect(toggles).toBeGreaterThan(0)
+      return
     }
-    expect(e.state.players[0].seg).toBe(5)
-    expect(entry).toBe(1)
-    expect(toggles).toBeGreaterThan(0)
+    throw new Error('никто не дожил до Древности')
+  })
+})
+
+describe('сватовство (19.11)', () => {
+  it('поправки: культура, идеология, позиция, потолок ±3; подпись с шансом у варианта', () => {
+    const { e, p } = lab(11)
+    const c = e.state.world.countries[p.country]
+    Object.assign(c, { ideology: 'Теократия', pos: 'периферия' })
+    p.ownProfile = Array(11).fill(0)
+    p.ownProfile[5] = -2 // сильная Традиция
+    p.coh = 0
+    const m = matchMods(e.g, p)
+    expect(m.total).toBe(3) // 2 + 2 + 1 → потолок
+    expect(matchNote(e.g, p)).toContain('шанс 95%')
+    p.ownProfile[5] = 0
+    Object.assign(c, { ideology: 'Либеральная демократия', pos: 'ядро' })
+    expect(matchMods(e.g, p).total).toBe(-2)
+    expect(matchNote(e.g, p)).toContain('шанс 50%')
+  })
+
+  it('успех — Партнёр класса семьи и Сплочённость +1; провал — −1 псих. и вопрос «искать самому»', () => {
+    let ok = 0, fail = 0
+    for (let seed = 1; seed <= 40; seed++) {
+      const { e, p } = lab(seed, { coh: 0, familyCls: 'Армия', cls: 'Армия', vozm: 5 })
+      p.ownProfile = Array(11).fill(0)
+      const { asked } = drive(runRule(e.g, p, 'сватовство', undefined, newCtx('карта')), { 'Не сошлись': 'нет' })
+      const partner = p.items.find((h) => h.spouse || real.items.find((i) => i.name === h.name)?.group === 'Партнёр')
+      if (partner) { ok++; expect(partner.person?.cls).toBe('Армия'); expect(e.state.log.some((x) => x.t === 'число' && x.param === 'Сплочённость' && x.delta === 1)).toBe(true) } else { fail++; expect(asked.some((r) => r.text.startsWith('Не сошлись'))).toBe(true) }
+      expect(p.vozm).toBeLessThanOrEqual(4)
+    }
+    expect(ok).toBeGreaterThan(10)
+    expect(fail).toBeGreaterThan(2)
+  })
+
+  it('развилка «Партнёрство»: путь Б — сватовство', () => {
+    const fork = real.decks['развилка'].find((c) => c.title === 'Партнёрство')!
+    expect(JSON.stringify(fork.effect)).toContain('"rule":"сватовство"')
   })
 })

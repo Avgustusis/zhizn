@@ -21,6 +21,9 @@ export function describe(ev: LogEvent, s: GameState): { text: string; kind: 'hea
         const base = ev.what === 'поиск смысла' ? '' : ` + физ. ${signed(ev.value)}`
         return { text: `🎲 ${ev.what === 'поиск смысла' ? 'поиск смысла' : 'вход в Древность'}: кубики [${ev.dice.join(', ')}] = ${ev.kept}${base}${ev.mod ? `, поправки ${signed(ev.mod)}` : ''}; нужно ${ev.dc} — ${ev.ok ? 'успех' : 'провал'}`, kind: 'loud' }
       }
+      if (ev.what?.startsWith('сватовство')) {
+        return { text: `🎲 сватовство: кубики [${ev.dice.join(', ')}] = ${ev.kept} + Сплочённость ${signed(ev.value)}${ev.mod ? ` + поправки ${signed(ev.mod)}` : ''}; нужно ${ev.dc} — ${ev.ok ? 'успех' : 'провал'}`, kind: 'plain' }
+      }
       const parts = [`${ev.value}`, `кубики [${ev.dice.join(', ')}] = ${ev.kept}`]
       if (ev.mod) parts.push(`поправки ${signed(ev.mod)}`)
       if (ev.trump) parts.push(`козырь ${signed(ev.trump)}`)
