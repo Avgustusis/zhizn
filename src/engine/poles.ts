@@ -32,13 +32,39 @@ export function disasterMiss(g: G, p: Player, deck: string): boolean {
   return true
 }
 
-/** После карты: Доверие — обман бьёт сильнее (провал на #мошенничество: ещё −1 возм., −1 псих.); Щедрость — помощь другим стоит денег. */
-export function afterCardPoles(g: G, p: Player, tags: string[], failed: boolean): [string, number][] {
+/**
+ * После карты: Доверие — обман бьёт сильнее (провал на #мошенничество: ещё −1 возм., −1 псих.); Щедрость — помощь стоит денег,
+ * но только когда игрок выбрал ветку «помочь» на карте #помощь (решено 19.11; ветки — tables.poles.generosity.branches).
+ */
+export function afterCardPoles(g: G, p: Player, tags: string[], failed: boolean, card?: string, chose: string[] = []): [string, number][] {
   const t = T(g)
   const out: [string, number][] = []
   if (failed && tags.includes(t.fraud.tag) && cultureLean(g, p, t.fraud.trust) > 0) { say(g, p, 'обман бьёт сильнее: ты поверил'); out.push(['возм', -1], ['псих', -1]) }
-  if (tags.includes(t.generosity.tag) && charLean(p, t.generosity.pole) > 0) { say(g, p, 'Щедрость: помогаешь и деньгами'); out.push(['возм', t.generosity.vozm]) }
+  const help = card ? t.generosity.branches[card] : undefined
+  if (help && chose.includes(help) && charLean(p, t.generosity.pole) > 0) { say(g, p, 'Щедрость: помогаешь и деньгами'); out.push(['возм', t.generosity.vozm]) }
   return out
+}
+
+/** Теизм: развод стоит ещё −1 псих. (сильно — −2). */
+export const theismDivorce = (g: G, p: Player): number => -cultureLean(g, p, T(g).divorceCostly)
+
+/** Цинизм: взятка вместо броска в проверке #бюрократия или #закон — цена (сильно дешевле); 0 — взятки нет. */
+export function bribeCost(g: G, p: Player, tags: string[]): number {
+  const t = T(g).bribe
+  const lean = cultureLean(g, p, t.pole)
+  if (!lean || !tags.some((x) => (t.tags as string[]).includes(x))) return 0
+  return lean >= 2 ? t.strong : t.price
+}
+
+/** Аппетит на периферии: +1 к Красоте в проверках (полнота — сытая жизнь). */
+export const appetiteBeauty = (g: G, p: Player, stat: Stat): boolean =>
+  stat === 'Красота' && charLean(p, T(g).appetite.pole) > 0 && g.s.world.countries[p.country].pos === 'периферия'
+
+/** Фамилизм: при низкой Сплочённости (−2 и ниже, сильно — уже −1) на входе в каждый отрезок −1 псих. */
+export function familismCohesion(g: G, p: Player): number {
+  const lean = cultureLean(g, p, 'Фамилизм')
+  if (!lean) return 0
+  return p.coh <= (lean >= 2 ? -1 : -2) ? T(g).familism.lowCohPsy : 0
 }
 
 /** Развод: в светской культуре без штрафа. */

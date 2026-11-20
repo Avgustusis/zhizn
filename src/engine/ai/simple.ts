@@ -212,6 +212,11 @@ export function answer(g: G, req: Request): string {
       }
       return ids[0]
     }
+    case 'проверка': {
+      // Цинизм: взятка, если честный шанс ниже 60% и денег хватает с запасом.
+      if (ids.includes('взятка')) { const now = Number(req.text.match(/шанс (\d+)%/)?.[1] ?? 100); return now < 60 && p.vozm >= 5 ? 'взятка' : 'бросок' }
+      return ids[0]
+    }
     case 'предмет': return ids[0]
     default: return ids[0]
   }

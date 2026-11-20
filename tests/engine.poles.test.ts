@@ -3,7 +3,7 @@ import { loadContent } from '../src/data/content.ts'
 import { setClass } from '../src/engine/change.ts'
 import { newCtx } from '../src/engine/cond.ts'
 import { Engine } from '../src/engine/engine.ts'
-import { afterCardPoles, burnout, dignityStats, dynastyRefusal, familismPrice, freeDivorce, greyPsy, poleDelta } from '../src/engine/poles.ts'
+import { afterCardPoles, appetiteBeauty, bribeCost, burnout, dignityStats, dynastyRefusal, familismCohesion, familismPrice, freeDivorce, greyPsy, poleDelta, theismDivorce } from '../src/engine/poles.ts'
 import type { Player } from '../src/engine/types.ts'
 
 const real = loadContent()
@@ -14,7 +14,7 @@ function lab(seed: number, seats = 1): { e: Engine; ps: Player[] } {
   return { e, ps: e.state.players }
 }
 /** Положение личной культуры на полюсе: ось и знак (минус — первый полюс). */
-const AX: Record<string, [number, number]> = { 'Коллективизм': [0, -1], 'Индивидуализм': [0, 1], 'Порядок': [3, -1], 'Риск': [3, 1], 'Секуляризм': [4, 1], 'Традиция': [5, -1], 'Самовыражение': [5, 1], 'Фамилизм': [6, -1], 'Институции': [6, 1], 'Доверие': [7, -1], 'Цинизм': [7, 1], 'Достоинство': [8, 1] }
+const AX: Record<string, [number, number]> = { 'Теизм': [4, -1], 'Коллективизм': [0, -1], 'Индивидуализм': [0, 1], 'Порядок': [3, -1], 'Риск': [3, 1], 'Секуляризм': [4, 1], 'Традиция': [5, -1], 'Самовыражение': [5, 1], 'Фамилизм': [6, -1], 'Институции': [6, 1], 'Доверие': [7, -1], 'Цинизм': [7, 1], 'Достоинство': [8, 1] }
 const lean = (p: Player, pole: string, n = 1) => { const [a, s] = AX[pole]; p.ownProfile![a] = s * n }
 const card = (deck: string, tags: string[] = []) => newCtx('карта', { deck, tags: tags as never })
 
@@ -71,5 +71,40 @@ describe('механики полюсов', () => {
     expect(q.mods.some((m) => m.tag === '#карьера' && m.add === 1)).toBe(true)
     q.character = [0, 0, 0, 0, 0, 0, 1]
     expect(burnout(e.g, q)).toBe(-1)
+  })
+
+  it('правки 19.11: Теизм — развод −1/−2 псих.; Цинизм — взятка 2 возм. (сильно 1) в #бюрократия и #закон; Аппетит на периферии — +1 к Красоте', () => {
+    const { e, ps: [p] } = lab(6)
+    lean(p, 'Теизм')
+    expect(theismDivorce(e.g, p)).toBe(-1)
+    lean(p, 'Теизм', 2)
+    expect(theismDivorce(e.g, p)).toBe(-2)
+    lean(p, 'Цинизм')
+    expect(bribeCost(e.g, p, ['#закон'])).toBe(2)
+    expect(bribeCost(e.g, p, ['#работа'])).toBe(0)
+    lean(p, 'Цинизм', 2)
+    expect(bribeCost(e.g, p, ['#бюрократия'])).toBe(1)
+    p.character = [0, 0, 0, 0, -1, 0, 0]
+    e.state.world.countries[0].pos = 'периферия'
+    expect(appetiteBeauty(e.g, p, 'Красота')).toBe(true)
+    e.state.world.countries[0].pos = 'ядро'
+    expect(appetiteBeauty(e.g, p, 'Красота')).toBe(false)
+  })
+
+  it('Фамилизм: Сплочённость −2 (сильно −1) — −1 псих. на входе в отрезок; Щедрость — только ветка «помочь»; Риск — не трогает рынок', () => {
+    const { e, ps: [p] } = lab(7)
+    lean(p, 'Фамилизм')
+    p.coh = -1
+    expect(familismCohesion(e.g, p)).toBe(0)
+    p.coh = -2
+    expect(familismCohesion(e.g, p)).toBe(-1)
+    lean(p, 'Фамилизм', 2)
+    p.coh = -1
+    expect(familismCohesion(e.g, p)).toBe(-1)
+    p.character = [0, 1, 0, 0, 0, 0, 0] // Щедрость
+    expect(afterCardPoles(e.g, p, ['#помощь'], false, 'возраст.молодость.37', ['пройти мимо'])).toEqual([])
+    expect(afterCardPoles(e.g, p, ['#помощь'], false, 'возраст.молодость.37', ['сдать'])).toEqual([['возм', -1]])
+    lean(p, 'Риск')
+    expect(poleDelta(e.g, p, 'возм', 3, newCtx('действие'))).toBe(3)
   })
 })

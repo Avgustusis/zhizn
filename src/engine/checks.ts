@@ -2,12 +2,12 @@
 import type { Check, Cond, Node } from '../data/schema.ts'
 import type { PoleTag } from '../data/tables.ts'
 import { CHAR_AXES, CULTURE_AXES } from '../data/schema.ts'
-import { ask, clamp, countryOf, emit, roll3, type Flow, type G } from './core.ts'
-import { cond, countryProfile, cultureLean, effStat, isMinority, kindOf, pairOf, privilege, profileOf, sexStanding, type Ctx } from './cond.ts'
-import { count, removeHeld, rollDie } from './change.ts'
+import { ask, clamp, countryOf, emit, roll3, say, type Flow, type G } from './core.ts'
+import { cond, countryProfile, cultureLean, effStat, isMinority, kindOf, newCtx, pairOf, privilege, profileOf, sexStanding, type Ctx } from './cond.ts'
+import { addParam, count, removeHeld, rollDie } from './change.ts'
 import { run } from './exec.ts'
 import { cigarettesOk } from './tricks.ts'
-import { dignityStats } from './poles.ts'
+import { appetiteBeauty, bribeCost, dignityStats } from './poles.ts'
 import type { Held, Player, Stat, Tag } from './types.ts'
 
 // ── Шансы ───────────────────────────────────────────────────────────────
@@ -85,6 +85,8 @@ export function situational(g: G, p: Player, stat: Stat, ctx: Ctx): Mods {
   }
   // Кризис подавлен: до следующего мирового хода отчуждённому классу помеха в #политика и #закон (репрессии; решено 17.11).
   if (c.suppressed && c.alienated === p.cls && tags.some((x) => x === '#политика' || x === '#закон')) { out.dis = true; out.parts.push('репрессии после кризиса: помеха') }
+  // Аппетит на периферии: полнота — сытая жизнь, +1 к Красоте в проверках (решено 19.11).
+  if (appetiteBeauty(g, p, stat)) { out.add += 1; out.parts.push('Аппетит на периферии +1') }
   // Сепарация: держишься своих — +1 к #община, если в стране есть диаспора твоей культуры.
   if (p.rules['сепарация'] && tags.includes('#община') && c.minorityCultures.includes(p.culture)) { out.add += 1; out.parts.push('диаспора +1') }
   if (tags.some((x) => t.privilege.tags.includes(x))) {
@@ -210,8 +212,25 @@ export function* runCheck(g: G, p: Player, check: Check, ctx: Ctx, askStat = fal
     }
   }
 
-  const roll = auto ? { dice: [], sum: 0 } : roll3(g, best.a)
-  const ok = auto || roll.sum + value + mod + trump >= best.dc
+  // Цинизм: взятка вместо броска в проверке #бюрократия или #закон (решено 19.11): −2 возм. (сильно −1), d6 2–6 — автоуспех,
+  // 1 — не взяли: провал и −1 псих.; деньги не возвращаются.
+  let bribeFail = false
+  const bribe = bribeCost(g, p, ctx.tags)
+  if (!auto && bribe && p.vozm >= bribe) {
+    const now = Math.round(chance(best.dc - value - mod - trump, best.a) * 100)
+    const a = yield* ask(g, p, 'проверка', `Проверка: ${stat} ${best.dc}, шанс ${now}%. Цинизм: дать взятку вместо броска?`, [
+      { id: 'бросок', label: 'бросать', note: `шанс ${now}%` },
+      { id: 'взятка', label: `взятка: −${bribe} возм.`, note: 'd6 2–6 — автоуспех (83%); 1 — не взяли: провал и −1 псих.' },
+    ], { card: ctx.card, force: true })
+    if (a === 'взятка') {
+      addParam(g, p, 'возм', -bribe, newCtx('правило'))
+      count(p, 'взятка')
+      if (rollDie(g, p, 6, 'взятка: берут на 2–6') >= 2) { say(g, p, 'взятку взяли'); auto = true } else { say(g, p, 'взятку не взяли'); bribeFail = true }
+    }
+  }
+  const roll = auto || bribeFail ? { dice: [], sum: 0 } : roll3(g, best.a)
+  const ok = !bribeFail && (auto || roll.sum + value + mod + trump >= best.dc)
+  if (bribeFail) addParam(g, p, 'псих', -1, newCtx('правило'))
   emit(g, { t: 'проверка', p: p.seat, stat, dice: roll.dice, kept: roll.sum, value, mod, trump, dc: best.dc, ok, adv: best.a, ...(auto ? { auto: true as const } : {}), ...(check.what ? { what: check.what } : {}) })
   if (!ok) ctx.shared.failed = true
   // Поправки «до следующей проверки» сгорают.

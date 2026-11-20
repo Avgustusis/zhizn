@@ -7,7 +7,7 @@ import { run } from './exec.ts'
 import { settle } from './meaning.ts'
 import { afterClass, afterGain } from './items.ts'
 import { deathSave, twoDraws } from './tricks.ts'
-import { freeDivorce } from './poles.ts'
+import { freeDivorce, theismDivorce } from './poles.ts'
 import type { CharPole, Cls, Culture, Held, InstKind, Player, Race, Stat, Tag } from './types.ts'
 
 export const count = (p: Player, name: string, n = 1): void => { p.counters[name] = (p.counters[name] ?? 0) + n }
@@ -388,6 +388,8 @@ export function* dropHeld(g: G, p: Player, h: Held, price: boolean, widowed = fa
   if (h.spouse && !widowed) count(p, 'развод')
   // Секуляризм: развод без штрафа.
   if (h.spouse && !widowed && freeDivorce(g, p)) { say(g, p, 'светская культура: развод без штрафа'); return }
+  // Теизм: развод стоит ещё −1 псих. (сильно −2).
+  if (h.spouse && !widowed && theismDivorce(g, p)) { say(g, p, 'Теизм: развод — грех'); addParam(g, p, 'псих', theismDivorce(g, p), newCtx('правило')) }
   const cost = price ? g.c.tables.dropPrice[key] : undefined
   if (!cost) return
   const ctx = newCtx('правило')

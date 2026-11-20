@@ -14,7 +14,7 @@ import { acculturate, decayStigmas, deportRisk, emigrate, naturalize } from './e
 import { backToFront, frontTurn, volunteerAsk, volunteerSides } from './war.ts'
 import { afterCard, atSegment } from './items.ts'
 import { pawn, sellable } from './life.ts'
-import { afterCardPoles, disasterMiss, familismPrice } from './poles.ts'
+import { afterCardPoles, disasterMiss, familismCohesion, familismPrice } from './poles.ts'
 import { anytimePlays, cancelWarCard, peekTop, playMenu, saveFromBondage, travelDiscount } from './tricks.ts'
 import type { Action, Player } from './types.ts'
 
@@ -73,7 +73,7 @@ export function* playCard(g: G, p: Player, card: Card, deck: string): Flow<'по
   if (card.tags.includes('#утрата')) visit(p, 'утрата')
   yield* run(g, p, card.effect, ctx)
   if (p.alive) yield* afterCard(g, p, card.tags)
-  if (p.alive) for (const [k, v] of afterCardPoles(g, p, card.tags, !!ctx.shared.failed)) addParam(g, p, k, v, newCtx('правило'))
+  if (p.alive) for (const [k, v] of afterCardPoles(g, p, card.tags, !!ctx.shared.failed, card.id, ctx.shared.chose)) addParam(g, p, k, v, newCtx('правило'))
   // #закон: проваленная проверка в «жёсткой» стране — на d6 = 1 тюрьма («Тотальные институты»).
   const t = g.c.tables.inst
   const c = countryOf(g, p)
@@ -160,6 +160,8 @@ function* enterSegment(g: G, p: Player): Flow {
   rollFashion(g, countryOf(g, p))
   yield* itemsPerSeg(g, p)
   yield* atSegment(g, p)
+  // Фамилизм: без семьи ты никто — при низкой Сплочённости −1 псих. на входе в отрезок.
+  if (familismCohesion(g, p)) { say(g, p, 'Фамилизм: без семьи ты никто'); addParam(g, p, 'псих', familismCohesion(g, p), ctx) }
   yield* businessAtEntry(g, p)
   decayStigmas(g, p)
   if (seg !== 'Детство') { yield* acculturate(g, p); naturalize(g, p) }
