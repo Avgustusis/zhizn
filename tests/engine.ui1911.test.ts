@@ -19,7 +19,7 @@ function quiet(): Content {
   return { ...real, decks, polar: [], subCodes: {} }
 }
 function lab(seed: number, over: Partial<Player> = {}, seats = 2): { e: Engine; p: Player; q: Player } {
-  const e = new Engine(quiet(), { mode: 'поколение', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `И${i + 1}` })) }, { checkpoints: false })
+  const e = new Engine(quiet(), { span: 'one', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `И${i + 1}` })) }, { checkpoints: false })
   while (e.pending && e.pending.type !== 'ход') e.answer(e.pending.options.find((o) => !o.off)!.id)
   const [p, q] = e.state.players
   for (const x of e.state.players) Object.assign(x, { country: p.country, seg: 3, vozm: 3, items: [], character: [0, 0, 0, 0, 0, 0, 0], cls: 'Народ', pos: 0, mods: [] })
@@ -80,7 +80,7 @@ describe('правки 19.11', () => {
 
   it('банк: кредит только при Стаже 3+, своём деле или Олигархах', () => {
     const bank = real.actions.find((a) => a.id === 'банк')!
-    expect(bank.refuse?.text).toContain('Банк не верит')
+    expect(bank.refuse?.map((r) => r.text).join(' ')).toContain('Банк не верит')
   })
 
   it('окно эмиграции: можно ли, цена, шанс границы с поправками, что едет и что останется', () => {
@@ -105,7 +105,7 @@ describe('правки 19.11', () => {
   it('сиделка: вопрос один раз при входе в Древность, дальше — настройка; переключатель в вопросе хода', () => {
     // Первое зерно, где простой ИИ проживает в Древности хотя бы один ход.
     for (let seed = 1; seed <= 60; seed++) {
-      const e = new Engine(real, { mode: 'поколение', seed, seats: [{ name: 'И1' }] }, { checkpoints: false })
+      const e = new Engine(real, { span: 'one', seed, seats: [{ name: 'И1' }] }, { checkpoints: false })
       let entry = 0, ancientTurns = 0, toggles = 0
       while (e.pending) {
         const r = e.pending

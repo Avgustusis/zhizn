@@ -22,7 +22,7 @@ function quiet(): Content {
 }
 
 function lab(seed: number, over: Partial<Player> = {}): { e: Engine; p: Player } {
-  const e = new Engine(quiet(), { mode: 'поколение', seed, seats: [{ name: 'Опыт' }] }, { checkpoints: false })
+  const e = new Engine(quiet(), { span: 'one', seed, seats: [{ name: 'Опыт' }] }, { checkpoints: false })
   while (e.pending && e.pending.type !== 'ход') e.answer(e.pending.options.find((o) => !o.off)!.id)
   const p = e.state.players[0]
   Object.assign(p, { seg: 3, cell: 5, phys: 0, psy: 0, vozm: 0, items: [], character: [0, 0, 0, 0, 0, 0, 0], fin: 0, pos: 0, coh: 0, mods: [], cls: 'Народ', stazh: 0, stazhHire: 0 }, over)
@@ -244,7 +244,7 @@ describe('партии с простым ИИ', () => {
     const { answer } = await import('../src/engine/ai/simple.ts')
     let lives = 0, mature = 0, stazh = 0, worked = 0
     for (let seed = 1; seed <= 100; seed++) {
-      const e = new Engine(real, { mode: 'поколение', seed, seats: [1, 2, 3, 4].map((i) => ({ name: `И${i}` })), keepLog: false }, { checkpoints: false })
+      const e = new Engine(real, { span: 'one', seed, seats: [1, 2, 3, 4].map((i) => ({ name: `И${i}` })), keepLog: false }, { checkpoints: false })
       let guard = 0
       while (e.pending && guard++ < 100000) e.answer(answer(e.g, e.pending))
       expect(e.over, `партия ${seed}`).toBe(true)

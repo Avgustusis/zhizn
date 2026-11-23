@@ -16,6 +16,16 @@ export interface EngineOptions {
   checkpoints?: boolean
 }
 
+/** Режим партии: старое поле mode (до 20.11) → span; «Быль» по умолчанию. */
+export function normalizeConfig(c: GameConfig): void {
+  if (!c.span) c.span = c.mode === 'род' ? 'lineage' : 'one'
+  c.start ??= 'dice'
+  delete c.mode
+}
+
+/** Название режима для экрана: «Биография», «Родословная», «Легенда», «Сага». */
+export const modeName = (c: GameConfig): string => (c.start === 'tale' ? (c.span === 'lineage' ? 'Сага' : 'Легенда') : c.span === 'lineage' ? 'Родословная' : 'Биография')
+
 const active = (p: Player | undefined): p is Player => !!p && p.alive && !p.finished
 
 export class Engine {
@@ -28,7 +38,9 @@ export class Engine {
 
   constructor(content: Content, from: GameConfig | GameState, options: EngineOptions = {}) {
     this.checkpoints = options.checkpoints ?? true
-    this.g = makeG('version' in from ? from : newState(from), content)
+    const state = 'version' in from ? from : newState(from)
+    normalizeConfig(state.config)
+    this.g = makeG(state, content)
     this.advance()
   }
 
@@ -121,7 +133,7 @@ export class Engine {
   private endCheck(): void {
     const s = this.g.s
     const w = this.g.c.tables.world
-    const rounds = s.config.rounds ?? w.worldTurns[s.config.mode] * w.roundsPerWorldTurn
+    const rounds = s.config.rounds ?? w.worldTurns[s.config.span] * w.roundsPerWorldTurn
     if (s.round >= rounds || !s.players.some(active)) return this.finish()
     if (!active(s.players[s.current])) {
       const next = s.players.findIndex((p, i) => i > s.current && active(p))

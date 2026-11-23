@@ -14,7 +14,7 @@ function quiet(): Content {
   return { ...real, decks, actions: [], polar: [], subCodes: {} }
 }
 function lab(seed: number, over: Partial<Player> = {}, seats = 1): { e: Engine; p: Player } {
-  const e = new Engine(quiet(), { mode: 'поколение', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `И${i + 1}` })) }, { checkpoints: false })
+  const e = new Engine(quiet(), { span: 'one', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `И${i + 1}` })) }, { checkpoints: false })
   while (e.pending && e.pending.type !== 'ход') e.answer(e.pending.options.find((o) => !o.off)!.id)
   const p = e.state.players[0]
   Object.assign(p, { seg: 3, cell: 5, phys: 3, psy: 3, vozm: 10, items: [], character: [0, 0, 0, 0, 0, 0, 0], fin: 0, pos: 0, coh: 0, mods: [], cls: 'Народ' }, over)
@@ -202,7 +202,7 @@ describe('партии с мировым ходом', () => {
     const { answer } = await import('../src/engine/ai/simple.ts')
     let changes = 0, turmoil = 0, lives = 0, emig = 0, wt = 0
     for (let seed = 1; seed <= 100; seed++) {
-      const e = new Engine(real, { mode: 'поколение', seed, seats: [1, 2, 3, 4].map((i) => ({ name: `И${i}` })), keepLog: false }, { checkpoints: false })
+      const e = new Engine(real, { span: 'one', seed, seats: [1, 2, 3, 4].map((i) => ({ name: `И${i}` })), keepLog: false }, { checkpoints: false })
       let guard = 0
       while (e.pending && guard++ < 100000) e.answer(answer(e.g, e.pending))
       expect(e.over).toBe(true)

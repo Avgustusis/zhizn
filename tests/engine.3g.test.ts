@@ -5,7 +5,7 @@ import { anytimePlays, borderHelp, cigarettesOk, keepClass, playMenu, saveFromBo
 import { atPowerChange, pensionStazh } from '../src/engine/items.ts'
 import { cond, newCtx } from '../src/engine/cond.ts'
 import type { Flow } from '../src/engine/core.ts'
-import { Engine } from '../src/engine/engine.ts'
+import { Engine, modeName } from '../src/engine/engine.ts'
 import { pension } from '../src/engine/market.ts'
 import { runRule } from '../src/engine/rules.ts'
 import { priceOf } from '../src/engine/turn.ts'
@@ -19,7 +19,7 @@ function quiet(): Content {
   return { ...real, decks, polar: [], subCodes: {} }
 }
 function lab(seed: number, over: Partial<Player> = {}): { e: Engine; p: Player } {
-  const e = new Engine(quiet(), { mode: 'поколение', seed, seats: [{ name: 'Опыт' }] }, { checkpoints: false })
+  const e = new Engine(quiet(), { span: 'one', seed, seats: [{ name: 'Опыт' }] }, { checkpoints: false })
   while (e.pending && e.pending.type !== 'ход') e.answer(e.pending.options.find((o) => !o.off)!.id)
   const p = e.state.players[0]
   Object.assign(p, { seg: 4, cell: 5, phys: 3, psy: 3, vozm: 5, items: [], character: [0, 0, 0, 0, 0, 0, 0], fin: 0, pos: 0, coh: 0, mods: [], cls: 'Народ', stazh: 10, stazhHire: 10, citizenship: [0], country: 0 }, over)
@@ -201,5 +201,29 @@ describe('этап 3г: розыгрыш карт', () => {
     expect(cigarettesOk(p)).toBe(false)
     p.inst = { kind: 'тюрьма', left: 2, turn: 0 }
     expect(cigarettesOk(p)).toBe(true)
+  })
+})
+
+describe('правки 20.11', () => {
+  it('Банк и Микрозаймы в Древности: в «Биографии» закрыты, в «Родословной» открыты', () => {
+    const { e, p } = lab(30, { seg: 5, stazh: 10 })
+    const why = (id: string) => act(id).refuse?.find((r) => !cond(e.g, p, r.unless))?.text
+    expect(why('микрозаймы')).toBe('следующего отрезка нет — кредитор не даст')
+    expect(why('банк')).toBe('следующего отрезка нет — кредитор не даст')
+    e.state.config.span = 'lineage'
+    expect(why('микрозаймы')).toBeUndefined()
+    p.seg = 3
+    e.state.config.span = 'one'
+    expect(why('микрозаймы')).toBeUndefined()
+  })
+
+  it('ЧВК законна везде, кроме госсоциализма и военной диктатуры; режим по старому полю mode переводится', () => {
+    const pmc = real.items.find((i) => i.name === 'ЧВК')!
+    expect(pmc.biz?.illegalIn).toEqual(['Госсоциализм', 'Военная диктатура'])
+    const card = real.decks['класс'].find((c) => c.title === 'Частная военная компания')!
+    expect(card.requires).toEqual({ not: { ideo: ['Госсоциализм', 'Военная диктатура'] } })
+    const e = new Engine(quiet(), { mode: 'род', seed: 1, seats: [{ name: 'А' }] } as never, { checkpoints: false })
+    expect(e.state.config.span).toBe('lineage')
+    expect(modeName(e.state.config)).toBe('Родословная')
   })
 })

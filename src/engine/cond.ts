@@ -201,7 +201,7 @@ export function cond(g: G, p: Player, c: Cond | undefined, ctx?: Ctx): boolean {
   if ('vsStart' in c) return c.is === 'выше' ? p.pos > p.start.pos : p.pos >= p.start.pos
   if ('mainCulture' in c) return c.mainCulture.includes(country.mainCultures[0])
   if ('diaspora' in c) return !culturesOf(p).some((x) => country.mainCultures.includes(x) || country.minorityCultures.includes(x)) === c.diaspora
-  if ('mode' in c) return g.s.config.mode === c.mode
+  if ('span' in c) return g.s.config.span === c.span
   if ('meaning' in c) return c.meaning === 'серость' ? p.meaning?.id === 'серость' : !!p.meaning && p.meaning.id !== 'серость'
   if ('hasKind' in c) return p.items.some((h) => kindOf(g, h) === c.hasKind)
   if ('visited' in c) return (p.visits[c.visited] ?? []).includes(p.seg)

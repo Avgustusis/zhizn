@@ -16,7 +16,7 @@ function quiet(): Content {
 }
 /** Партия на двух игроков; первый — в Зрелости, гражданин своей страны, с нейтральным характером. */
 function lab(seed: number, over: Partial<Player> = {}): { e: Engine; p: Player } {
-  const e = new Engine(quiet(), { mode: 'поколение', seed, seats: [{ name: 'И1' }, { name: 'И2' }] }, { checkpoints: false })
+  const e = new Engine(quiet(), { span: 'one', seed, seats: [{ name: 'И1' }, { name: 'И2' }] }, { checkpoints: false })
   while (e.pending && e.pending.type !== 'ход') e.answer(e.pending.options.find((o) => !o.off)!.id)
   for (const q of e.state.players) Object.assign(q, { seg: 0 })
   const p = e.state.players[0]
@@ -352,7 +352,7 @@ describe('партии с войной', () => {
   it('300 партий простого ИИ: одна война за раз, солдаты только на текущей войне, все войны кончаются', () => {
     let wars = 0, enlisted = 0
     for (let seed = 1; seed <= 300; seed++) {
-      const e = new Engine(real, { mode: 'поколение', seed, seats: [1, 2, 3, 4].map((i) => ({ name: `И${i}` })), keepLog: false }, { checkpoints: false })
+      const e = new Engine(real, { span: 'one', seed, seats: [1, 2, 3, 4].map((i) => ({ name: `И${i}` })), keepLog: false }, { checkpoints: false })
       let guard = 0
       while (e.pending && guard++ < 300000) {
         const w = e.state.war

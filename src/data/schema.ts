@@ -207,7 +207,7 @@ export type Cond =
   | { vsStart: 'Положение'; is: 'выше' | 'не ниже' }
   | { mainCulture: (typeof CULTURES)[number][] }
   | { diaspora: boolean }
-  | { mode: 'поколение' | 'род' }
+  | { span: 'one' | 'lineage' }
   | { meaning: 'найден' | 'серость' }
   | { hasKind: (typeof ITEM_KINDS)[number] }
   | { visited: string }
@@ -290,7 +290,8 @@ export const Cond: z.ZodType<Cond> = z.lazy(() =>
     /** Диаспора без своих: культуры игрока нет в стране ни как основной, ни как меньшинства. */
     z.strictObject({ diaspora: z.boolean() }),
     /** Режим партии. Отметки в Летописи — только «Род». */
-    z.strictObject({ mode: z.enum(['поколение', 'род']) }),
+    /** Режим партии: одна жизнь («Биография», «Легенда») или поколения («Родословная», «Сага»). */
+    z.strictObject({ span: z.enum(['one', 'lineage']) }),
     /** Смысл жизни найден (карта Случайных или Династии) или у игрока Серость. */
     z.strictObject({ meaning: z.enum(['найден', 'серость']) }),
     /** Есть хотя бы один предмет этого вида. */

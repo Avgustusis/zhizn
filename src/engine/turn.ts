@@ -340,7 +340,7 @@ function* actions(g: G, p: Player): Flow {
       const price = priceOf(g, p, a)
       const gate = gateOf(g, p, a)
       const off = a.perSeg !== undefined && (p.counters[`действие:${a.id}:${p.seg}`] ?? 0) >= a.perSeg ? 'уже было в этом отрезке'
-        : whyNot(g, p, a.requires) ?? (a.refuse && !cond(g, p, a.refuse.unless) ? a.refuse.text : undefined) ?? gate.closed ?? (price > 0 && p.vozm < price ? 'нет денег' : undefined)
+        : whyNot(g, p, a.requires) ?? a.refuse?.find((r) => !cond(g, p, r.unless))?.text ?? gate.closed ?? (price > 0 && p.vozm < price ? 'нет денег' : undefined)
       const row = { a, price, gate, off, via: false }
       // Клептократия: незаконное можно сделать «по знакомству» — −1 возм. сверху, зато без риска.
       const klepto = a.illegal && countryOf(g, p).ideology === 'Клептократия'

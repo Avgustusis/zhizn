@@ -18,7 +18,12 @@ export type ItemKind = (typeof ITEM_KINDS)[number]
 export type Slot = '■' | '▲' | '◆'
 export type InstKind = 'тюрьма' | 'психбольница' | 'кабала' | 'фронт'
 export type Relation = 'вражда' | 'нейтралитет' | 'союз'
-export type Mode = 'поколение' | 'род'
+/**
+ * Режим партии (решено 20.11): span — одна жизнь или поколения, start — «Быль» (кубики) или «Сказка» (сборка).
+ * «Биография» = one + dice, «Родословная» = lineage + dice, «Легенда» = one + tale, «Сага» = lineage + tale.
+ */
+export type Span = 'one' | 'lineage'
+export type Start = 'dice' | 'tale'
 
 // ── Содержание ──────────────────────────────────────────────────────────
 
@@ -55,7 +60,7 @@ export interface Action {
   /** Попытка считается и тогда, когда проверка характера провалилась («Контора»: одна попытка за отрезок). */
   tryCounts?: true
   /** Отказ с объяснением: условие не выполнено — кнопка неактивна с этой подписью («Банк не верит…»). */
-  refuse?: { unless: import('../data/schema.ts').Cond; text: string }
+  refuse?: { unless: import('../data/schema.ts').Cond; text: string }[]
   /** Незаконное действие: в клептократии его можно сделать «по знакомству» — −1 возм. сверху, без риска. */
   illegal?: true
   effect: Node[]
@@ -298,7 +303,16 @@ export interface EntrySnap {
 // ── Партия ──────────────────────────────────────────────────────────────
 
 export interface SeatConfig { name: string; ai?: string }
-export interface GameConfig { mode: Mode; seats: SeatConfig[]; seed: number; rounds?: number; keepLog?: boolean }
+export interface GameConfig {
+  span: Span
+  start?: Start
+  seats: SeatConfig[]
+  seed: number
+  rounds?: number
+  keepLog?: boolean
+  /** Старое имя режима (сохранения до 20.11): «поколение» → one, «род» → lineage. */
+  mode?: 'поколение' | 'род'
+}
 
 export interface GameState {
   version: 1

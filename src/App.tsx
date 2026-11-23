@@ -341,7 +341,7 @@ export default function App() {
       {deckId === 'наследники' && (
         <section className="deck">
           <h2>Наследники</h2>
-          <p className="legend">Режим «Род»: приходят, когда персонаж умер без ребёнка и воспитанника.</p>
+          <p className="legend">«Родословная» и «Сага»: приходят, когда персонаж умер без ребёнка и воспитанника.</p>
           <div className="grid">{heirs.map((h) => <HeirView key={h.id} h={h} />)}</div>
         </section>
       )}

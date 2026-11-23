@@ -13,7 +13,7 @@ import { playCard } from '../src/engine/turn.ts'
 import type { Content, GameConfig, Player } from '../src/engine/types.ts'
 
 const content = loadContent()
-const config = (seed: number, seats = 4): GameConfig => ({ mode: 'поколение', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `Игрок ${i + 1}` })) })
+const config = (seed: number, seats = 4): GameConfig => ({ span: 'one', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `Игрок ${i + 1}` })) })
 
 /** Простой генератор для ответов «наугад» (не тот, что в движке: ответы не должны зависеть от его состояния). */
 function lcg(seed: number): () => number {

@@ -8,7 +8,7 @@ import type { Player, Request } from '../src/engine/types.ts'
 
 const real = loadContent()
 function lab(seed: number, seats = 2): { e: Engine; ps: Player[] } {
-  const e = new Engine(real, { mode: 'поколение', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `И${i + 1}` })) }, { checkpoints: false })
+  const e = new Engine(real, { span: 'one', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `И${i + 1}` })) }, { checkpoints: false })
   while (e.pending && e.pending.type !== 'ход') e.answer(e.pending.options.find((o) => !o.off)!.id)
   const ps = e.state.players
   for (const p of ps) Object.assign(p, { seg: 3, country: 0, vozm: 5, items: [], cls: 'Народ' })

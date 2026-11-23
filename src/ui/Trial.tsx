@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { loadContent } from '../data/content.ts'
 import { CHAR_AXES, SEGMENTS, STATS } from '../data/schema.ts'
-import { Engine } from '../engine/engine.ts'
+import { Engine, modeName } from '../engine/engine.ts'
 import { answer as aiAnswer } from '../engine/ai/simple.ts'
 import { meaningOf, meaningStatus } from '../engine/meaning.ts'
 import type { LogEvent, Option, Player, SaveFile } from '../engine/types.ts'
@@ -114,7 +114,7 @@ function CardPanel({ id, deck, who, result, pending, onClose }: { id: string; de
 }
 
 /** Причины закрытия, которые игроку важно видеть сразу. */
-const SHOWN_OFF = /убеждений|Банк не верит|нет денег|не в твоём характере/
+const SHOWN_OFF = /убеждений|Банк не верит|кредитор не даст|нет денег|не в твоём характере/
 
 /** Вариант ответа: проверка (тег, характеристика, сложность, поправки, шанс) и что будет — без выбора вслепую. */
 function OptionButton({ o, market, onPick }: { o: Option; market: boolean; onPick: () => void }) {
@@ -159,7 +159,7 @@ export default function Trial() {
   }
   /** Ответ за игрока — простой ИИ (лечится, работает, растёт; на смысл не играет). */
   const randomId = (x: Engine) => aiAnswer(x.g, x.pending!)
-  const start = () => act(() => { setSeen(0); return new Engine(content, { mode: 'поколение', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `Игрок ${i + 1}` })) }) })
+  const start = () => act(() => { setSeen(0); return new Engine(content, { span: 'one', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `Игрок ${i + 1}` })) }) })
   const resume = () => act((x) => { const y = saved ? Engine.load(content, saved) : x; if (y) setSeen(y.state.log.length); return y })
   const answer = (id: string) => act((x) => { x?.answer(id); return x })
   /** Отвечать наугад, пока не дойдём до следующего вопроса «твой ход» (или до конца партии). */
@@ -215,7 +215,7 @@ export default function Trial() {
   const ranking = [...s.players].sort((a, b) => b.happiness - a.happiness || (b.death?.round ?? 999) - (a.death?.round ?? 999))
   return (
     <section className="trial">
-      <h2>Пробная партия <span className="num">зерно {s.config.seed} · круг {s.round + 1} · мировых ходов {s.worldTurns}</span></h2>
+      <h2>Пробная партия <span className="num">{modeName(s.config)} · зерно {s.config.seed} · круг {s.round + 1} · мировых ходов {s.worldTurns}</span></h2>
       {s.war && <WarBar e={e} />}
       <details><summary>страны и «Общественный след»</summary><WorldBar e={e} /></details>
       {error && <p className="req">Ошибка движка: {error} (зерно {s.config.seed})</p>}

@@ -337,14 +337,14 @@ function drawPile(g: G, deck: string): Card | undefined {
     const card = g.cards.get(id)!.card
     // В мире одна война за раз: «Война» и «Мировая война» во время войны — в сброс, тянут следующую.
     if (deck === 'мир' && g.s.war && isWarCard(card)) { emit(g, { t: 'мир', text: `«${card.title}» во время войны — в сброс` }); continue }
-    if (!card.requires || g.s.config.mode === 'род' || !JSON.stringify(card.requires).includes('"род"')) return card
+    if (!card.requires || g.s.config.span === 'lineage' || !JSON.stringify(card.requires).includes('"lineage"')) return card
   }
   return undefined
 }
 /** Верхняя карта «Мира» без вытягивания (для предчувствия). */
 function nextWorldCard(g: G, _draw: boolean): Card | undefined {
   const pile = g.s.piles['мир'] ?? []
-  const id = pile.find((x) => { const c = g.cards.get(x)!.card; return !JSON.stringify(c.requires ?? '').includes('"род"') || g.s.config.mode === 'род' })
+  const id = pile.find((x) => { const c = g.cards.get(x)!.card; return !JSON.stringify(c.requires ?? '').includes('"lineage"') || g.s.config.span === 'lineage' })
   return id ? g.cards.get(id)!.card : undefined
 }
 

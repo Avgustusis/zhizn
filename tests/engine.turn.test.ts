@@ -28,7 +28,7 @@ function quiet(over: Partial<Content> = {}): Content {
   return { ...real, decks, polar: [], subCodes: {}, actions: [], tables, ...over }
 }
 
-const config = (seed: number): GameConfig => ({ mode: 'поколение', seed, seats: [{ name: 'Опыт' }] })
+const config = (seed: number): GameConfig => ({ span: 'one', seed, seats: [{ name: 'Опыт' }] })
 /** Выполнить шаг правил, отвечая по списку. Ответ не из открытых вариантов — ошибка, как в настоящем движке. */
 function drive<T>(flow: Flow<T>, answers: string[] = []): T {
   let r = flow.next()
@@ -330,7 +330,7 @@ describe('смысл: Династия, отказ, кризис', () => {
 describe('сохранение', () => {
   it('вопрос при рождении тоже переживает сохранение', () => {
     for (let seed = 1; seed <= 400; seed++) {
-      const e = new Engine(real, { mode: 'поколение', seed, seats: [{ name: 'А' }, { name: 'Б' }, { name: 'В' }, { name: 'Г' }] })
+      const e = new Engine(real, { span: 'one', seed, seats: [{ name: 'А' }, { name: 'Б' }, { name: 'В' }, { name: 'Г' }] })
       if (!e.pending || e.pending.type === 'ход') continue
       const copy = Engine.load(real, JSON.parse(JSON.stringify(e.save())))
       expect(copy.pending).toEqual(e.pending)

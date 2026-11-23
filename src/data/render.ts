@@ -77,7 +77,7 @@ export function renderCond(c: Cond): string {
   if ('rule' in c) return `действует правило «${c.rule}»`
   if ('citizen' in c) return c.citizen ? 'гражданин страны' : 'не гражданин страны'
   if ('working' in c) return c.working ? 'работает или учится' : 'не работает и не учится'
-  if ('mode' in c) return `режим «${c.mode === 'род' ? 'Род' : 'Поколение'}»`
+  if ('span' in c) return c.span === 'lineage' ? 'только «Родословная» и «Сага»' : 'только «Биография» и «Легенда»'
   return JSON.stringify(c)
 }
 
