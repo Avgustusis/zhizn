@@ -230,14 +230,14 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
       card: card.id, deck: 'смута', tags: card.tags, target: c.id, side, formerDominant: p.cls === oldDom,
       ...(p.citizenship.includes(c.id) ? {} : { dis: true }), ...(state.denounced && side === 'нейтралы' ? { penalty: -3 } : {}),
     })
-    turmoilCtx.set(p.seat, { state, ctx })
+    turmoilOf(g).set(p.seat, { state, ctx })
     yield* run(g, p, card.effect, ctx)
     if (!p.alive) continue
     yield* run(g, p, card.sides![sideKey(ctx.side!)], ctx)
     side = ctx.side!
     if (p.alive) yield* atPowerChange(g, p, c, oldDom)
     if (p.alive) licenseAtPowerChange(g, p)
-    if (!p.alive) { turmoilCtx.delete(p.seat); continue }
+    if (!p.alive) { turmoilOf(g).delete(p.seat); continue }
     // 1) Победители могут перейти в новый доминирующий класс; в Олигархи — только «Везение», 🎲 Смекалка 18.
     if (side === 'победители' && p.cls !== c.dominant && !p.inst) {
       const a = yield* ask(g, p, 'класс', `Перейти в новый доминирующий класс — ${c.dominant}?${c.dominant === 'Олигархи' ? ` Только через «Везение»: 🎲 Смекалка ${t.oligarchDc}.` : ''}`, [{ id: 'да', label: `перейти: ${c.dominant}` }, { id: 'нет', label: `остаться: ${p.cls}` }], { force: true })
@@ -259,7 +259,7 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
           say(g, p, '«кто не с нами, тот против нас»')
           // Строка проигравших читается с теми же правилами карты («стать нейтралом», «правило тюрьмы»).
           const lose = { ...ctx, side: 'проигравшие' as const }
-          turmoilCtx.set(p.seat, { state, ctx: lose })
+          turmoilOf(g).set(p.seat, { state, ctx: lose })
           yield* run(g, p, card.sides!.lose, lose)
         }
       }
@@ -278,7 +278,7 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
     delete p.rules['сыграно: Место в списке']; delete p.rules['сыграно: На баррикады']
     // Проигравшие «Смуты» при диктатурах, теократии и полицейском государстве — обыск (решено 19.11).
     if (p.alive && side === 'проигравшие' && g.c.tables.search.turmoilLosers.includes(c.ideology)) yield* search(g, p, 'проигравшие «Смуты»')
-    turmoilCtx.delete(p.seat)
+    turmoilOf(g).delete(p.seat)
     // Журнал.
     if (side !== 'нейтралы') count(p, 'сторона в Смуте')
     if (side === 'победители') count(p, 'победа в Смуте')
@@ -296,11 +296,20 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
 
 const sideKey = (s: NonNullable<Ctx['side']>) => (s === 'победители' ? 'win' : s === 'проигравшие' ? 'lose' : 'neutral')
 /** Текущая «Смута» игрока: правила карты меняют общее правило о тюрьме и сторону. */
-const turmoilCtx = new Map<number, { state: Turmoil; ctx: Ctx }>()
+/**
+ * Контекст «Смуты» на время розыгрыша карты: своя карта у каждой партии (ключ — состояние партии). Раньше лежал
+ * общим на модуль, и две партии в одной вкладке (или копия партии у ИИ «Нечестно») затирали его друг другу.
+ */
+const turmoilBox = new WeakMap<object, Map<number, { state: Turmoil; ctx: Ctx }>>()
+const turmoilOf = (g: G): Map<number, { state: Turmoil; ctx: Ctx }> => {
+  let m = turmoilBox.get(g.s)
+  if (!m) { m = new Map(); turmoilBox.set(g.s, m) }
+  return m
+}
 
 /** Правила карт «Смуты». */
 export function* turmoilRule(g: G, p: Player, rule: string, arg = ''): Flow {
-  const cur = turmoilCtx.get(p.seat)
+  const cur = turmoilOf(g).get(p.seat)
   if (!cur) return void todo(g, p, rule)
   const { state, ctx } = cur
   if (rule === 'правило тюрьмы') {

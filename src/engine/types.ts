@@ -302,7 +302,11 @@ export interface EntrySnap {
 
 // ── Партия ──────────────────────────────────────────────────────────────
 
-export interface SeatConfig { name: string; ai?: string }
+/**
+ * Место за столом. name — псевдоним («№ 522040711345 «Савант»»). ai — уровень ИИ («easy», «normal», «hard», «unfair»;
+ * «simple» — простой ИИ для проверки правил); нет — человек. archetype — характер ИИ (src/engine/ai/persona.ts).
+ */
+export interface SeatConfig { name: string; ai?: 'simple' | 'easy' | 'normal' | 'hard' | 'unfair'; archetype?: string; born?: number }
 export interface GameConfig {
   span: Span
   start?: Start

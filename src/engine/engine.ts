@@ -32,7 +32,9 @@ export class Engine {
   readonly g: G
   pending: Request | null = null
   private flow: Flow | null = null
+  /** Снимок на начало шага — без журнала (журнал растёт всю партию; к сохранению его приставляет save()). */
   private base = ''
+  private logAt = 0
   private answers: string[] = []
   private readonly checkpoints: boolean
 
@@ -59,9 +61,24 @@ export class Engine {
     this.advance(id)
   }
 
+  /** Можно ли снять копию партии на месте вопроса (ИИ «Нечестно»). */
+  get canFork(): boolean { return this.checkpoints }
+
   save(): SaveFile {
     if (!this.checkpoints) throw new Error('сохранение выключено (checkpoints: false)')
-    return { version: 1, base: this.base, answers: [...this.answers] }
+    const st = JSON.parse(this.base) as GameState
+    st.log = this.g.s.log.slice(0, this.logAt)
+    return { version: 1, base: JSON.stringify(st), answers: [...this.answers] }
+  }
+
+  /** Копия партии на месте текущего вопроса, без журнала и без снимков (ИИ «Нечестно»). */
+  fork(): Engine {
+    if (!this.checkpoints) throw new Error('копия партии без снимков невозможна')
+    const st = JSON.parse(this.base) as GameState
+    st.config.keepLog = false
+    const e = new Engine(this.g.c, st, { checkpoints: false })
+    for (const a of this.answers) e.answer(a)
+    return e
   }
 
   static load(content: Content, save: SaveFile, options: EngineOptions = {}): Engine {
@@ -77,7 +94,14 @@ export class Engine {
       if (this.flow) r = this.flow.next(answer as string)
       else {
         if (this.g.s.phase === 'конец') return
-        if (this.checkpoints) { this.base = JSON.stringify(this.g.s); this.answers = [] }
+        if (this.checkpoints) {
+          const log = this.g.s.log
+          this.g.s.log = []
+          this.base = JSON.stringify(this.g.s)
+          this.g.s.log = log
+          this.logAt = log.length
+          this.answers = []
+        }
         this.flow = this.unit()
         r = this.flow.next()
       }

@@ -6,13 +6,18 @@ import { useEffect, useRef, useState } from 'react'
 import { loadContent } from '../data/content.ts'
 import { CHAR_AXES, SEGMENTS, STATS } from '../data/schema.ts'
 import { Engine, modeName } from '../engine/engine.ts'
-import { answer as aiAnswer } from '../engine/ai/simple.ts'
+import { aiAnswer } from '../engine/ai/index.ts'
+import { ARCHETYPES, bureauName } from '../engine/ai/persona.ts'
 import { meaningOf, meaningStatus } from '../engine/meaning.ts'
-import type { LogEvent, Option, Player, SaveFile } from '../engine/types.ts'
+import type { LogEvent, Option, Player, SaveFile, SeatConfig } from '../engine/types.ts'
 import { renderNodes } from '../data/render.ts'
 import { describe } from './log.ts'
 
 const content = loadContent()
+
+const AI_LEVELS: [NonNullable<SeatConfig['ai']>, string][] = [['easy', 'Легко'], ['normal', 'Нормально'], ['hard', 'Сложно'], ['unfair', 'Нечестно']]
+const randomArchetype = () => ARCHETYPES[Math.floor(Math.random() * ARCHETYPES.length)].id
+const newSeat = (ai?: SeatConfig['ai']): SeatConfig => ({ name: bureauName(), ...(ai ? { ai, archetype: randomArchetype() } : {}) })
 const KEY = 'zhizn.trial.v1'
 const signed = (n: number): string => (n > 0 ? `+${n}` : String(n).replace('-', '−'))
 
@@ -140,7 +145,7 @@ function OptionButton({ o, market, onPick }: { o: Option; market: boolean; onPic
 export default function Trial() {
   // Движок меняется на месте, поэтому лежит в обёртке: новая обёртка — новый кадр.
   const [box, setBox] = useState<{ e: Engine | null }>({ e: null })
-  const [seats, setSeats] = useState(2)
+  const [table, setTable] = useState<SeatConfig[]>(() => [newSeat(), newSeat('normal')])
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 100000))
   const [saved, setSaved] = useState<SaveFile | null>(loadSaved)
   const [error, setError] = useState('')
@@ -157,11 +162,20 @@ export default function Trial() {
     store(next)
     setBox({ e: next })
   }
-  /** Ответ за игрока — простой ИИ (лечится, работает, растёт; на смысл не играет). */
-  const randomId = (x: Engine) => aiAnswer(x.g, x.pending!)
-  const start = () => act(() => { setSeen(0); return new Engine(content, { span: 'one', seed, seats: Array.from({ length: seats }, (_, i) => ({ name: `Игрок ${i + 1}` })) }) })
-  const resume = () => act((x) => { const y = saved ? Engine.load(content, saved) : x; if (y) setSeen(y.state.log.length); return y })
-  const answer = (id: string) => act((x) => { x?.answer(id); return x })
+  /** «Ход за ИИ» у человека — ИИ «Нормально» (играет на смысл). */
+  const randomId = (x: Engine) => aiAnswer(x.g, x.pending!, x.state.config.seats[x.pending!.player]?.ai ?? 'normal', x)
+  /** Места ИИ ходят сами, пока вопрос не дойдёт до человека; их карты считаются просмотренными. */
+  const autoAI = (x: Engine | null) => {
+    if (!x) return x
+    let moved = false
+    for (let i = 0; i < 20000 && x.pending && x.state.config.seats[x.pending.player]?.ai; i++) { x.answer(randomId(x)); moved = true }
+    if (moved) { const n = x.state.log.length; queueMicrotask(() => setSeen(n)) }
+    return x
+  }
+  const start = () => act(() => { setSeen(0); return autoAI(new Engine(content, { span: 'one', seed, seats: table.map((t) => ({ ...t })) })) })
+  const resume = () => act((x) => { const y = saved ? Engine.load(content, saved) : x; if (y) setSeen(y.state.log.length); return autoAI(y) })
+  const answer = (id: string) => act((x) => { x?.answer(id); return autoAI(x) })
+  const setSeat = (i: number, patch: Partial<SeatConfig>) => setTable((t) => t.map((x, j) => (j === i ? { ...x, ...patch } : x)))
   /** Отвечать наугад, пока не дойдём до следующего вопроса «твой ход» (или до конца партии). */
   // Карты, сыгранные за ИИ, считаются просмотренными; следующие (ход человека) снова показываются целиком.
   const skipTurn = () => act((x) => {
@@ -191,11 +205,29 @@ export default function Trial() {
         <h2>Пробная партия</h2>
         <p className="legend">Отладочный экран движка: рождение, поле, карты событий, проверки, здоровье, смысл и счастье; рынок, работа, траты, пенсия, город и знакомства (этап 3а); мировые ходы, кризисы, Смута и эмиграция (3б); война на «Фронте» — призыв, тактика, 140 событий, комиссия, плен, итоги войны (3в). Смысл жизни виден всем: это проверка правил, а не игра.</p>
         <div className="controls">
-          <label>Игроков <select value={seats} onChange={(ev) => setSeats(Number(ev.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n}>{n}</option>)}</select></label>
+          <label>Мест <select value={table.length} onChange={(ev) => { const n = Number(ev.target.value); setTable((t) => (n > t.length ? [...t, ...Array.from({ length: n - t.length }, () => newSeat('normal'))] : t.slice(0, n))) }}>{[1, 2, 3, 4, 5, 6].map((n) => <option key={n}>{n}</option>)}</select></label>
           <label>Зерно <input type="number" value={seed} onChange={(ev) => setSeed(Number(ev.target.value) || 0)} style={{ width: '7em' }} /></label>
           <button onClick={start}>Начать</button>
           {saved && <button onClick={resume}>Продолжить сохранённую</button>}
         </div>
+        <div className="seats">
+          {table.map((t, i) => (
+            <div className="seat" key={i}>
+              <input value={t.name} onChange={(ev) => setSeat(i, { name: ev.target.value })} placeholder="псевдоним" style={{ width: '16em' }} />
+              <button onClick={() => setSeat(i, { name: bureauName() })}>Случайно</button>
+              <select value={t.ai ?? ''} onChange={(ev) => setSeat(i, { ai: (ev.target.value || undefined) as SeatConfig['ai'], ...(ev.target.value && !t.archetype ? { archetype: randomArchetype() } : {}) })}>
+                <option value="">человек</option>
+                {AI_LEVELS.map(([id, label]) => <option key={id} value={id}>ИИ: {label}</option>)}
+              </select>
+              {t.ai && (
+                <select value={t.archetype ?? ''} onChange={(ev) => setSeat(i, { archetype: ev.target.value })} title={ARCHETYPES.find((a) => a.id === t.archetype)?.meaning}>
+                  {ARCHETYPES.map((a) => <option key={a.id} value={a.id} title={`${a.lang} — ${a.meaning}`}>{a.name} — {a.meaning}</option>)}
+                </select>
+              )}
+            </div>
+          ))}
+        </div>
+        <p className="legend">Псевдоним — не имя и не фамилия; «Случайно» даёт номер, как в Бюро. ИИ до «Сложно» знает только то, что видит игрок; «Нечестно» подглядывает в колоды и кубики. Архетип — характер ИИ: его решения следуют чертам.</p>
         <p className="legend">Одно и то же зерно с теми же ответами даёт ту же партию: если что-то пошло не так, назови зерно.</p>
         {error && <p className="req">Ошибка движка: {error}</p>}
       </section>
