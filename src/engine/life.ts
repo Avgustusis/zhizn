@@ -6,6 +6,7 @@ import { ask, countryOf, say, type Flow, type G } from './core.ts'
 import { held, kindOf, newCtx, type Ctx } from './cond.ts'
 import { addParam, count, dropHeld, gainItem, removeHeld, rollDie } from './change.ts'
 import type { Held, Player } from './types.ts'
+import { pawnHot } from './search.ts'
 
 const T = (g: G) => g.c.tables.life
 
@@ -28,6 +29,8 @@ export function retire(g: G, p: Player, how: 'пенсия' | 'работа на
 export function sellPrice(g: G, p: Player, h: Held): number | undefined {
   const item = g.items.get(h.name)
   if (!item?.sell) return undefined
+  // Запрещённое в стране скупка берёт за треть цены (вверх) и без вопросов (решено 19.11).
+  if (pawnHot(g, p, h)) return Math.ceil(item.sell / g.c.tables.search.pawnShare)
   const sp = T(g).sell[h.name]
   const pos = countryOf(g, p).pos
   if (sp?.byPos?.[pos] !== undefined) return sp.byPos[pos]
@@ -37,15 +40,16 @@ export function sellPrice(g: G, p: Player, h: Held): number | undefined {
 
 /** Продать вещь в скупку: цена по стране; особые вещи — «Судимость» на d6 1, фамильное серебро — Сплочённость −1. */
 export function* sellThing(g: G, p: Player, h: Held): Flow {
+  const hot = pawnHot(g, p, h)
   const price = sellPrice(g, p, h) ?? 0
-  const sp = T(g).sell[h.name]
+  const sp = hot ? undefined : T(g).sell[h.name]
   const c = countryOf(g, p)
   removeHeld(g, p, h)
   say(g, p, `скупка: «${h.name}» за ${price} возм.`)
   const ctx = newCtx('правило')
   if (price) addParam(g, p, 'возм', price, ctx)
   if (sp?.coh) addParam(g, p, 'Сплочённость', sp.coh, ctx)
-  if (sp?.recordUpTo && (!sp.recordWhere || sp.recordWhere.includes(c.ideology)) && rollDie(g, p, 6, `продажа «${h.name}»: «Судимость» на 1`) <= sp.recordUpTo) yield* gainItem(g, p, 'Судимость')
+  if (!hot && sp?.recordUpTo && (!sp.recordWhere || sp.recordWhere.includes(c.ideology)) && rollDie(g, p, 6, `продажа «${h.name}»: «Судимость» на 1`) <= sp.recordUpTo) yield* gainItem(g, p, 'Судимость')
 }
 
 /** «Комната с окном на школу»: из Имущества оставь одну вещь, остальные продай по скупке. */

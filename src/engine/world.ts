@@ -17,6 +17,7 @@ import { afterDeclare, coupPeace, declareWar, endWar, warWorldEnd, warWorldStart
 import { nearMiss, socialWorld } from './social.ts'
 import { atPowerChange } from './items.ts'
 import { saveVozm } from './tricks.ts'
+import { licenseAtPowerChange, search } from './search.ts'
 import type { Cls, Country, Player, Relation } from './types.ts'
 
 const alive = (p: Player | undefined): p is Player => !!p && p.alive && !p.finished
@@ -136,20 +137,21 @@ function* crisis(g: G, c: Country): Flow {
       ], { force: true })
       if (a === 'да') { addParam(g, p, 'возм', -t.influence.invest, newCtx('правило')); w += t.influence.investAdd }
     }
-    // Козырь «Верхов» и антикозырь «Дна»: влияние ±3.
-    for (const n of t.influence.trumps) {
+    // Козырь «Верхов» и антикозырь «Дна»: влияние ±3; «Взрывчатка» — ±2.
+    for (const [n, add] of Object.entries(t.influence.trumps)) {
       const h = p.items.find((x) => x.name === n)
       if (!h) continue
-      const a = yield* ask(g, p, 'козырь', `Сыграть «${n}»: влияние ещё ${t.influence.trumpAdd}?`, [
-        { id: 'да', label: `сыграть «${n}»`, note: `смена власти ${pct(odds(influence + sign * (w + t.influence.trumpAdd)))}${kindOf(g, h) === 'антикозырь' ? '; катастрофа на d6 1–2 — тюрьма' : ''}` },
+      const a = yield* ask(g, p, 'козырь', `Сыграть «${n}»: влияние ещё ${add}?`, [
+        { id: 'да', label: `сыграть «${n}»`, note: `смена власти ${pct(odds(influence + sign * (w + add)))}${kindOf(g, h) === 'антикозырь' ? '; катастрофа на d6 1–2 — тюрьма' : ''}` },
         { id: 'нет', label: 'оставить', note: `смена власти ${pct(odds(influence + sign * w))}` },
       ], { force: true })
       if (a !== 'да') continue
-      w += t.influence.trumpAdd
+      w += add
       spend(g, p, h)
       p.rules[`сыграно: ${n}`] = { arg: side }
       const item = g.items.get(n)
       if (item?.risk && rollDie(g, p, 6, `риск «${n}»`) <= 2) yield* run(g, p, item.risk, newCtx('правило'))
+      if (n === 'Взрывчатка' && rollDie(g, p, 6, '«Взрывчатка»: на 1 рвануло не там') === 1) { say(g, p, 'рвануло не там'); addParam(g, p, 'физ', -3, newCtx('правило')) }
     }
     influence += sign * w
     delete p.rules['смута']
@@ -234,6 +236,7 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
     yield* run(g, p, card.sides![sideKey(ctx.side!)], ctx)
     side = ctx.side!
     if (p.alive) yield* atPowerChange(g, p, c, oldDom)
+    if (p.alive) licenseAtPowerChange(g, p)
     if (!p.alive) { turmoilCtx.delete(p.seat); continue }
     // 1) Победители могут перейти в новый доминирующий класс; в Олигархи — только «Везение», 🎲 Смекалка 18.
     if (side === 'победители' && p.cls !== c.dominant && !p.inst) {
@@ -273,6 +276,8 @@ export function* turmoil(g: G, c: Country, oldDom: Cls, sides: Map<number, Side>
       if (up.length) { const to = up.includes(c.dominant) ? c.dominant : up[0]; say(g, p, `«На баррикады»: класс на шаг выше — ${to}`); setClass(g, p, to) }
     }
     delete p.rules['сыграно: Место в списке']; delete p.rules['сыграно: На баррикады']
+    // Проигравшие «Смуты» при диктатурах, теократии и полицейском государстве — обыск (решено 19.11).
+    if (p.alive && side === 'проигравшие' && g.c.tables.search.turmoilLosers.includes(c.ideology)) yield* search(g, p, 'проигравшие «Смуты»')
     turmoilCtx.delete(p.seat)
     // Журнал.
     if (side !== 'нейтралы') count(p, 'сторона в Смуте')

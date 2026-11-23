@@ -44,7 +44,7 @@ export function value(p: Player, nodes: Node[] | undefined, depth = 0): number {
  * Пороги лечения. По умолчанию — как у ИИ симуляции автора (sim3.py: HOSP_T = 0, подлечиться при физ. < 3), без особой
  * заботы о Старости. Старые значения 3 и 6 в Старости держали физ. ≈ 5,5 к входу в Древность.
  */
-export const policy = { heal: 0, topUp: 3, oldHeal: 0, oldTopUp: 3, kontora: 4 }
+export const policy = { heal: 0, topUp: 3, oldHeal: 0, oldTopUp: 3, kontora: 4, weapon: 1, leaflets: 10 }
 
 /**
  * Какое действие рынка выбрать — порядок как у ИИ симуляции автора (sim3.py: market, work, small):
@@ -64,6 +64,13 @@ function marketPick(g: G, p: Player, ids: string[], price: (id: string) => numbe
   // ■: Контора — изредка (policy.kontora из 100: подобрано так, что дело хоть раз у ~35% жизней, как в симуляции автора),
   // если хватает на дело и ещё 3 возм. в запасе.
   if (hasId('контора') && p.vozm >= 8 && (p.turns * 29 + p.seat * 13 + p.seg * 7) % 100 < policy.kontora) return 'контора'
+  // ▲ Оружие и «Лицензия» (решено 19.11): изредка (policy.weapon из 100) — оружие, когда денег в запасе;
+  // «Лицензия» — к ружью или станку; «Листовки» со станком — когда здоровье в запасе (policy.leaflets из 100).
+  const roll = (p.turns * 31 + p.seat * 17 + p.seg * 5) % 100
+  if (hasId('лицензия') && p.vozm >= 4 && p.items.some((h) => ['Ружьё охотника', 'Печатный станок'].includes(h.name))) return 'лицензия'
+  if (hasId('листовки') && p.psy >= 2 && p.phys >= 2 && roll < policy.leaflets) return 'листовки'
+  const arms = ids.filter((id) => id.startsWith('купить: ')).filter((id) => p.vozm >= price(id) + 6)
+  if (arms.length && roll < policy.weapon) return arms[(p.turns + p.seat) % arms.length]
   // ■: работа, пока денег меньше 10 (переработка — когда здоровья в запасе, а денег нет).
   if (work && p.vozm < 10 && p.seg < 5) return p.vozm < 2 && p.phys >= 3 && p.psy >= 3 && !old && hasId('переработка') ? 'переработка' : work
   // ▲: малый обмен.

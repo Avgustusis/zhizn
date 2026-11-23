@@ -15,6 +15,7 @@ import { crisisCheck, flight, turmoilRule } from './world.ts'
 import { emigrationRule } from './emigration.ts'
 import { draftCheck, frontNow, warRule } from './war.ts'
 import { traceRule } from './social.ts'
+import { buyWeapon, leaflets, nightSearch, search } from './search.ts'
 import { chronicle, giveAll, giveItem, keepOneThing, loseClose, retire, riteCost, upbringingBonus } from './life.ts'
 import { newCtx } from './cond.ts'
 import type { Player } from './types.ts'
@@ -118,6 +119,10 @@ const RULES: Record<string, Rule> = {
   'летопись'(g, p, arg) { chronicle(g, p, arg) },
   'итог воспитания'(g, p, arg) { upbringingBonus(g, p, arg) },
   'обряд дорожает'(g, p, arg) { riteCost(g, p, arg) },
+  // ── Оружие, лицензия, обыск (19.11) ──
+  *'купить оружие'(g, p, arg) { yield* buyWeapon(g, p, arg ?? '') },
+  *'листовки'(g, p) { yield* leaflets(g, p) },
+  *'обыск'(g, p, arg) { if (arg === 'ночной') yield* nightSearch(g, p); else yield* search(g, p, arg ?? 'карта') },
   // ── Общественный след (18.11) ──
   'след'(g, p, arg) { traceRule(g, p, arg) },
   // ── Война (этап 3в) ──

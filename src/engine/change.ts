@@ -8,6 +8,7 @@ import { settle } from './meaning.ts'
 import { afterClass, afterGain } from './items.ts'
 import { deathSave, twoDraws } from './tricks.ts'
 import { freeDivorce, theismDivorce } from './poles.ts'
+import { searchNow } from './search.ts'
 import type { CharPole, Cls, Culture, Held, InstKind, Player, Race, Stat, Tag } from './types.ts'
 
 export const count = (p: Player, name: string, n = 1): void => { p.counters[name] = (p.counters[name] ?? 0) + n }
@@ -215,6 +216,8 @@ export function enterInst(g: G, p: Player, kind: InstKind, turns: number, tag?: 
   if (tag) p.inst.tag = tag
   count(p, kind)
   emit(g, { t: 'институт', p: p.seat, kind, how: 'вход', turns })
+  // Арест (вход в тюрьму, кроме плена) — обыск по таблице «Оружие, лицензия, обыск».
+  if (kind === 'тюрьма' && !opts.anywhere) searchNow(g, p, 'арест')
 }
 
 /** Выход из института со стигмой («Судимость», «Учёт», «Долг»), если карта не сказала иначе. */
@@ -281,6 +284,8 @@ export function* gainItem(g: G, p: Player, name: string, opts: { adopted?: true 
   // «Партнёр» не приходит, если уже есть Партнёр или Супруг(а).
   if (name === 'Партнёр' && pairOf(g, p)) { say(g, p, 'пара уже есть: новый Партнёр не приходит'); return }
   const group = g.groups.has(name) ? name : undefined
+  // «Меценат» при госсоциализме не приходит: вместо него «Хозяин района» — цеховик (решено 19.11).
+  if (name === 'Меценат' && countryOf(g, p).ideology === 'Госсоциализм') { say(g, p, 'при госсоциализме вместо мецената — цеховик'); name = 'Хозяин района' }
   const draw = () => drawBlind(g, `люди.${group}`, () => g.groups.get(group!)!.flatMap((n) => Array<string>(Math.max(1, g.items.get(n)!.copies)).fill(n)))
   // «Тот, кто всех знает»: следующий Партнёр или Друг — две карты, берёшь одну.
   const cardName = group ? yield* twoDraws(g, p, group, draw) : name

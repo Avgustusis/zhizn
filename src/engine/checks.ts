@@ -208,6 +208,8 @@ export function* runCheck(g: G, p: Player, check: Check, ctx: Ctx, askStat = fal
         else trump = used.add
         if (kindOf(g, used.h) === 'антикозырь') { risky = used.h; count(p, 'антикозырь сыгран') }
         spend(g, p, used.h)
+        // «Взрывчатка»: d6 1 — рвануло не там, −3 физ.
+        if (used.h.name === 'Взрывчатка' && rollDie(g, p, 6, '«Взрывчатка»: на 1 рвануло не там') === 1) { say(g, p, 'рвануло не там'); addParam(g, p, 'физ', -3, newCtx('правило')) }
       }
     }
   }

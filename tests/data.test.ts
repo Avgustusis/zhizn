@@ -133,7 +133,7 @@ describe('предметы', () => {
   it('число карт по видам, как в документе', () => {
     const copies = (f: (i: (typeof items)[number]) => boolean) => items.filter(f).reduce((s, i) => s + i.copies, 0)
     const cat = (kind: string) => copies((i) => i.deck === 'каталог' && i.kind === kind)
-    expect([cat('связь'), cat('статус'), cat('козырь'), cat('стигма'), cat('вещь'), cat('дело')]).toEqual([27, 19, 9, 16, 29, 21])
+    expect([cat('связь'), cat('статус'), cat('козырь'), cat('стигма'), cat('вещь'), cat('дело')]).toEqual([27, 22, 9, 16, 36, 21])
     expect(copies((i) => i.deck === 'Верхи')).toBe(15)
     expect(copies((i) => i.deck === 'Дно')).toBe(10)
     expect(copies((i) => i.deck === 'Знакомые')).toBe(72)

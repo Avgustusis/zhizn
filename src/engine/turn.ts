@@ -15,6 +15,7 @@ import { backToFront, frontTurn, volunteerAsk, volunteerSides } from './war.ts'
 import { afterCard, atSegment } from './items.ts'
 import { pawn, sellable } from './life.ts'
 import { afterCardPoles, disasterMiss, familismCohesion, familismPrice } from './poles.ts'
+import { enemyReminds } from './search.ts'
 import { anytimePlays, cancelWarCard, peekTop, playMenu, saveFromBondage, travelDiscount } from './tricks.ts'
 import type { Action, Player } from './types.ts'
 
@@ -160,6 +161,7 @@ function* enterSegment(g: G, p: Player): Flow {
   rollFashion(g, countryOf(g, p))
   yield* itemsPerSeg(g, p)
   yield* atSegment(g, p)
+  yield* enemyReminds(g, p)
   // Фамилизм: без семьи ты никто — при низкой Сплочённости −1 псих. на входе в отрезок.
   if (familismCohesion(g, p)) { say(g, p, 'Фамилизм: без семьи ты никто'); addParam(g, p, 'псих', familismCohesion(g, p), ctx) }
   yield* businessAtEntry(g, p)

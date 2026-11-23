@@ -204,6 +204,10 @@ export function cond(g: G, p: Player, c: Cond | undefined, ctx?: Ctx): boolean {
   if ('span' in c) return g.s.config.span === c.span
   if ('meaning' in c) return c.meaning === 'серость' ? p.meaning?.id === 'серость' : !!p.meaning && p.meaning.id !== 'серость'
   if ('hasKind' in c) return p.items.some((h) => kindOf(g, h) === c.hasKind)
+  if ('stock' in c) {
+    const out = g.s.players.reduce((n, q) => n + q.items.filter((h) => h.name === c.stock).length, 0)
+    return out < (g.items.get(c.stock)?.copies ?? 0)
+  }
   if ('visited' in c) return (p.visits[c.visited] ?? []).includes(p.seg)
   if ('draft' in c) return drafted(g, p, ctx) === c.draft
   if ('inTarget' in c) return (ctx?.target === p.country || !!ctx?.targets?.includes(p.country)) === c.inTarget
