@@ -395,7 +395,7 @@ export type Check = z.infer<typeof Check>
 const Range = z.string().regex(/^\d+(-\d+)?$/, 'диапазон вида «1-2» или «6»')
 
 export type Node =
-  | { add: Partial<Record<(typeof PARAMS)[number], number>>; cap?: number }
+  | { add: Partial<Record<(typeof PARAMS)[number], number>>; cap?: number; soft?: true }
   | { stab: number }
   | { addOneOf: (typeof STATS)[number][]; n: number }
   | { addUsed: number }
@@ -437,7 +437,8 @@ export type Node =
 export const Node: z.ZodType<Node> = z.lazy(() =>
   z.union([
     /** Изменение чисел: { add: { "Харизма": 1, "псих": -1 } }. Возрастной сдвиг к физ./псих. добавляет движок. */
-    z.strictObject({ add: z.partialRecord(Param, z.number().int()), cap: z.number().int().optional() }),
+    /** soft — прибавка психики под «Потолок психики» (полюса, знакомые, обряды; концепция, 23.11). */
+    z.strictObject({ add: z.partialRecord(Param, z.number().int()), cap: z.number().int().optional(), soft: z.literal(true).optional() }),
     /** Мир и Смута: стабильность целевой страны ±n (в части `country`) или страны игрока. */
     z.strictObject({ stab: z.number().int() }),
     /** +n к одной характеристике на выбор игрока. */

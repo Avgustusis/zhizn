@@ -90,3 +90,50 @@ describe('ИИ этапа 4', () => {
     expect(bureauName()).toMatch(/^№ [1-9]\d{11} «[А-ЯЁ][а-яё]+»$/)
   })
 })
+
+describe('Правки 23.11 (ночь): потолок психики, «Присяга», поблажка «Нечестно»', () => {
+  it('потолок психики: отклик, знакомые, полюса и обряды — не больше tables.psyCap за отрезок; события — без потолка', async () => {
+    const { addParam } = await import('../src/engine/change.ts')
+    const { newCtx } = await import('../src/engine/cond.ts')
+    const e = lab(11)
+    const p = e.state.players[0]
+    p.psy = 0
+    const cap = content.tables.psyCap.perSeg
+    for (let i = 0; i < 4; i++) addParam(e.g, p, 'псих', 1, newCtx('правило', { soft: true }))
+    expect(p.psy).toBe(cap)
+    addParam(e.g, p, 'псих', 2, newCtx('правило'))
+    expect(p.psy).toBe(cap + 2)
+    p.seg += 1 // новый отрезок — потолок снова свободен
+    addParam(e.g, p, 'псих', 1, newCtx('правило', { soft: true }))
+    expect(p.psy).toBe(cap + 2 + Math.min(1, cap))
+  })
+
+  it('«Присяга»: вопрос на входе в Молодость; ИИ соглашается примерно в 70% случаев', () => {
+    let asked = 0, yes = 0
+    for (let seed = 1; seed <= 40; seed++) {
+      const e = new Engine(content, { span: 'one', seed, seats: seats('simple', 4) }, { checkpoints: false })
+      for (let i = 0; i < 100000 && e.pending; i++) {
+        const r = e.pending
+        const a = aiAnswer(e.g, r, undefined, e)
+        if (r.text.startsWith('Присяга')) { asked++; if (a === 'да') yes++ }
+        e.answer(a)
+      }
+    }
+    expect(asked).toBeGreaterThan(15)
+    expect(yes / asked).toBeGreaterThan(0.5); expect(yes / asked).toBeLessThan(0.9)
+  }, 60000)
+
+  it('«Нечестно» +1 к проверкам; остальные уровни — без поблажек', async () => {
+    const { previewCheck } = await import('../src/engine/checks.ts')
+    const { newCtx } = await import('../src/engine/cond.ts')
+    const e = new Engine(content, { span: 'one', seed: 5, seats: [{ name: 'А', ai: 'unfair' }, { name: 'Б', ai: 'hard' }] }, { checkpoints: false })
+    while (e.pending && e.pending.type !== 'ход') e.answer(e.pending.options.find((o) => !o.off)!.id)
+    const [a, b] = e.state.players
+    Object.assign(b, { stats: { ...a.stats }, character: [...a.character], cls: a.cls, country: a.country, culture: a.culture, race: a.race, sex: a.sex, items: [] })
+    a.items = []
+    const check = { stat: 'Сила' as const, dc: 12 }
+    const pa = previewCheck(e.g, a, check, newCtx('карта'))
+    const pb = previewCheck(e.g, b, check, newCtx('карта'))
+    expect(pa.mod - pb.mod).toBe(1)
+  })
+})

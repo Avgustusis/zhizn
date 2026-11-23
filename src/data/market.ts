@@ -140,7 +140,7 @@ const weapon = (name: string, place: string, price: number, extra?: Cond, note?:
 })
 
 /** Фамилизм: Семья выгоднее на 1; Институции — слабее на 1 (концепция, «Культура»). */
-const FAMILISM = (param: 'возм' | 'псих'): Node => ({ cases: [{ if: { culture: 'Фамилизм' }, then: [{ add: { [param]: 1 } }] }, { if: { culture: 'Институции' }, then: [{ add: { [param]: -1 } }] }] })
+const FAMILISM = (param: 'возм' | 'псих'): Node => ({ cases: [{ if: { culture: 'Фамилизм' }, then: [{ add: { [param]: 1 }, ...(param === 'псих' ? { soft: true as const } : {}) }] }, { if: { culture: 'Институции' }, then: [{ add: { [param]: -1 } }] }] })
 /** Фамилизм: банк дороже (платёж +1); Институции — дешевле (платёж −1). */
 const BANK_CULTURE: Node = { cases: [{ if: { culture: 'Фамилизм' }, then: [{ add: { 'возм': -1 } }] }, { if: { culture: 'Институции' }, then: [{ add: { 'возм': 1 } }] }] }
 
@@ -296,7 +296,8 @@ const places: Action[] = [
   {
     id: 'храм', label: 'Храм: → +1 псих. (в теистичной культуре +2)', slots: ['▲'], place: 'Храм',
     requires: all(NO_BREAK, DOCS, ON_FEET), price: [{ n: 1 }],
-    effect: [{ if: { culture: 'Теизм' }, then: [{ add: { 'псих': 2 } }], else: [{ add: { 'псих': 1 } }] }, { d6: { '6': [{ gain: 'Духовник' }] } }],
+    // Храм +1; Теизм — ещё +1, это полюс: под «Потолок психики».
+    effect: [{ add: { 'псих': 1 } }, { if: { culture: 'Теизм' }, then: [{ add: { 'псих': 1 }, soft: true }] }, { d6: { '6': [{ gain: 'Духовник' }] } }],
   },
   {
     id: 'храм-большой', label: 'Храм, пожертвование: → +3 псих.', slots: ['▲', '▲'], place: 'Храм', log: ['пожертвование в храме'],
@@ -353,7 +354,7 @@ const traps: Action[] = [
   {
     id: 'бар', label: 'Бар: −1 возм. → +2 псих.', slots: ['▲'], gate: { pole: 'Мера' }, place: 'Бар', log: ['бар'], price: [{ n: 1 }],
     note: 'd6 1–2 — −1 физ.; третье посещение за отрезок — «Привычка»',
-    effect: [{ add: { 'псих': 2 } }, { if: has('Собутыльник'), then: [{ say: 'с собутыльником веселее' }, { add: { 'псих': 1 } }] }, { d6: { '1-2': [{ add: { 'физ': -1 } }] } }, lawRisk(illegal('Теократия')), { rule: 'привычка', arg: 'бар' }],
+    effect: [{ add: { 'псих': 2 } }, { if: has('Собутыльник'), then: [{ say: 'с собутыльником веселее' }, { add: { 'псих': 1 }, soft: true }] }, { d6: { '1-2': [{ add: { 'физ': -1 } }] } }, lawRisk(illegal('Теократия')), { rule: 'привычка', arg: 'бар' }],
   },
   {
     id: 'казино', label: 'Казино: ставка', slots: ['▲'], gate: { pole: 'Выдержка' }, place: 'Казино', log: ['казино'],

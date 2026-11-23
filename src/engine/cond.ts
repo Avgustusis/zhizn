@@ -20,6 +20,8 @@ export interface Ctx {
   strong?: boolean
   /** Потолок характеристик для шага `add` (рынок: 7 или 8). */
   cap?: number
+  /** Прибавка психики под «Потолок психики»: отклик культуры, знакомые, полюса, обряды — не больше tables.psyCap за отрезок. */
+  soft?: true
   /** Мир и Смута: страна-цель (или пара стран — targets). */
   target?: number
   targets?: number[]

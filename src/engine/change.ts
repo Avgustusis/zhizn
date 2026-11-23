@@ -39,6 +39,15 @@ export function addParam(g: G, p: Player, param: string, delta: number, ctx: Ctx
     if (n) delta = grow(delta, n)
     if (delta === 0) return
   }
+  // «Потолок психики» (23.11): отклик культуры, знакомые, полюса и обряды вместе — не больше +2 за отрезок, лишнее сгорает.
+  if (param === 'псих' && delta > 0 && ctx.soft) {
+    const key = `потолок психики:${p.seg}`
+    const room = Math.max(0, t.psyCap.perSeg - (p.counters[key] ?? 0))
+    if (room < delta) say(g, p, `потолок психики: ${room ? `из +${delta} дошло +${room}` : `+${delta} сгорает`} (за отрезок не больше +${t.psyCap.perSeg} от культуры, знакомых, полюсов и обрядов)`)
+    delta = Math.min(delta, room)
+    if (delta === 0) return
+    p.counters[key] = (p.counters[key] ?? 0) + delta
+  }
   const from = read(p, param)
   let to = from + delta
   if (health) to = clamp(to, t.caps.death, t.caps.health)

@@ -3,7 +3,7 @@ import type { BoardCell } from '../data/board-schema.ts'
 import { SEGMENTS, type Card } from '../data/schema.ts'
 import { ask, countryOf, emit, rnd, roll3, say, segName, type Flow, type G } from './core.ts'
 import { charLean, cond, has, newCtx, type Ctx } from './cond.ts'
-import { addParam, death, enterInst, fire, gainItem, itemsPerSeg, leaveInst, rollDie, runDue, visit, removeHeld } from './change.ts'
+import { addParam, count, death, enterInst, fire, gainItem, itemsPerSeg, leaveInst, rollDie, runDue, visit, removeHeld } from './change.ts'
 import { spend, strongIn } from './checks.ts'
 import { run } from './exec.ts'
 import { markEntry, meaningAtEntry, settle } from './meaning.ts'
@@ -146,7 +146,15 @@ function* enterSegment(g: G, p: Player): Flow {
   const ctx = newCtx('правило')
   // Жетоны ◆: три на входе в Молодость, неиспользованные сгорают на выходе.
   p.youthTokens = seg === 'Молодость' ? g.c.tables.youthTokens : 0
-  if (seg === 'Молодость' && p.cls === 'Армия' && p.citizenship.includes(p.country)) yield* gainItem(g, p, 'Присяга')
+  // «Присяга» — выбор (23.11): согласие — статус; отказ ничего не стоит, класс остаётся, статуса нет (позже — только событием).
+  if (seg === 'Молодость' && p.cls === 'Армия' && p.citizenship.includes(p.country)) {
+    const a = yield* ask(g, p, 'предмет', 'Присяга: ты входишь в Молодость в армейской семье. Принимаешь «Присягу»?', [
+      { id: 'да', label: 'принять «Присягу»', note: 'ключ Армии: аттестация на «Офицерское звание» в Зрелости' },
+      { id: 'нет', label: 'отказаться', note: 'класс Армия остаётся; статус потом — только событием' },
+    ], { force: true })
+    if (a === 'да') yield* gainItem(g, p, 'Присяга')
+    else { say(g, p, 'отказался от «Присяги»'); count(p, 'отказ от Присяги') }
+  }
   // «Старый офицер» — ключ к «Офицерскому званию»: аттестация и без пяти лет Стажа.
   if (seg === 'Зрелость' && p.cls === 'Армия' && has(g, p, 'Присяга') && (p.stazh >= 5 || has(g, p, 'Старый офицер')) && !has(g, p, 'Офицерское звание')) {
     const stat = p.stats['Интеллект'] >= p.stats['Харизма'] ? 'Интеллект' as const : 'Харизма' as const

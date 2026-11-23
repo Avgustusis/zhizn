@@ -38,7 +38,8 @@ export function smartAnswer(g: G, req: Request, level: Level, engine?: Engine): 
   // «Ход» (сыграть козырь, сиделка, скупка) и обязательные вопросы без выбора — не ошибаемся нарочно.
   if (L.blunder && req.type === 'карта' && rand() < L.blunder) return ids[Math.floor(rand() * ids.length)]
   // «Нечестно»: копия всей партии на месте вопроса — настоящие кубики, колоды и всё, что будет до конца шага.
-  if (level === 'unfair' && engine?.canFork && DEEP.includes(req.type)) return deepPick(engine, req, level)
+  // Меню «Какую карту сыграть» решает то же правило, что вопрос «ход» → «сыграть» (иначе ИИ ходит по кругу: открыл меню — отказался — открыл снова).
+  if (level === 'unfair' && engine?.canFork && DEEP.includes(req.type) && !req.text.startsWith('Какую карту сыграть')) return deepPick(engine, req, level)
   if (req.type === 'карта' && open.every((o) => o.effect) && !simpleFirst(g, req)) return byLookahead(g, req, level)
   if (!L.aims) return simple(g, req)
   const w = wantsOf(g, p)
@@ -121,6 +122,10 @@ function aimed(g: G, p: Player, req: Request, ids: string[], w: Wants, rand: () 
       if (req.text.startsWith('Вложить') && winWant && p.vozm >= 8) return 'да'
       return undefined
     }
+    case 'предмет':
+      // «Присяга» нужна смыслу — принимает всегда; иначе — как простой ИИ (70%).
+      if (req.text.startsWith('Присяга') && (w.items.has('Присяга') || w.items.has('Офицерское звание'))) return 'да'
+      return undefined
     default: return undefined
   }
 }
@@ -154,7 +159,11 @@ function market(g: G, p: Player, ids: string[], w: Wants, rand: () => number): s
   // 3) Характер: Аппетит тянет в бар и ресторан, Щедрость и Участие — в фонд, Усердие — к работе.
   const lean = leanings(p, archetypeOf(g.s.config.seats[p.seat]?.archetype))
   const first = (...list: string[]) => list.find((id) => ids.includes(id) && afford(id, 1))
-  if (lean.vice && p.psy < 4 && rand() < 0.12 * lean.vice) { const id = first('обжорство', 'бар', 'казино'); if (id) return id }
+  // Аппетит — ресторан («Обжорство») и бар.
+  if (lean.vice && p.psy < 4 && rand() < 0.12 * lean.vice) { const id = first('обжорство', 'бар'); if (id) return id }
+  // Беспечность — бордель, а в крайнем случае (сильная Беспечность и психика −3 и ниже) — притон.
+  if (lean.care <= -2 && p.psy <= -3 && rand() < 0.1) { const id = first('притон', 'бордель'); if (id) return id }
+  if (lean.care < 0 && p.psy < 3 && rand() < 0.06 * -lean.care) { const id = first('бордель'); if (id) return id }
   if (lean.help && p.vozm >= 8 && rand() < 0.1 * lean.help) { const id = first('благотворительность'); if (id) return id }
   if (lean.care > 0 && p.vozm < 12 && p.seg < 5 && rand() < 0.2 * lean.care) { const id = first('работа', 'дело', 'подработка'); if (id) return id }
   return undefined

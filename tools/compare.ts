@@ -22,22 +22,41 @@ let mixWins = 0, mixHap = 0, mixGames = 0
 const content = loadContent()
 const childNames = new Set(content.items.filter((i) => i.group === 'Ребёнок').map((i) => i.name))
 
-type Life = { p: Player; pos: string; win: boolean; teenAsylum: boolean; diploma: boolean; oath: boolean; officer: boolean; married: boolean; child: boolean; emig: boolean; deck: string; diff: string }
+type Life = { born: { ideo: string; pos: string; stab: number }; fall?: string; armyLeft?: string; p: Player; pos: string; win: boolean; teenAsylum: boolean; diploma: boolean; oath: boolean; officer: boolean; married: boolean; child: boolean; emig: boolean; deck: string; diff: string }
 const lives: Life[] = []
 const checks: Record<string, number> = {}
 let errors = 0
 
 for (let seed = SEED; seed < SEED + N; seed++) {
+  if (process.env.PROGRESS) console.error(`партия ${seed}`)
   let e: Engine
+  let bornAt: Life['born'][] | undefined
   try {
-    e = new Engine(content, { span: 'one', seed, seats: [0, 1, 2, 3].map((i) => ({ name: `И${i + 1}`, ...(process.env.ARCH === '0' ? {} : { archetype: ARCHETYPES[(seed * 4 + i) % ARCHETYPES.length].id }) })), keepLog: true }, { checkpoints: AI === 'unfair' || MIX === 'unfair' })
-    while (e.pending) e.answer(aiAnswer(e.g, e.pending, MIX && e.pending.player === 0 ? MIX : AI, e))
+    e = new Engine(content, { span: 'one', seed, seats: [0, 1, 2, 3].map((i) => ({ name: `И${i + 1}`, ai: MIX && i === 0 ? MIX : AI, ...(process.env.ARCH === '0' ? {} : { archetype: ARCHETYPES[(seed * 4 + i) % ARCHETYPES.length].id }) })), keepLog: true }, { checkpoints: AI === 'unfair' || MIX === 'unfair' })
+    while (e.pending) {
+      // Страна рождения — какой она была на первом ходу (потом строй меняется).
+      if (!bornAt && e.pending.type === 'ход') bornAt = e.state.players.map((p) => { const c = e.state.world.countries[p.birthCountry]; return { ideo: c.ideology, pos: c.pos, stab: c.stability } })
+      e.answer(aiAnswer(e.g, e.pending, undefined, e))
+    }
   } catch (err) { errors++; if (errors <= 3) console.error(`партия ${seed}:`, String(err).slice(0, 300)); continue }
   const s = e.state
   const seg: Record<number, string> = {}
   const flags = s.players.map(() => ({ teenAsylum: false, diploma: false, oath: false, officer: false, married: false, child: false }))
+  // Причина смены класса: последняя карта игрока (колода и название) или мировое событие перед ней.
+  const lastCard: Record<number, string> = {}
+  let lastWorld = ''
+  const fall: Record<number, string> = {}
+  const armyLeft: Record<number, string> = {}
   for (const ev of s.log) {
     if (ev.t === 'отрезок') seg[ev.p] = ev.seg
+    if (ev.t === 'карта') lastCard[ev.p] = `${ev.deck}: ${ev.title}`
+    if (ev.t === 'мир') lastWorld = ev.text
+    if (ev.t === 'ход') { delete lastCard[ev.p] }
+    if (ev.t === 'класс') {
+      const why = lastCard[ev.p] ?? (lastWorld ? 'мировой ход' : 'правило')
+      if (ev.from === 'Олигархи' && s.players[ev.p].start.cls === 'Олигархи' && !fall[ev.p]) fall[ev.p] = why
+      if (ev.from === 'Армия' && s.players[ev.p].start.cls === 'Армия' && !armyLeft[ev.p] && ['Детство', 'Юность'].includes(seg[ev.p] ?? 'Детство')) armyLeft[ev.p] = why
+    }
     if (ev.t === 'проверка') checks[ev.stat] = (checks[ev.stat] ?? 0) + 1
     if (ev.t === 'институт' && ev.how === 'вход' && ev.kind === 'психбольница' && seg[ev.p] === 'Юность') flags[ev.p].teenAsylum = true
     if (ev.t === 'предмет' && (ev.how === 'получен' || ev.how === 'свадьба')) {
@@ -57,6 +76,7 @@ for (let seed = SEED; seed < SEED + N; seed++) {
     const m = p.meaning ? content.meanings.find((x) => x.id === p.meaning!.id) : undefined
     lives.push({
       p, pos: s.world.countries[p.birthCountry].pos, win: p === best, ...flags[p.seat],
+      born: bornAt?.[p.seat] ?? { ideo: '?', pos: '?', stab: 0 }, ...(fall[p.seat] ? { fall: fall[p.seat] } : {}), ...(armyLeft[p.seat] ? { armyLeft: armyLeft[p.seat] } : {}),
       emig: (p.counters['эмиграция'] ?? 0) + (p.counters['бегство'] ?? 0) > 0,
       deck: m?.deck ?? 'нет', diff: m?.difficulty ?? 'нет',
     })
@@ -109,3 +129,34 @@ if (MIX) console.log(`Место 1 — ${MIX}, остальные — ${AI}: п�
 console.log(`ИИ: ${AI}; партий ${N - errors} из ${N} (ошибок ${errors}), жизней ${L}, зерно с ${SEED}\n`)
 console.log('| Показатель | Движок | Симуляция |\n|---|---|---|')
 for (const [a, b, c] of rows) console.log(`| ${a} | ${b} | ${c} |`)
+
+// ── Разбивки (DETAIL=1): падения Олигархов, армейские семьи ──
+if (process.env.DETAIL) {
+  const olig = lives.filter((l) => l.p.start.cls === 'Олигархи')
+  const group = (key: (l: Life) => string, list: Life[], pred: (l: Life) => boolean) => {
+    const m = new Map<string, [number, number]>()
+    for (const l of list) { const k = key(l); const v = m.get(k) ?? [0, 0]; v[1]++; if (pred(l)) v[0]++; m.set(k, v) }
+    return [...m].sort((a, b) => b[1][1] - a[1][1]).map(([k, [n, d]]) => `| ${k} | ${d} | ${pct(n, d)} |`).join('\n')
+  }
+  const fell = (l: Life) => l.p.cls !== 'Олигархи'
+  const stable = (l: Life) => ['Либеральная демократия', 'Социал-демократия', 'Технократия'].includes(l.born.ideo) && l.born.pos === 'ядро'
+  console.log(`\n### Олигархи по рождению: ${olig.length} жизней, к концу не Олигархи — ${pct(olig.filter(fell).length, olig.length)}`)
+  console.log(`Стабильные (ЛД, СД, технократия в ядре): ${pct(olig.filter(stable).filter(fell).length, olig.filter(stable).length)} из ${olig.filter(stable).length}; остальные: ${pct(olig.filter((l) => !stable(l)).filter(fell).length, olig.filter((l) => !stable(l)).length)}`)
+  console.log('\n| Строй страны рождения | Жизней | Упали |\n|---|---|---|'); console.log(group((l) => l.born.ideo, olig, fell))
+  console.log('\n| Позиция страны рождения | Жизней | Упали |\n|---|---|---|'); console.log(group((l) => l.born.pos, olig, fell))
+  console.log('\n| Стабильность при рождении | Жизней | Упали |\n|---|---|---|'); console.log(group((l) => (l.born.stab >= 7 ? '7+' : l.born.stab >= 4 ? '4–6' : '3 и ниже'), olig, fell))
+  const why = new Map<string, number>()
+  for (const l of olig) if (l.fall) why.set(l.fall.replace(/: .*/, ''), (why.get(l.fall.replace(/: .*/, '')) ?? 0) + 1)
+  console.log('\nПервое падение — откуда (колода последней карты): ' + [...why].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', '))
+  const cards = new Map<string, number>()
+  for (const l of olig) if (l.fall) cards.set(l.fall, (cards.get(l.fall) ?? 0) + 1)
+  console.log('Карты: ' + [...cards].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, n]) => `${k} ${n}`).join('; '))
+  const army = lives.filter((l) => l.p.start.cls === 'Армия')
+  const left = army.filter((l) => l.armyLeft)
+  console.log(`\n### Армия по рождению: ${army.length} жизней; ушли из класса в Детстве или Юности — ${pct(left.length, army.length)}; эмигрировали до Молодости — ${pct(army.filter((l) => l.armyLeft === 'правило').length, army.length)}`)
+  const lw = new Map<string, number>()
+  for (const l of left) lw.set(l.armyLeft!, (lw.get(l.armyLeft!) ?? 0) + 1)
+  console.log('Причины: ' + [...lw].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => `${k} ${n}`).join('; '))
+  const asked = army.filter((l) => l.oath || l.p.counters['отказ от Присяги'])
+  console.log(`«Присяга»: приняли ${pct(army.filter((l) => l.oath).length, army.length)} рождённых в Армии; отказались ${pct(army.filter((l) => l.p.counters['отказ от Присяги']).length, army.length)}; спросили ${pct(asked.length, army.length)}`)
+}
