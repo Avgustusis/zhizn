@@ -115,7 +115,8 @@ describe('эмиграция', () => {
       if (!value) continue
       expect(p.country).toBe(dest.id)
       expect(p.vozm).toBe(10 - price)
-      expect(p.psy).toBe(5 + pen)
+      // Понижение класса (Армия → Народ) — ещё −1 психики (24.11).
+      expect(p.psy).toBe(5 + pen + real.tables.demotionPsy)
       expect(p.cls).toBe('Народ')
       expect(p.items.some((h) => h.name === 'Присяга')).toBe(false)
       expect(p.counters['эмиграция']).toBe(1)

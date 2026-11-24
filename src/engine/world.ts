@@ -71,6 +71,9 @@ export function* worldTurn(g: G): Flow {
     p.mods = p.mods.filter((m) => m.until !== 'мировой ход')
     fire(g, p, 'следующий мировой ход')
     yield* runDue(g, p)
+    // Гедоническая адаптация на мировом ходу — вариант для замера (по концепции — на входе в отрезок).
+    const hed = g.c.tables.hedonic
+    if (hed.when === 'мировой ход' && p.psy > hed.above) { say(g, p, `к хорошему привыкают: психика выше +${hed.above} — −${hed.step}`); addParam(g, p, 'псих', -hed.step, newCtx('правило')) }
   }
   yield* warWorldStart(g)
   for (const c of g.s.world.countries) yield* crisisCheck(g, c, false)

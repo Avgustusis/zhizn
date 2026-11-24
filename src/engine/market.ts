@@ -282,8 +282,7 @@ export function* rite(g: G, p: Player): Flow {
   if (!nodes) return
   count(p, p.country === p.birthCountry ? 'обряд своей культуры' : 'обряд в новой стране')
   if (p.country === p.birthCountry) visit(p, 'обряд своей культуры')
-  // Обряд — под «Потолок психики» (23.11).
-  yield* run(g, p, nodes, newCtx('действие', { soft: true }))
+  yield* run(g, p, nodes, newCtx('действие'))
 }
 
 // ── Знакомство в городе ─────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 /**
  * «Общественный след» (решено 18.11; концепция, «Страна → Общественный след»; карты — колоды, «Общественный след»).
- * Люди меняют жизнь друг друга, не встречаясь: удачная публичная ветка карты с ✊ кладёт жетон канала на страну игрока,
+ * Люди меняют жизнь друг друга, не встречаясь: удачная публичная ветка карты со знаком следа кладёт жетон канала на страну игрока,
  * фон — отчуждённый класс, когда бросок кризиса «почти» дотянул. Два жетона одного канала — исход: подавление,
  * имитация или уступка; уступка и подавление — карта политики на 5 мировых ходов.
  */
@@ -33,15 +33,15 @@ export function traceRule(g: G, p: Player, arg = 'свой'): void {
   const channel = arg === 'свой' ? T(g).channels[p.cls] : arg
   const c = g.s.world.countries[p.country]
   if (placeTrace(g, c, channel, p.seat)) {
-    say(g, p, `✊ след: жетон «${channel}» на страну ${c.name}`)
+    say(g, p, `жетон СЛЕД «${channel}» — на страну ${c.name}`)
     p.counters['жетон следа'] = (p.counters['жетон следа'] ?? 0) + 1
-  } else say(g, p, `✊ жетоны «${channel}» кончились — след не лёг`)
+  } else say(g, p, `жетоны СЛЕД «${channel}» кончились — след не лёг`)
 }
 
 /** Фон: бросок кризиса не дотянул до кризиса трёх очков или меньше — отчуждённый класс кладёт жетон своего канала. */
 export function nearMiss(g: G, c: Country, roll: number, dc: number): void {
   if (roll < dc && roll >= dc - T(g).nearMiss && placeTrace(g, c, T(g).channels[c.alienated])) {
-    emit(g, { t: 'мир', text: `${c.name}: недовольство без кризиса — ✊ «${T(g).channels[c.alienated]}» (${c.alienated})` })
+    emit(g, { t: 'мир', text: `${c.name}: недовольство без кризиса — СЛЕД «${T(g).channels[c.alienated]}» (${c.alienated})` })
   }
 }
 
@@ -75,7 +75,7 @@ export function* socialWorld(g: G): Flow {
       const stat = (g.s.stats ??= {})
       stat[`след: ${kind}`] = (stat[`след: ${kind}`] ?? 0) + 1
       if (who.length) stat['след: исход с жетоном игрока'] = (stat['след: исход с жетоном игрока'] ?? 0) + 1
-      emit(g, { t: 'мир', text: `${c.name}: ✊ «${channel}» — d6 ${r}${mod ? ` ${mod > 0 ? '+' : '−'} ${Math.abs(mod)}` : ''} — ${kind}` })
+      emit(g, { t: 'мир', text: `${c.name}: СЛЕД «${channel}» — d6 ${r}${mod ? ` ${mod > 0 ? '+' : '−'} ${Math.abs(mod)}` : ''} — ${kind}` })
       c.trace![channel] = 0
       if (c.traceWho) delete c.traceWho[channel]
       if (kind === 'имитация') continue

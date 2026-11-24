@@ -8,6 +8,9 @@ const sign = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0')
 
 const PARAM_LABEL: Record<string, string> = { 'физ': 'физ.', 'псих': 'псих.', 'возм': 'возм.' }
 
+/** Знак следа на экране: в текстах карт из документов стоит ✊, на печати и в цифре — жетон «СЛЕД» (24.11). */
+export const glyphs = (s: string): string => s.replaceAll('✊', 'СЛЕД')
+
 export function renderCond(c: Cond): string {
   if ('all' in c) return c.all.map(renderCond).join(' и ')
   if ('any' in c) return c.any.map(renderCond).join(' или ')

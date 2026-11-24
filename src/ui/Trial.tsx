@@ -10,7 +10,7 @@ import { aiAnswer } from '../engine/ai/index.ts'
 import { ARCHETYPES, bureauName } from '../engine/ai/persona.ts'
 import { meaningOf, meaningStatus } from '../engine/meaning.ts'
 import type { LogEvent, Option, Player, SaveFile, SeatConfig } from '../engine/types.ts'
-import { renderNodes } from '../data/render.ts'
+import { glyphs, renderNodes } from '../data/render.ts'
 import { describe } from './log.ts'
 
 const content = loadContent()
@@ -45,7 +45,7 @@ function WorldBar({ e }: { e: Engine }) {
   return (
     <p className="legend">
       {s.world.countries.map((c) => {
-        const tokens = Object.entries(c.trace ?? {}).filter(([, n]) => n > 0).map(([ch, n]) => `✊ ${ch} ${n}`)
+        const tokens = Object.entries(c.trace ?? {}).filter(([, n]) => n > 0).map(([ch, n]) => `СЛЕД ${ch} ${n}`)
         const pol = (c.policies ?? []).filter((x) => x.until > s.worldTurns).map((x) => `«${x.title}» (${x.cls} ${x.add > 0 ? '+1' : '−1'}, до мир. хода ${x.until})`)
         return <span key={c.id}>{c.name}: {c.ideology}, стаб. {c.stability}{[...tokens, ...pol].length ? ` · ${[...tokens, ...pol].join(' · ')}` : ''}<br /></span>
       })}
@@ -108,7 +108,7 @@ function CardPanel({ id, deck, who, result, pending, onClose }: { id: string; de
       <p className="who">{who} · {deck}{card.cls ? ` · ${card.cls}` : ''} · {{ 'Б': 'бывает', 'П': 'проверка', 'Р': 'решение' }[card.kind]}</p>
       <h3>{card.title}{card.miracle ? ' ✨' : ''}</h3>
       {card.text && <p className="text">{card.text}</p>}
-      <p className="src">{card.src}</p>
+      <p className="src">{glyphs(card.src)}</p>
       <p className="tags">{card.tags.join(' ')}</p>
       {card.trace && <p className="tags">{card.trace}</p>}
       {result.length > 0 && <div className="result"><h4>Что вышло</h4>{result.map((r, i) => <p key={i}>{r}</p>)}</div>}

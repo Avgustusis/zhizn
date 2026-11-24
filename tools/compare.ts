@@ -22,7 +22,7 @@ let mixWins = 0, mixHap = 0, mixGames = 0
 const content = loadContent()
 const childNames = new Set(content.items.filter((i) => i.group === 'Ребёнок').map((i) => i.name))
 
-type Life = { born: { ideo: string; pos: string; stab: number }; fall?: string; armyLeft?: string; p: Player; pos: string; win: boolean; teenAsylum: boolean; diploma: boolean; oath: boolean; officer: boolean; married: boolean; child: boolean; emig: boolean; deck: string; diff: string }
+type Life = { kidMoved?: string; born: { ideo: string; pos: string; stab: number }; fall?: string; armyLeft?: string; p: Player; pos: string; win: boolean; teenAsylum: boolean; diploma: boolean; oath: boolean; officer: boolean; married: boolean; child: boolean; emig: boolean; deck: string; diff: string }
 const lives: Life[] = []
 const checks: Record<string, number> = {}
 let errors = 0
@@ -44,16 +44,20 @@ for (let seed = SEED; seed < SEED + N; seed++) {
   const flags = s.players.map(() => ({ teenAsylum: false, diploma: false, oath: false, officer: false, married: false, child: false }))
   // Причина смены класса: последняя карта игрока (колода и название) или мировое событие перед ней.
   const lastCard: Record<number, string> = {}
+  const lastSay: Record<number, string> = {}
   let lastWorld = ''
+  const kidMoved: Record<number, string> = {}
   const fall: Record<number, string> = {}
   const armyLeft: Record<number, string> = {}
   for (const ev of s.log) {
     if (ev.t === 'отрезок') seg[ev.p] = ev.seg
     if (ev.t === 'карта') lastCard[ev.p] = `${ev.deck}: ${ev.title}`
     if (ev.t === 'мир') lastWorld = ev.text
-    if (ev.t === 'ход') { delete lastCard[ev.p] }
+    if (ev.t === 'ход') { delete lastCard[ev.p]; delete lastSay[ev.p] }
+    if (ev.t === 'текст') lastSay[ev.p] = ev.text
     if (ev.t === 'класс') {
-      const why = lastCard[ev.p] ?? (lastWorld ? 'мировой ход' : 'правило')
+      const why = lastCard[ev.p] ?? `${lastWorld ? 'мировой ход' : 'правило'} — ${(lastSay[ev.p] ?? lastWorld).slice(0, 70)}`
+      if (['Детство', 'Юность'].includes(seg[ev.p] ?? 'Детство') && !kidMoved[ev.p]) kidMoved[ev.p] = `${ev.from} → ${ev.to} (${lastCard[ev.p] ?? 'правило'})`
       if (ev.from === 'Олигархи' && s.players[ev.p].start.cls === 'Олигархи' && !fall[ev.p]) fall[ev.p] = why
       if (ev.from === 'Армия' && s.players[ev.p].start.cls === 'Армия' && !armyLeft[ev.p] && ['Детство', 'Юность'].includes(seg[ev.p] ?? 'Детство')) armyLeft[ev.p] = why
     }
@@ -76,7 +80,7 @@ for (let seed = SEED; seed < SEED + N; seed++) {
     const m = p.meaning ? content.meanings.find((x) => x.id === p.meaning!.id) : undefined
     lives.push({
       p, pos: s.world.countries[p.birthCountry].pos, win: p === best, ...flags[p.seat],
-      born: bornAt?.[p.seat] ?? { ideo: '?', pos: '?', stab: 0 }, ...(fall[p.seat] ? { fall: fall[p.seat] } : {}), ...(armyLeft[p.seat] ? { armyLeft: armyLeft[p.seat] } : {}),
+      born: bornAt?.[p.seat] ?? { ideo: '?', pos: '?', stab: 0 }, ...(fall[p.seat] ? { fall: fall[p.seat] } : {}), ...(armyLeft[p.seat] ? { armyLeft: armyLeft[p.seat] } : {}), ...(kidMoved[p.seat] ? { kidMoved: kidMoved[p.seat] } : {}),
       emig: (p.counters['эмиграция'] ?? 0) + (p.counters['бегство'] ?? 0) > 0,
       deck: m?.deck ?? 'нет', diff: m?.difficulty ?? 'нет',
     })
@@ -150,13 +154,18 @@ if (process.env.DETAIL) {
   console.log('\nПервое падение — откуда (колода последней карты): ' + [...why].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', '))
   const cards = new Map<string, number>()
   for (const l of olig) if (l.fall) cards.set(l.fall, (cards.get(l.fall) ?? 0) + 1)
-  console.log('Карты: ' + [...cards].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, n]) => `${k} ${n}`).join('; '))
+  console.log('Карты и правила: ' + [...cards].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([k, n]) => `${k} ${n}`).join('; '))
   const army = lives.filter((l) => l.p.start.cls === 'Армия')
   const left = army.filter((l) => l.armyLeft)
-  console.log(`\n### Армия по рождению: ${army.length} жизней; ушли из класса в Детстве или Юности — ${pct(left.length, army.length)}; эмигрировали до Молодости — ${pct(army.filter((l) => l.armyLeft === 'правило').length, army.length)}`)
+  console.log(`\n### Армия по рождению: ${army.length} жизней; ушли из класса в Детстве или Юности — ${pct(left.length, army.length)}`)
   const lw = new Map<string, number>()
   for (const l of left) lw.set(l.armyLeft!, (lw.get(l.armyLeft!) ?? 0) + 1)
   console.log('Причины: ' + [...lw].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => `${k} ${n}`).join('; '))
+  const moved = lives.filter((l) => l.kidMoved)
+  console.log(`\n### Дети: сменили класс до Молодости — ${pct(moved.length, lives.length)} всех жизней`)
+  const mv = new Map<string, number>()
+  for (const l of moved) { const k = l.kidMoved!.replace(/^.*\((.*)\)$/, '$1'); mv.set(k, (mv.get(k) ?? 0) + 1) }
+  console.log('Чем: ' + [...mv].sort((a, b) => b[1] - a[1]).slice(0, 14).map(([k, n]) => `${k} ${n}`).join('; '))
   const asked = army.filter((l) => l.oath || l.p.counters['отказ от Присяги'])
   console.log(`«Присяга»: приняли ${pct(army.filter((l) => l.oath).length, army.length)} рождённых в Армии; отказались ${pct(army.filter((l) => l.p.counters['отказ от Присяги']).length, army.length)}; спросили ${pct(asked.length, army.length)}`)
 }

@@ -39,15 +39,6 @@ export function addParam(g: G, p: Player, param: string, delta: number, ctx: Ctx
     if (n) delta = grow(delta, n)
     if (delta === 0) return
   }
-  // «Потолок психики» (23.11): отклик культуры, знакомые, полюса и обряды вместе — не больше +2 за отрезок, лишнее сгорает.
-  if (param === 'псих' && delta > 0 && ctx.soft) {
-    const key = `потолок психики:${p.seg}`
-    const room = Math.max(0, t.psyCap.perSeg - (p.counters[key] ?? 0))
-    if (room < delta) say(g, p, `потолок психики: ${room ? `из +${delta} дошло +${room}` : `+${delta} сгорает`} (за отрезок не больше +${t.psyCap.perSeg} от культуры, знакомых, полюсов и обрядов)`)
-    delta = Math.min(delta, room)
-    if (delta === 0) return
-    p.counters[key] = (p.counters[key] ?? 0) + delta
-  }
   const from = read(p, param)
   let to = from + delta
   if (health) to = clamp(to, t.caps.death, t.caps.health)
@@ -171,6 +162,8 @@ export function setClass(g: G, p: Player, cls: Cls): boolean {
   for (const k of key) for (const h of held(g, p, k)) removeHeld(g, p, h)
   p.cls = cls
   emit(g, { t: 'класс', p: p.seat, from, to: cls })
+  // Понижение класса — −1 психики (24.11): переход в Народ из любого класса или выход из Олигархов — по любой причине.
+  if (cls === 'Народ' || from === 'Олигархи') { say(g, p, 'понижение класса: −1 псих.'); addParam(g, p, 'псих', g.c.tables.demotionPsy, newCtx('правило')) }
   count(p, 'смена класса')
   if (from === 'Армия') count(p, 'уход из Армии')
   if (from === 'Мафия') count(p, 'уход из Мафии')

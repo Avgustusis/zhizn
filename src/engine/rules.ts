@@ -18,6 +18,8 @@ import { traceRule } from './social.ts'
 import { buyWeapon, leaflets, nightSearch, search } from './search.ts'
 import { chronicle, giveAll, giveItem, keepOneThing, loseClose, retire, riteCost, upbringingBonus } from './life.ts'
 import { newCtx } from './cond.ts'
+import { classByRow, familyClass, familyRoll, suitcases } from './family.ts'
+import type { Cls } from './types.ts'
 import type { Player } from './types.ts'
 
 /** Правило — обычная функция или, если нужен вопрос игроку, генератор. */
@@ -81,6 +83,12 @@ const RULES: Record<string, Rule> = {
     if (a === 'да') yield* run(g, p, [{ check: SEARCH, success: [{ gain: 'Партнёр', blind: true }], failure: [{ add: { 'псих': -1 } }] }], ctx)
   },
   *'контора'(g, p) { yield* kontora(g, p) },
+  // ── Перемены в семье (23–24.11) ──
+  'класс семьи'(g, p, arg) { familyClass(g, p, arg as Cls) },
+  'удар по семье'(g, p, arg) { familyRoll(g, p, 'удар', (arg ?? 'оба') as 'Финансы' | 'Сплочённость' | 'оба') },
+  'перемена в семье'(g, p) { familyRoll(g, p, 'перемена') },
+  'класс по строке'(g, p) { classByRow(g, p) },
+  *'чемоданы'(g, p) { yield* suitcases(g, p) },
   *'обряд'(g, p) { yield* rite(g, p) },
   'без рынка'(_g, p) { p.rules['без рынка'] = { arg: String(p.turns + 1) } },
   'поиск смысла'(g, p, arg) { searchNow(g, p, arg === 'преимущество') },

@@ -121,7 +121,7 @@ function expire(p: Player): void {
 }
 
 /** Вход в отрезок («Поле и возраст», «Подсекторы отрезков»). */
-function* enterSegment(g: G, p: Player): Flow {
+export function* enterSegment(g: G, p: Player): Flow {
   const t = g.c.tables
   const seg = segName(p)
   if (seg === 'Древность') {
@@ -144,6 +144,9 @@ function* enterSegment(g: G, p: Player): Flow {
   emit(g, { t: 'отрезок', p: p.seat, seg })
   expire(p)
   const ctx = newCtx('правило')
+  // Гедоническая адаптация (24.11): к хорошему привыкают — психика выше порога на входе в отрезок снижается.
+  const hed = g.c.tables.hedonic
+  if (hed.when === 'отрезок' && p.psy > hed.above) { say(g, p, `к хорошему привыкают: психика выше +${hed.above} — −${hed.step}`); addParam(g, p, 'псих', -hed.step, ctx) }
   // Жетоны ◆: три на входе в Молодость, неиспользованные сгорают на выходе.
   p.youthTokens = seg === 'Молодость' ? g.c.tables.youthTokens : 0
   // «Присяга» — выбор (23.11): согласие — статус; отказ ничего не стоит, класс остаётся, статуса нет (позже — только событием).

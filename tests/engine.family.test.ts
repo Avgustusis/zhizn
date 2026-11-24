@@ -1,0 +1,116 @@
+import { describe, expect, it } from 'vitest'
+import { loadContent } from '../src/data/content.ts'
+import type { Flow } from '../src/engine/core.ts'
+import { Engine } from '../src/engine/engine.ts'
+import { newCtx } from '../src/engine/cond.ts'
+import { gainItem } from '../src/engine/change.ts'
+import { run } from '../src/engine/exec.ts'
+import { classByRow, familyClass, familyRoll, suitcases } from '../src/engine/family.ts'
+import { enterSegment } from '../src/engine/turn.ts'
+import type { Player, Request } from '../src/engine/types.ts'
+
+const real = loadContent()
+function lab(seed: number, patch: Partial<Player> = {}): { e: Engine; p: Player } {
+  const e = new Engine(real, { span: 'one', seed, seats: [{ name: 'И1' }, { name: 'И2' }] }, { checkpoints: false })
+  while (e.pending && e.pending.type !== 'ход') e.answer(e.pending.options.find((o) => !o.off)!.id)
+  const p = e.state.players[0]
+  Object.assign(p, { seg: 0, psy: 3, vozm: 3, items: [], fin: 0, coh: 0 }, patch)
+  return { e, p }
+}
+function drive<T>(flow: Flow<T>): T {
+  let r = flow.next()
+  while (!r.done) r = flow.next((r.value as Request).options.find((o) => !o.off)!.id)
+  return r.value
+}
+const card = (id: string) => Object.values(real.decks).flat().find((c) => c.id === id)!
+
+describe('Перемены в семье (24.11)', () => {
+  it('в Детстве и Юности класс игрока — класс семьи; ключи старого класса гаснут; позже меняется только класс семьи', () => {
+    const { e, p } = lab(1, { cls: 'Армия', familyCls: 'Армия', seg: 1 })
+    drive(gainItem(e.g, p, 'Присяга'))
+    familyClass(e.g, p, 'Народ')
+    expect([p.familyCls, p.cls]).toEqual(['Народ', 'Народ'])
+    expect(p.items.some((h) => h.name === 'Присяга')).toBe(false)
+    expect(p.psy).toBe(2) // понижение
+    p.seg = 2
+    familyClass(e.g, p, 'Мафия')
+    expect([p.familyCls, p.cls]).toEqual(['Мафия', 'Народ'])
+  })
+
+  it('госсоциализм — без Олигархов: карта даёт Полицию', () => {
+    const { e, p } = lab(2, { cls: 'Народ', familyCls: 'Народ' })
+    e.state.world.countries[p.country].ideology = 'Госсоциализм'
+    familyClass(e.g, p, 'Олигархи')
+    expect(p.cls).toBe('Полиция')
+  })
+
+  it('класс по новой строке Финансов: есть в строке — остаётся, иначе d6 по строке', () => {
+    const { e, p } = lab(3, { cls: 'Мафия', familyCls: 'Мафия', fin: 1 })
+    classByRow(e.g, p)
+    expect(p.cls).toBe('Мафия')
+    p.fin = -3
+    classByRow(e.g, p)
+    expect(p.cls).toBe('Народ')
+  })
+
+  it('броски d10: удар по Финансам — от −2 до 0, перемена — Сплочённость от −1 до +1; шкалы в −3…+3', () => {
+    const seen = new Set<number>()
+    for (let seed = 1; seed <= 40; seed++) {
+      const { e, p } = lab(seed, { fin: -3, coh: 3 })
+      familyRoll(e.g, p, 'удар', 'Финансы')
+      expect(p.fin).toBe(-3)
+      p.fin = 0
+      familyRoll(e.g, p, 'удар', 'Финансы')
+      seen.add(p.fin)
+      familyRoll(e.g, p, 'перемена')
+      expect(p.coh).toBeGreaterThanOrEqual(2)
+    }
+    expect([...seen].sort()).toEqual([-1, -2, 0])
+  })
+
+  it('«Чемоданы»: из ядра — в полупериферию, класс сохраняется, Финансы +1; не из ядра — выше по позиции, Народ, Финансы −1', () => {
+    let core = false, other = false
+    for (let seed = 1; seed <= 40 && !(core && other); seed++) {
+      const { e, p } = lab(seed, { cls: 'Интеллигенция', familyCls: 'Интеллигенция', fin: 0 })
+      const from = e.state.world.countries[p.country]
+      drive(suitcases(e.g, p))
+      const to = e.state.world.countries[p.country]
+      if (from.pos === 'ядро') { core = true; expect(to.pos).toBe('полупериферия'); expect(p.cls).toBe('Интеллигенция'); expect(p.fin).toBe(1) }
+      else { other = true; expect(['ядро', 'полупериферия']).toContain(to.pos); expect(to.pos).not.toBe(from.pos); expect(p.cls).toBe('Народ'); expect(p.fin).toBe(-1) }
+      expect(p.counters['аккультурация']).toBe(0)
+    }
+    expect(core && other).toBe(true)
+    expect(JSON.stringify(card('возраст.детство.46').requires)).toContain('Госсоциализм')
+  })
+
+  it('восемь новых карт в колодах: Детство 46, Юность 47', () => {
+    expect(real.decks['возраст.детство']).toHaveLength(46)
+    expect(real.decks['возраст.юность']).toHaveLength(47)
+    for (const id of ['возраст.детство.43', 'возраст.детство.44', 'возраст.детство.45', 'возраст.юность.44', 'возраст.юность.45', 'возраст.юность.46', 'возраст.юность.47'])
+      expect(JSON.stringify(card(id).effect)).toMatch(/класс семьи|удар по семье|перемена в семье|класс по строке/)
+  })
+})
+
+describe('«Великий крах» и гедоническая адаптация (24.11)', () => {
+  it('крах: удар всем; Олигарх ниже нуля — Народ и −1 психики, ровно 0 — остаётся', () => {
+    const crash = card('мир.20')
+    const { e, p } = lab(5, { cls: 'Олигархи', familyCls: 'Олигархи', vozm: 2, seg: 3 })
+    e.state.world.countries[p.country].ideology = 'Либеральная демократия'
+    drive(run(e.g, p, crash.effect, newCtx('карта', { card: crash.id })))
+    expect([p.vozm, p.cls, p.psy]).toEqual([-1, 'Народ', 2])
+    const b = lab(6, { cls: 'Олигархи', familyCls: 'Олигархи', vozm: 3, seg: 3 })
+    b.e.state.world.countries[b.p.country].ideology = 'Либеральная демократия'
+    drive(run(b.e.g, b.p, crash.effect, newCtx('карта', { card: crash.id })))
+    expect([b.p.vozm, b.p.cls]).toEqual([0, 'Олигархи'])
+  })
+
+  it('на входе в отрезок психика выше порога снижается на 1; ниже порога — не трогается', () => {
+    const t = real.tables.hedonic
+    const { e, p } = lab(7, { seg: 2, cell: 0, psy: t.above + 3 })
+    drive(enterSegment(e.g, p))
+    expect(p.psy).toBe(t.above + 2)
+    const b = lab(8, { seg: 2, cell: 0, psy: t.above })
+    drive(enterSegment(b.e.g, b.p))
+    expect(b.p.psy).toBeLessThanOrEqual(t.above)
+  })
+})

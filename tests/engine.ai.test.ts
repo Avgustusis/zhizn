@@ -91,21 +91,18 @@ describe('ИИ этапа 4', () => {
   })
 })
 
-describe('Правки 23.11 (ночь): потолок психики, «Присяга», поблажка «Нечестно»', () => {
-  it('потолок психики: отклик, знакомые, полюса и обряды — не больше tables.psyCap за отрезок; события — без потолка', async () => {
-    const { addParam } = await import('../src/engine/change.ts')
-    const { newCtx } = await import('../src/engine/cond.ts')
+describe('Правки 23–24.11: понижение класса, «Присяга», поблажка «Нечестно»', () => {
+  it('понижение класса — −1 психики: в Народ из любого класса или из Олигархов в любой; повышение — без прибавки', async () => {
+    const { setClass } = await import('../src/engine/change.ts')
     const e = lab(11)
     const p = e.state.players[0]
-    p.psy = 0
-    const cap = content.tables.psyCap.perSeg
-    for (let i = 0; i < 4; i++) addParam(e.g, p, 'псих', 1, newCtx('правило', { soft: true }))
-    expect(p.psy).toBe(cap)
-    addParam(e.g, p, 'псих', 2, newCtx('правило'))
-    expect(p.psy).toBe(cap + 2)
-    p.seg += 1 // новый отрезок — потолок снова свободен
-    addParam(e.g, p, 'псих', 1, newCtx('правило', { soft: true }))
-    expect(p.psy).toBe(cap + 2 + Math.min(1, cap))
+    Object.assign(p, { psy: 3, cls: 'Олигархи' })
+    setClass(e.g, p, 'Мафия')
+    expect(p.psy).toBe(2)
+    setClass(e.g, p, 'Народ')
+    expect(p.psy).toBe(1)
+    setClass(e.g, p, 'Интеллигенция')
+    expect(p.psy).toBe(1)
   })
 
   it('«Присяга»: вопрос на входе в Молодость; ИИ соглашается примерно в 70% случаев', () => {

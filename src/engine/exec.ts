@@ -36,7 +36,7 @@ export function* run(g: G, p: Player, nodes: Node[], ctx: Ctx): Flow {
 
 function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
   if ('add' in n) {
-    const c = n.cap !== undefined || n.soft ? { ...ctx, ...(n.cap !== undefined ? { cap: n.cap } : {}), ...(n.soft ? { soft: true as const } : {}) } : ctx
+    const c = n.cap !== undefined ? { ...ctx, cap: n.cap } : ctx
     for (const [param, delta] of Object.entries(n.add)) {
       // Фронт: потеря физ. в событии меньше у офицера и при «Беречь себя»; «Боевые друзья» могут её отменить.
       let d = param === 'физ' && delta < 0 && ctx.deck === 'фронт' && p.inst?.kind === 'фронт' ? yield* frontLoss(g, p, delta) : delta

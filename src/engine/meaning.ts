@@ -42,7 +42,7 @@ export function settle(g: G, p: Player): void {
       if (k.kind === 'итог' || p.approved.includes(i) || !met(g, p, k)) return
       p.approved.push(i)
       // Культура одобряет смысл: +1 псих. за каждое выполненное условие; осуждает — −1.
-      if (p.meaning!.verdict) addParam(g, p, 'псих', p.meaning!.verdict, newCtx('правило', { soft: true }))
+      if (p.meaning!.verdict) addParam(g, p, 'псих', p.meaning!.verdict, newCtx('правило'))
     })
   }
   const to = happinessOf(g, p)

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { decks } from './data/index.ts'
 import { DECKS, type Card, type DeckId } from './data/schema.ts'
-import { renderCond, renderNodes } from './data/render.ts'
+import { glyphs, renderCond, renderNodes } from './data/render.ts'
 import { meanings } from './data/meanings.ts'
 import { items } from './data/items.ts'
 import { heirs } from './data/heirs.ts'
@@ -34,7 +34,7 @@ function CardView({ card, legend, color }: { card: Card; legend?: Record<string,
       {card.cancelBy && <p className="req">Отменяет козырь: {card.cancelBy.map((x) => `«${x}»`).join(', ')}</p>}
       <section>
         <h4>Оригинал</h4>
-        <p className="src">{card.src}</p>
+        <p className="src">{glyphs(card.src)}</p>
       </section>
       {card.target && <p className="req">Целевая страна: {card.target}{card.scope ? ` · охват: ${card.scope}` : ''}</p>}
       {card.country && (
@@ -82,7 +82,7 @@ function passiveLines(p: Passive | undefined): string[] {
   }
   if (p.perSeg) out.push('в начале каждого отрезка:', ...renderNodes(p.perSeg, 1))
   if (p.keyCls) out.push(`ключ к классу ${p.keyCls.join(', ')}`)
-  for (const r of p.rules ?? []) out.push(`правило: ${r}`)
+  for (const r of p.rules ?? []) out.push(`правило: ${glyphs(r)}`)
   return out
 }
 
@@ -120,7 +120,7 @@ function ItemView({ it }: { it: Item }) {
       </header>
       <section>
         <h4>Оригинал</h4>
-        {Object.entries(it.src).map(([k, v]) => <p key={k} className="src"><span className="ckind">{k}:</span> {v}</p>)}
+        {Object.entries(it.src).map(([k, v]) => <p key={k} className="src"><span className="ckind">{k}:</span> {glyphs(v)}</p>)}
       </section>
       <section>
         <h4>Разбор</h4>
@@ -169,7 +169,7 @@ function FrontView({ ev }: { ev: FrontEvent }) {
         <h3>{ev.title}</h3>
       </header>
       <p className="text">{ev.text}</p>
-      <section><h4>Оригинал</h4><p className="src">{ev.src}</p></section>
+      <section><h4>Оригинал</h4><p className="src">{glyphs(ev.src)}</p></section>
       <section><h4>Разбор</h4><pre className="parsed">{renderNodes(ev.effect).join('\n')}</pre></section>
       {ev.officer && <section><h4>Разбор: офицер</h4><pre className="parsed">{renderNodes(ev.officer).join('\n')}</pre></section>}
       <footer><span className="tags">{ev.tags.join(' ')}</span><span className="id">{ev.id}</span></footer>
