@@ -89,6 +89,7 @@ const RULES: Record<string, Rule> = {
   'перемена в семье'(g, p) { familyRoll(g, p, 'перемена') },
   'класс по строке'(g, p) { classByRow(g, p) },
   *'чемоданы'(g, p) { yield* suitcases(g, p) },
+  'долг после краха'(_g, p) { p.rules['долг после краха'] = { arg: String(p.seg) } },
   *'обряд'(g, p) { yield* rite(g, p) },
   'без рынка'(_g, p) { p.rules['без рынка'] = { arg: String(p.turns + 1) } },
   'поиск смысла'(g, p, arg) { searchNow(g, p, arg === 'преимущество') },

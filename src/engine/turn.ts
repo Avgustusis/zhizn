@@ -3,7 +3,7 @@ import type { BoardCell } from '../data/board-schema.ts'
 import { SEGMENTS, type Card } from '../data/schema.ts'
 import { ask, countryOf, emit, rnd, roll3, say, segName, type Flow, type G } from './core.ts'
 import { charLean, cond, has, newCtx, type Ctx } from './cond.ts'
-import { addParam, count, death, enterInst, fire, gainItem, itemsPerSeg, leaveInst, rollDie, runDue, visit, removeHeld } from './change.ts'
+import { addParam, count, death, enterInst, fire, gainItem, itemsPerSeg, leaveInst, rollDie, runDue, visit, removeHeld, setClass } from './change.ts'
 import { spend, strongIn } from './checks.ts'
 import { run } from './exec.ts'
 import { happinessOf, markEntry, meaningAtEntry, meaningOf, settle } from './meaning.ts'
@@ -144,6 +144,13 @@ export function* enterSegment(g: G, p: Player): Flow {
   emit(g, { t: 'отрезок', p: p.seat, seg })
   expire(p)
   const ctx = newCtx('правило')
+  // «Великий крах» (24.11): Олигарх с «Долгом» после краха — одна проверка на входе в следующий отрезок:
+  // Возможности 0 и выше — «Долг» снимается, класс сохраняется; ниже 0 — Народ (−1 психики за понижение), «Долг» остаётся.
+  if (p.rules['долг после краха'] && Number(p.rules['долг после краха'].arg) < p.seg) {
+    delete p.rules['долг после краха']
+    if (p.vozm >= 0) { const d = p.items.find((h) => h.name === 'Долг'); if (d) { say(g, p, 'после краха выкарабкался: «Долг» снят'); removeHeld(g, p, d) } }
+    else if (p.cls === 'Олигархи') { say(g, p, 'после краха не выкарабкался: класс Народ'); setClass(g, p, 'Народ') }
+  }
   // «Итог жизни» (24.11): на входе в Старость и Древность — смысл выполнен меньше чем наполовину: −2 психики;
   // смысла нет или Серость: −1.
   if (seg === 'Старость' || seg === 'Древность') {

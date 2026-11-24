@@ -92,17 +92,31 @@ describe('Перемены в семье (24.11)', () => {
 })
 
 describe('«Великий крах», «Итог жизни», «Потери» (24.11)', () => {
-  it('крах: удар всем; Олигарх ниже нуля — Народ и −1 психики, ровно 0 — остаётся', () => {
+  it('крах: Олигарху в ядре и при ЛД, СД, технократии −1; ниже нуля — «Долг», на входе в следующий отрезок одна проверка', () => {
     const crash = card('мир.20')
-    const { e, p } = lab(5, { cls: 'Олигархи', familyCls: 'Олигархи', vozm: 2, seg: 3 })
-    e.state.world.countries[p.country].ideology = 'Либеральная демократия'
-    drive(run(e.g, p, crash.effect, newCtx('карта', { card: crash.id })))
-    expect([p.vozm, p.cls, p.psy]).toEqual([-1, 'Народ', 2])
-    const b = lab(6, { cls: 'Олигархи', familyCls: 'Олигархи', vozm: 3, seg: 3 })
-    b.e.state.world.countries[b.p.country].ideology = 'Либеральная демократия'
-    drive(run(b.e.g, b.p, crash.effect, newCtx('карта', { card: crash.id })))
-    expect([b.p.vozm, b.p.cls]).toEqual([0, 'Олигархи'])
+    const play = (seed: number, ideology: string, vozm: number) => {
+      const r = lab(seed, { cls: 'Олигархи', familyCls: 'Олигархи', vozm, seg: 3, cell: 0 })
+      const c = r.e.state.world.countries[r.p.country]
+      Object.assign(c, { ideology, pos: 'полупериферия' })
+      drive(run(r.e.g, r.p, crash.effect, newCtx('карта', { card: crash.id })))
+      return r
+    }
+    const ld = play(5, 'Либеральная демократия', 2)
+    expect([ld.p.vozm, ld.p.cls, ld.p.items.some((h) => h.name === 'Долг')]).toEqual([1, 'Олигархи', false])
+    const nat = play(6, 'Национализм', 1)
+    expect([nat.p.vozm, nat.p.cls, nat.p.items.some((h) => h.name === 'Долг')]).toEqual([-2, 'Олигархи', true])
+    // Следующий отрезок: всё ещё ниже нуля — Народ, «Долг» остаётся.
+    nat.p.seg = 4; nat.p.psy = 3
+    drive(enterSegment(nat.e.g, nat.p))
+    expect(nat.p.cls).toBe('Народ')
+    expect(nat.p.items.some((h) => h.name === 'Долг')).toBe(true)
+    // Выкарабкался: «Долг» снят, класс сохранён.
+    const ok = play(7, 'Национализм', 1)
+    ok.p.vozm = 2; ok.p.seg = 4
+    drive(enterSegment(ok.e.g, ok.p))
+    expect([ok.p.cls, ok.p.items.some((h) => h.name === 'Долг')]).toEqual(['Олигархи', false])
   })
+
 
   it('«Итог жизни»: на входе в Старость — смысла нет: −1; выполнен меньше чем наполовину: −2; иначе — ничего', () => {
     const r = real.tables.lifeReview
@@ -165,14 +179,22 @@ describe('Олигархи при госсоциализме (24.11)', () => {
     expect(gsClass(e.g, p, 'Олигархи')).toBe('Олигархи')
   })
 
-  it('Олигархи меняют класс только вниз: «разрешено перейти» им не предлагается', () => {
+  it('переход по выбору Олигарху открыт; ИИ-Олигарх уходит только при сильной черте и на d6 1–3', async () => {
+    const { oligarchOffer } = await import('../src/engine/ai/index.ts')
     const { e, p } = lab(5, { cls: 'Олигархи', seg: 3 })
-    const asked: string[] = []
+    const asked: import('../src/engine/types.ts').Request[] = []
     const flow = run(e.g, p, [{ allowCls: 'Интеллигенция' }], newCtx('карта'))
-    for (let r = flow.next(); !r.done; r = flow.next('да')) asked.push(r.value.text)
-    expect(asked).toEqual([])
-    expect(p.cls).toBe('Олигархи')
+    for (let r = flow.next(); !r.done; r = flow.next('нет')) asked.push(r.value)
+    expect(asked).toHaveLength(1)
+    const req = asked[0]
+    p.character = [0, 0, 0, 0, 0, 0, 0]
+    expect(oligarchOffer(e.g, req)).toBe('нет')
+    p.character = [2, 0, 0, 0, 0, 0, 0] // сильная Скромность
+    let left = 0
+    for (let n = 0; n < 60; n++) if (oligarchOffer(e.g, { ...req, n }) === 'да') left++
+    expect(left).toBeGreaterThan(15); expect(left).toBeLessThan(45)
   })
+
 
   it('«Наследство незнакомца» при госсоциализме — +3 возм., класс не меняется', () => {
     const c = card('судьба.24')

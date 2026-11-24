@@ -35,6 +35,8 @@ export function familyRoll(g: G, p: Player, kind: 'удар' | 'перемена
 export function classByRow(g: G, p: Player): void {
   const row = g.c.tables.birth.familyClass[String(p.fin)]
   if (row.includes(p.familyCls)) return
+  // Олигархи выпадают по строке только при Финансах 0 и ниже: связи и активы остаются (24.11).
+  if (p.familyCls === 'Олигархи' && p.fin > 0) return
   familyClass(g, p, row[rollDie(g, p, 6, `класс по строке Финансов ${p.fin}`) - 1])
 }
 
