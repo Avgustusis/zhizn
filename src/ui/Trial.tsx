@@ -180,12 +180,13 @@ export default function Trial() {
   }
   /** «Ход за ИИ» у человека — ИИ «Нормально» (играет на смысл). */
   const randomId = (x: Engine) => aiAnswer(x.g, x.pending!, x.state.config.seats[x.pending!.player]?.ai ?? 'normal')
-  /** Места ИИ ходят сами, пока вопрос не дойдёт до человека; их карты считаются просмотренными. */
+  /**
+   * Места ИИ ходят сами, пока вопрос не дойдёт до человека. Их карты не всплывают (только в журнале), а карты людей,
+   * вытянутые до или между ходами ИИ, остаются непросмотренными и показываются целиком.
+   */
   const autoAI = (x: Engine | null) => {
     if (!x) return x
-    let moved = false
-    for (let i = 0; i < 20000 && x.pending && x.state.config.seats[x.pending.player]?.ai; i++) { x.answer(randomId(x)); moved = true }
-    if (moved) { const n = x.state.log.length; queueMicrotask(() => setSeen(n)) }
+    for (let i = 0; i < 20000 && x.pending && x.state.config.seats[x.pending.player]?.ai; i++) x.answer(randomId(x))
     return x
   }
   const start = () => act(() => { setSeen(0); return autoAI(new Engine(content, { span: 'one', start: startMode, seed, seats: table.map((t) => ({ ...t })) })) })
@@ -260,7 +261,8 @@ export default function Trial() {
   const log = s.log.slice(-80)
   // Выпавшие карты, которые игрок ещё не закрыл: первая из них показывается целиком.
   const from = Math.min(seen, s.log.length)
-  const cardAt = s.log.findIndex((ev, i) => i >= from && ev.t === 'карта')
+  // Целиком показываются только карты людей; карты ИИ — в журнале.
+  const cardAt = s.log.findIndex((ev, i) => i >= from && ev.t === 'карта' && !s.config.seats[ev.p]?.ai)
   const shownCard = cardAt >= 0 ? (s.log[cardAt] as Extract<LogEvent, { t: 'карта' }>) : undefined
   const nextCard = cardAt >= 0 ? s.log.findIndex((ev, i) => i > cardAt && (ev.t === 'карта' || ev.t === 'ход')) : -1
   const cardResult = cardAt >= 0 ? s.log.slice(cardAt + 1, nextCard < 0 ? s.log.length : nextCard).map((ev) => describe(ev, s)).filter((d) => d.kind !== 'quiet') : []
