@@ -3,7 +3,7 @@
  * и Юность № 44–47 меняют класс, Финансы и Сплочённость семьи, а с ними и класс игрока; ключи прежнего класса гаснут
  * (setClass), понижение стоит −1 психики (общее правило там же). Числа — tables.family.
  */
-import { countryOf, say, type Flow, type G } from './core.ts'
+import { ask, countryOf, say, type Flow, type G } from './core.ts'
 import { newCtx } from './cond.ts'
 import { addParam, rollDie, setClass } from './change.ts'
 import { arrive } from './emigration.ts'
@@ -21,14 +21,14 @@ export function familyClass(g: G, p: Player, cls: Cls): void {
   if (kid(p)) setClass(g, p, cls)
 }
 
-/** Бросок d10 по таблице семьи: «удар» (Финансы, Сплочённость или оба — одним броском) или «перемена» (Сплочённость). */
+/** Броски d10 по таблице семьи: «удар» (Финансы, Сплочённость или оба — отдельным броском на каждую шкалу, 24.11) или «перемена» (Сплочённость). */
 export function familyRoll(g: G, p: Player, kind: 'удар' | 'перемена', what: 'Финансы' | 'Сплочённость' | 'оба' = 'Сплочённость'): void {
   const t = T(g)
-  const r = rollDie(g, p, 10, kind === 'удар' ? 'удар по семье' : 'перемена в семье')
   const ctx = newCtx('правило')
-  if (kind === 'перемена') { const c = t.change.coh[r - 1]; if (c) addParam(g, p, 'Сплочённость', c, ctx); return }
-  if (what !== 'Сплочённость') { const f = t.blow.fin[r - 1]; if (f) addParam(g, p, 'Финансы', f, ctx); else say(g, p, 'выкрутились') }
-  if (what !== 'Финансы') { const c = t.blow.coh[r - 1]; if (c) addParam(g, p, 'Сплочённость', c, ctx); if (c > 0) say(g, p, 'беда сплотила') }
+  const d10 = (why: string) => rollDie(g, p, 10, why)
+  if (kind === 'перемена') { const c = t.change.coh[d10('перемена в семье') - 1]; if (c) addParam(g, p, 'Сплочённость', c, ctx); return }
+  if (what !== 'Сплочённость') { const f = t.blow.fin[d10('удар по семье: Финансы') - 1]; if (f) addParam(g, p, 'Финансы', f, ctx); else say(g, p, 'выкрутились') }
+  if (what !== 'Финансы') { const c = t.blow.coh[d10('удар по семье: Сплочённость') - 1]; if (c) addParam(g, p, 'Сплочённость', c, ctx); if (c > 0) say(g, p, 'беда сплотила') }
 }
 
 /** Класс по новой строке Финансов: если класс семьи есть в строке «Класс семьи при рождении» — остаётся, иначе d6 по строке. */
@@ -62,4 +62,28 @@ export function* suitcases(g: G, p: Player): Flow {
     addParam(g, p, 'Финансы', -1, ctx)
   }
   familyRoll(g, p, 'перемена')
+}
+
+// ── Олигархи при госсоциализме (концепция, 24.11) ───────────────────────
+
+/** Класс, который выдаёт карта: при госсоциализме вместо Олигархов — Полиция («человек из органов»). */
+export const gsClass = (g: G, p: Player, cls: Cls): Cls => (cls === 'Олигархи' && countryOf(g, p).ideology === 'Госсоциализм' ? 'Полиция' : cls)
+
+/**
+ * Страна стала госсоциализмом: каждый Олигарх в ней бросает d8 — 1: Полиция или Мафия на выбор, 2–8: Народ.
+ * «Офшор» сохраняет Возможности, но не класс. Понижение — −1 психики (setClass).
+ */
+export function* nationalize(g: G, countryId: number): Flow {
+  for (const p of g.s.players.filter((x) => x.alive && !x.finished && x.country === countryId && x.cls === 'Олигархи')) {
+    const vozm = p.vozm
+    const r = rollDie(g, p, 8, 'госсоциализм: Олигарх (1 — служба или тень, 2–8 — Народ)')
+    const to: Cls = r === 1 ? ((yield* ask(g, p, 'класс', 'Госсоциализм: частного капитала больше нет. Сдать всё и пойти служить или уйти в тень?', [
+      { id: 'Полиция', label: 'служить: Полиция' }, { id: 'Мафия', label: 'в тень: Мафия' },
+    ], { force: true })) as Cls) : 'Народ'
+    say(g, p, `госсоциализм: класс Олигархи отменён — ${to}`)
+    setClass(g, p, to)
+    if (p.familyCls === 'Олигархи' && kid(p)) p.familyCls = to
+    const off = p.items.find((h) => h.name === 'Офшор')
+    if (off && p.vozm < vozm) { say(g, p, '«Офшор» сохраняет возможности'); p.vozm = vozm }
+  }
 }

@@ -9,7 +9,7 @@ import { has, held, kindOf, newCtx, relation } from './cond.ts'
 import { chance } from './checks.ts'
 import { mentorStart, onArrive } from './items.ts'
 import { borderHelp, smugglerChannel } from './tricks.ts'
-import { addParam, count, dropHeld, enterInst, gainItem, removeHeld, rollDie, setClass } from './change.ts'
+import { addParam, count, dropHeld, enterInst, gainItem, lossPsy, removeHeld, rollDie, setClass } from './change.ts'
 import type { Country, Culture, Player } from './types.ts'
 
 export type Kind = 'по своей воле' | 'бегство' | 'нелегально' | 'домой'
@@ -249,16 +249,24 @@ export function* arrive(g: G, p: Player, dest: number, legal: boolean, kind: Kin
       } else setClass(g, p, 'Народ')
     }
   }
+  // Олигарх в стране госсоциализма — Народ, возможности остаются (24.11).
+  if (!back && p.cls === 'Олигархи' && g.s.world.countries[dest].ideology === 'Госсоциализм') {
+    const vozm = p.vozm
+    say(g, p, 'госсоциализм: частного капитала нет — класс Народ')
+    setClass(g, p, 'Народ')
+    p.vozm = vozm
+  }
   // Ключи старой страны гаснут; «Диплом» остаётся.
   for (const name of ['Присяга', 'Значок']) for (const h of held(g, p, name)) removeHeld(g, p, h)
   // Связи: каждая на d6 1–3 теряется (Друг детства — 1–4); «Знакомые» остаются дома.
   for (const h of [...p.items]) {
     const item = g.items.get(h.name)
     if (!item) continue
-    if (item.kind === 'знакомый') { removeHeld(g, p, h); continue }
+    // «Потери» (24.11): оставленные дома люди стоят психики по таблице.
+    if (item.kind === 'знакомый') { removeHeld(g, p, h); lossPsy(g, p, h); continue }
     if (item.group === 'Друг' || item.group === 'Наставник' || item.group === 'Покровитель') {
       const limit = h.name === 'Друг детства' ? t.childhoodFriendLoss : t.linkLoss
-      if (rollDie(g, p, 6, `связь «${h.name}» едет?`) <= limit) { say(g, p, `«${h.name}» остаётся`); removeHeld(g, p, h) }
+      if (rollDie(g, p, 6, `связь «${h.name}» едет?`) <= limit) { say(g, p, `«${h.name}» остаётся`); removeHeld(g, p, h); lossPsy(g, p, h) }
     }
     if (item.kind === 'вещь' && rollDie(g, p, 6, `вещь «${h.name}» в дороге`) <= t.thingLoss) { say(g, p, `«${h.name}» потеряна в дороге`); removeHeld(g, p, h) }
   }

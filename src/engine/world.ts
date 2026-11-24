@@ -18,6 +18,7 @@ import { nearMiss, socialWorld } from './social.ts'
 import { atPowerChange } from './items.ts'
 import { saveVozm } from './tricks.ts'
 import { licenseAtPowerChange, search } from './search.ts'
+import { nationalize } from './family.ts'
 import type { Cls, Country, Player, Relation } from './types.ts'
 
 const alive = (p: Player | undefined): p is Player => !!p && p.alive && !p.finished
@@ -71,9 +72,6 @@ export function* worldTurn(g: G): Flow {
     p.mods = p.mods.filter((m) => m.until !== 'мировой ход')
     fire(g, p, 'следующий мировой ход')
     yield* runDue(g, p)
-    // Гедоническая адаптация на мировом ходу — вариант для замера (по концепции — на входе в отрезок).
-    const hed = g.c.tables.hedonic
-    if (hed.when === 'мировой ход' && p.psy > hed.above) { say(g, p, `к хорошему привыкают: психика выше +${hed.above} — −${hed.step}`); addParam(g, p, 'псих', -hed.step, newCtx('правило')) }
   }
   yield* warWorldStart(g)
   for (const c of g.s.world.countries) yield* crisisCheck(g, c, false)
@@ -196,6 +194,7 @@ export function* powerChange(g: G, c: Country, sides = new Map<number, Side>()):
   c.powerChanges += 1
   delete c.embargo
   emit(g, { t: 'мир', text: `${c.name}: смена власти — ${c.ideology}; правит ${c.dominant}, отчуждён ${c.alienated}` })
+  if (c.ideology === 'Госсоциализм') yield* nationalize(g, c.id)
   // Отношения с каждой страной: d6 1 — хуже, 6 — лучше.
   for (const o of g.s.world.countries) {
     if (o.id === c.id) continue
@@ -301,7 +300,7 @@ const sideKey = (s: NonNullable<Ctx['side']>) => (s === 'победители' ?
 /** Текущая «Смута» игрока: правила карты меняют общее правило о тюрьме и сторону. */
 /**
  * Контекст «Смуты» на время розыгрыша карты: своя карта у каждой партии (ключ — состояние партии). Раньше лежал
- * общим на модуль, и две партии в одной вкладке (или копия партии у ИИ «Нечестно») затирали его друг другу.
+ * общим на модуль, и две партии в одной вкладке затирали его друг другу.
  */
 const turmoilBox = new WeakMap<object, Map<number, { state: Turmoil; ctx: Ctx }>>()
 const turmoilOf = (g: G): Map<number, { state: Turmoil; ctx: Ctx }> => {

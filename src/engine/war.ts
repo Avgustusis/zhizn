@@ -17,6 +17,8 @@ import { settle } from './meaning.ts'
 import { classesFor } from './setup.ts'
 import { crisisCheck, flight, stab, tooYoung, turmoil } from './world.ts'
 import type { Country, Player, War } from './types.ts'
+import { nationalize } from './family.ts'
+
 
 type Side = 0 | 1
 type Tactic = 'атака' | 'держать' | 'беречь'
@@ -632,6 +634,7 @@ function* regime(g: G, W: Country, L: Country): Flow {
   L.powerChanges += 1
   delete L.embargo
   emit(g, { t: 'мир', text: `${L.name}: смена режима — ${L.ideology}; правит ${L.dominant}, отчуждён ${L.alienated}` })
+  if (L.ideology === 'Госсоциализм') yield* nationalize(g, L.id)
   // Победители «Смуты» — принявшие новую власть.
   const sides = new Map<number, 'за' | 'против' | 'в стороне'>()
   const harsh = g.c.tables.crisis.harsh.includes(L.ideology)

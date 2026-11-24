@@ -5,7 +5,7 @@ import { Engine } from '../src/engine/engine.ts'
 import { newCtx } from '../src/engine/cond.ts'
 import { gainItem } from '../src/engine/change.ts'
 import { run } from '../src/engine/exec.ts'
-import { classByRow, familyClass, familyRoll, suitcases } from '../src/engine/family.ts'
+import { classByRow, familyClass, familyRoll, gsClass, nationalize, suitcases } from '../src/engine/family.ts'
 import { enterSegment } from '../src/engine/turn.ts'
 import type { Player, Request } from '../src/engine/types.ts'
 
@@ -91,7 +91,7 @@ describe('Перемены в семье (24.11)', () => {
   })
 })
 
-describe('«Великий крах» и гедоническая адаптация (24.11)', () => {
+describe('«Великий крах», «Итог жизни», «Потери» (24.11)', () => {
   it('крах: удар всем; Олигарх ниже нуля — Народ и −1 психики, ровно 0 — остаётся', () => {
     const crash = card('мир.20')
     const { e, p } = lab(5, { cls: 'Олигархи', familyCls: 'Олигархи', vozm: 2, seg: 3 })
@@ -104,13 +104,81 @@ describe('«Великий крах» и гедоническая адаптац
     expect([b.p.vozm, b.p.cls]).toEqual([0, 'Олигархи'])
   })
 
-  it('на входе в отрезок психика выше порога снижается на 1; ниже порога — не трогается', () => {
-    const t = real.tables.hedonic
-    const { e, p } = lab(7, { seg: 2, cell: 0, psy: t.above + 3 })
-    drive(enterSegment(e.g, p))
-    expect(p.psy).toBe(t.above + 2)
-    const b = lab(8, { seg: 2, cell: 0, psy: t.above })
+  it('«Итог жизни»: на входе в Старость — смысла нет: −1; выполнен меньше чем наполовину: −2; иначе — ничего', () => {
+    const r = real.tables.lifeReview
+    const a = lab(7, { seg: 4, cell: 0, psy: 0 })
+    delete a.p.meaning
+    drive(enterSegment(a.e.g, a.p))
+    expect(a.p.psy).toBe(r.none)
+    const b = lab(8, { seg: 4, cell: 0, psy: 0 })
+    b.p.meaning = { id: 'смысл.03', from: 'поиск', verdict: 0 }
+    b.p.cls = 'Народ'
+    b.p.stats['Харизма'] = 1
     drive(enterSegment(b.e.g, b.p))
-    expect(b.p.psy).toBeLessThanOrEqual(t.above)
+    expect(b.p.psy).toBe(r.half)
+  })
+
+  it('«Потери»: по полюсу Влюбчивость ↔ Верность; смерть партнёра Влюбчивость не смягчает', async () => {
+    const { dropHeld } = await import('../src/engine/change.ts')
+    const loss = (axis: number, name: string, opts: { spouse?: boolean; death?: boolean } = {}) => {
+      const { e, p } = lab(9, { seg: 3, psy: 0 })
+      p.character = [0, 0, axis, 0, 0, 0, 0]
+      const h = { uid: 7001, name, ...(opts.spouse ? { spouse: true as const } : {}) }
+      p.items.push(h)
+      drive(dropHeld(e.g, p, h, false, !!opts.death))
+      return p.psy
+    }
+    const partner = real.items.find((i) => i.group === 'Партнёр')!.name
+    const friend = real.items.find((i) => i.group === 'Друг')!.name
+    const acq = real.items.find((i) => i.kind === 'знакомый')!.name
+    expect(loss(1, partner)).toBe(-5)
+    expect(loss(0, partner)).toBe(-3)
+    expect(loss(-1, partner)).toBe(-1)
+    expect(loss(-1, partner, { death: true })).toBe(-3)
+    expect(loss(1, friend)).toBe(-3)
+    expect(loss(0, friend)).toBe(-2)
+    expect(loss(-2, acq)).toBe(-1)
+  })
+
+})
+
+describe('Олигархи при госсоциализме (24.11)', () => {
+  it('страна стала госсоциализмом: Олигарх — d8 1: Полиция или Мафия, 2–8: Народ; «Офшор» сохраняет возможности', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 40; seed++) {
+      const { e, p } = lab(seed, { cls: 'Олигархи', familyCls: 'Олигархи', seg: 3, vozm: 12 })
+      p.items.push({ uid: 8001, name: 'Офшор' })
+      e.state.world.countries[p.country].ideology = 'Госсоциализм'
+      drive(nationalize(e.g, p.country))
+      expect(['Народ', 'Полиция', 'Мафия']).toContain(p.cls)
+      expect(p.vozm).toBe(12)
+      seen.add(p.cls)
+    }
+    expect(seen.has('Народ')).toBe(true)
+  })
+
+  it('карта даёт Олигархов при госсоциализме — Полиция; иначе — Олигархи', () => {
+    const { e, p } = lab(3)
+    e.state.world.countries[p.country].ideology = 'Госсоциализм'
+    expect(gsClass(e.g, p, 'Олигархи')).toBe('Полиция')
+    e.state.world.countries[p.country].ideology = 'Клептократия'
+    expect(gsClass(e.g, p, 'Олигархи')).toBe('Олигархи')
+  })
+
+  it('Олигархи меняют класс только вниз: «разрешено перейти» им не предлагается', () => {
+    const { e, p } = lab(5, { cls: 'Олигархи', seg: 3 })
+    const asked: string[] = []
+    const flow = run(e.g, p, [{ allowCls: 'Интеллигенция' }], newCtx('карта'))
+    for (let r = flow.next(); !r.done; r = flow.next('да')) asked.push(r.value.text)
+    expect(asked).toEqual([])
+    expect(p.cls).toBe('Олигархи')
+  })
+
+  it('«Наследство незнакомца» при госсоциализме — +3 возм., класс не меняется', () => {
+    const c = card('судьба.24')
+    const { e, p } = lab(4, { cls: 'Народ', seg: 3, vozm: 5 })
+    e.state.world.countries[p.country].ideology = 'Госсоциализм'
+    drive(run(e.g, p, c.effect, newCtx('карта', { card: c.id })))
+    expect([p.vozm, p.cls]).toEqual([8, 'Народ'])
   })
 })

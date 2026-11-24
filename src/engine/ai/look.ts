@@ -1,6 +1,6 @@
 /**
- * Проиграть вариант на копии партии и оценить итог. Честный ИИ играет копию со своими кубиками и перетасованными
- * колодами — он знает только то, что видит игрок. «Нечестно» берёт настоящие кубики и порядок колод.
+ * Проиграть вариант на копии партии и оценить итог. ИИ играет копию со своими кубиками и перетасованными
+ * колодами — он знает только то, что видит игрок.
  */
 import type { Node } from '../../data/schema.ts'
 import { seedRng, type G } from '../core.ts'
@@ -27,14 +27,14 @@ function drain(flow: ReturnType<typeof run>, g2: G): void {
   for (let r = flow.next(); !r.done; r = flow.next(simple(g2, r.value))) if (++guard > 200) break
 }
 
-/** Копия партии без журнала. honest — свои кубики и перетасованные колоды; иначе («Нечестно») колоды в настоящем порядке, кубики свои. */
-export function fork(g: G, rand: () => number, honest: boolean): G {
+/** Копия партии без журнала: свои кубики и перетасованные колоды. */
+export function fork(g: G, rand: () => number): G {
   const { log, ...rest } = g.s
   const s = structuredClone(rest) as GameState
   s.log = []
   void log
   s.rng = seedRng(Math.floor(rand() * 4294967296))
-  if (honest) {
+  {
     for (const pile of Object.values(s.piles)) {
       for (let i = pile.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [pile[i], pile[j]] = [pile[j], pile[i]] }
     }

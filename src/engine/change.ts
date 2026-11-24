@@ -331,7 +331,7 @@ export function* gainItem(g: G, p: Player, name: string, opts: { adopted?: true 
     }
     if (same.length >= cap) {
       const a = yield* ask(g, p, 'сброс', `Ячейки заняты. Взять «${item.name}» вместо другой карты?`, [
-        ...same.map((h) => ({ id: String(h.uid), label: `сбросить «${h.name}»`, note: dropNote(g, h) })),
+        ...same.map((h) => ({ id: String(h.uid), label: `сбросить «${h.name}»`, note: dropNote(g, p, h) })),
         { id: 'нет', label: `не брать «${item.name}»` },
       ], { force: true })
       if (a === 'нет') return
@@ -369,9 +369,14 @@ export function* gainItem(g: G, p: Player, name: string, opts: { adopted?: true 
 }
 const inSlotKind = (g: G, _kind: string, group?: string): boolean => !g.c.tables.slots.free.includes(group ?? '')
 
-function dropNote(g: G, h: Held): string | undefined {
-  const price = g.c.tables.dropPrice[h.spouse ? 'Супруг(а)' : g.items.get(h.name)?.group ?? '']
-  return price ? `${price.psy} псих.` : undefined
+/** Подсказка при сбросе: сколько психики стоит потеря (таблица «Потери»). */
+function dropNote(g: G, p: Player, h: Held): string | undefined {
+  const t = g.c.tables.loss
+  const item = g.items.get(h.name)
+  const col = h.spouse || item?.group === 'Партнёр' ? 'split' : item?.kind === 'знакомый' ? 'acq' : t.close.includes(item?.group ?? '') ? 'close' : undefined
+  if (!col) return undefined
+  const v = p.character[charAxisOf('Верность')[0]]
+  return `${t[v > 0 ? 'Верность' : v < 0 ? 'Влюбчивость' : 'нет'][col]} псих.`
 }
 
 /** Убрать карту без цены и вернуть её под низ своей стопки. */
@@ -397,14 +402,30 @@ export function* dropHeld(g: G, p: Player, h: Held, price: boolean, widowed = fa
   if (h.spouse && !widowed && freeDivorce(g, p)) { say(g, p, 'светская культура: развод без штрафа'); return }
   // Теизм: развод стоит ещё −1 псих. (сильно −2).
   if (h.spouse && !widowed && theismDivorce(g, p)) { say(g, p, 'Теизм: развод — грех'); addParam(g, p, 'псих', theismDivorce(g, p), newCtx('правило')) }
+  const ctx = newCtx('правило')
+  lossPsy(g, p, h, widowed)
   const cost = price ? g.c.tables.dropPrice[key] : undefined
   if (!cost) return
-  const ctx = newCtx('правило')
-  addParam(g, p, 'псих', cost.psy, ctx)
   if (cost.coh) addParam(g, p, 'Сплочённость', cost.coh, ctx)
   // Развод в традиционной или теистичной культуре: ещё помеха в #статус до конца отрезка.
   if (h.spouse && (cultureLean(g, p, 'Традиция') || cultureLean(g, p, 'Теизм'))) p.mods.push({ tag: '#статус', dis: true, until: 'отрезок', seg: p.seg })
   if (cost.enemyUpTo && rollDie(g, p, 6, 'обида Покровителя') <= cost.enemyUpTo) yield* gainItem(g, p, 'Враг')
+}
+
+/**
+ * «Потери» (24.11): психика за потерянного человека по таблице tables.loss — по полюсу оси Влюбчивость ↔ Верность.
+ * death — человек умер: смерть партнёра или супруга(и) Влюбчивость не смягчает. Не человек — ничего.
+ */
+export function lossPsy(g: G, p: Player, h: Held, death = false): void {
+  const t = g.c.tables.loss
+  const item = g.items.get(h.name)
+  const col = h.spouse || item?.group === 'Партнёр' ? 'split' : item?.kind === 'знакомый' ? 'acq' : t.close.includes(item?.group ?? '') ? 'close' : undefined
+  if (!col) return
+  const v = p.character[charAxisOf('Верность')[0]]
+  const pole = v > 0 ? 'Верность' : v < 0 ? 'Влюбчивость' : 'нет'
+  const n = col === 'split' && death ? Math.min(t[pole].split, t.deathSplit) : t[pole][col]
+  say(g, p, `потеря: «${h.name}» — ${n} псих.${pole !== 'нет' ? ` (${pole})` : ''}`)
+  addParam(g, p, 'псих', n, newCtx('правило'))
 }
 
 /** Потерять предмет по имени или стопке. Если подходящих несколько, кого терять — решает игрок. */

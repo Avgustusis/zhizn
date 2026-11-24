@@ -9,7 +9,7 @@ import type { W } from './goal.ts'
 
 export interface Archetype {
   id: string
-  /** Имя на экране и в псевдониме: «№ 522040711345 «Савант»». */
+  /** Имя на экране и в псевдониме: «№ 522040 «Савант»». */
   name: string
   /** Язык и значение слова. */
   lang: string
@@ -72,8 +72,8 @@ export function leanings(p: Player, a?: Archetype): { vice: number; help: number
   return { vice: Math.max(0, -t[4]), help: Math.max(0, t[1]) + Math.max(0, t[3]), risk: Math.max(0, -t[5]), care: t[6] }
 }
 
-/** Случайный псевдоним, как номер в Бюро: «№ 522040711345 «Савант»». rand — генератор экрана, не движка. */
+/** Случайный псевдоним, как номер в Бюро: «№ 522040 «Савант»». rand — генератор экрана, не движка. */
 export function bureauName(rand: () => number = Math.random): string {
-  const digits = Array.from({ length: 12 }, (_, i) => (i === 0 ? 1 + Math.floor(rand() * 9) : Math.floor(rand() * 10))).join('')
+  const digits = Array.from({ length: 6 }, (_, i) => (i === 0 ? 1 + Math.floor(rand() * 9) : Math.floor(rand() * 10))).join('')
   return `№ ${digits} «${ARCHETYPES[Math.floor(rand() * ARCHETYPES.length)].name}»`
 }

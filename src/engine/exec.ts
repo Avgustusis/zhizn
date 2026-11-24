@@ -10,6 +10,8 @@ import { epidemicSoft } from './items.ts'
 import { keepClass, saveVozm } from './tricks.ts'
 import { poleDelta } from './poles.ts'
 import type { Player, Stat } from './types.ts'
+import { gsClass } from './family.ts'
+
 
 /** Попадает ли значение кубика в диапазон «1-2» или «6». */
 const inRange = (range: string, v: number): boolean => {
@@ -93,7 +95,7 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
   else if ('rule' in n) yield* runRule(g, p, n.rule, n.arg, ctx)
   else if ('charStep' in n) charStep(g, p, n.charStep, n.n ?? 1)
   else if ('mod' in n) p.mods.push({ ...n.mod, seg: p.seg })
-  else if ('cls' in n) { if (!(yield* keepClass(g, p, n.cls, ctx))) setClass(g, p, n.cls) }
+  else if ('cls' in n) { if (!(yield* keepClass(g, p, n.cls, ctx))) setClass(g, p, gsClass(g, p, n.cls)) }
   else if ('stab' in n) {
     const c = ctx.target !== undefined ? g.s.world.countries[ctx.target] : countryOf(g, p)
     const w = g.c.tables.world.stability
@@ -123,6 +125,8 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
   } else if ('flag' in n) p.flags[n.flag] = true
   else if ('income' in n) p.income.push({ add: n.income, until: n.until, seg: p.seg })
   else if ('allowCls' in n) {
+    // Олигархи меняют класс только вниз (концепция, 24.11): разрешение перейти «по хорошему поводу» их не касается.
+    if (p.cls === 'Олигархи') { say(g, p, `Олигархи меняют класс только вниз: переход в ${n.allowCls} не предлагается`); return }
     const a = yield* ask(g, p, 'класс', `Перейти в класс ${n.allowCls}?`, [{ id: 'да', label: `перейти в класс ${n.allowCls}` }, { id: 'нет', label: `остаться: ${p.cls}` }], { card: ctx.card, force: true })
     if (a === 'да') setClass(g, p, n.allowCls)
   } else if ('addOneOf' in n) {

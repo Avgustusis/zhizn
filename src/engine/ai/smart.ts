@@ -1,12 +1,11 @@
 /**
- * ИИ-соперники этапа 4: играют на свой смысл жизни. Уровни (решено 23.11): «Легко», «Нормально», «Сложно» знают
- * только то, что видит игрок; «Нечестно» подглядывает в колоды и кубики. Характер ИИ — его черты (persona.ts).
+ * ИИ-соперники этапа 4: играют на свой смысл жизни. Уровни (решено 23–24.11): «Легко», «Нормально», «Сложно»;
+ * все знают только то, что видит игрок. Характер ИИ — его черты (persona.ts).
  *
  * Решения: варианты карты — проигрывание на копиях партии (look.ts) и оценка (goal.ts); рынок, характеристики,
  * класс, эмиграция, сторона в кризисе — по целям карты смысла (wants.ts), как ИИ симуляции автора; остальное — простой ИИ.
  */
 import type { G } from '../core.ts'
-import type { Engine } from '../engine.ts'
 import type { Player, Request, Stat } from '../types.ts'
 import { priceOf } from '../turn.ts'
 import { outlook } from './goal.ts'
@@ -15,20 +14,19 @@ import { answer as simple } from './simple.ts'
 import { statGaps, wantsOf, type Wants } from './wants.ts'
 import { archetypeOf, leanings, tasteOf, type Taste } from './persona.ts'
 
-export type Level = 'easy' | 'normal' | 'hard' | 'unfair'
+export type Level = 'easy' | 'normal' | 'hard'
 
 /**
- * Сила уровня. samples — сколько раз проигрывать вариант карты; noise — шум оценки; honest — свои кубики и колоды;
+ * Сила уровня. samples — сколько раз проигрывать вариант карты; noise — шум оценки;
  * blunder — доля случайных решений; aims — играет ли на смысл (рынок, класс, эмиграция, кризис).
  */
-export const LEVELS: Record<Level, { samples: number; noise: number; honest: boolean; blunder: number; aims: boolean }> = {
-  easy: { samples: 1, noise: 3, honest: true, blunder: 0.2, aims: false },
-  normal: { samples: 2, noise: 1, honest: true, blunder: 0, aims: true },
-  hard: { samples: 6, noise: 0, honest: true, blunder: 0, aims: true },
-  unfair: { samples: 6, noise: 0, honest: false, blunder: 0, aims: true },
+export const LEVELS: Record<Level, { samples: number; noise: number; blunder: number; aims: boolean }> = {
+  easy: { samples: 1, noise: 3, blunder: 0.2, aims: false },
+  normal: { samples: 2, noise: 1, blunder: 0, aims: true },
+  hard: { samples: 6, noise: 0, blunder: 0, aims: true },
 }
 
-export function smartAnswer(g: G, req: Request, level: Level, engine?: Engine): string {
+export function smartAnswer(g: G, req: Request, level: Level): string {
   const L = LEVELS[level]
   const open = req.options.filter((o) => !o.off)
   if (open.length < 2) return open[0]?.id ?? req.options[0].id
@@ -37,9 +35,6 @@ export function smartAnswer(g: G, req: Request, level: Level, engine?: Engine): 
   const rand = aiRng(g, req, 0)
   // «Ход» (сыграть козырь, сиделка, скупка) и обязательные вопросы без выбора — не ошибаемся нарочно.
   if (L.blunder && req.type === 'карта' && rand() < L.blunder) return ids[Math.floor(rand() * ids.length)]
-  // «Нечестно»: копия всей партии на месте вопроса — настоящие кубики, колоды и всё, что будет до конца шага.
-  // Меню «Какую карту сыграть» решает то же правило, что вопрос «ход» → «сыграть» (иначе ИИ ходит по кругу: открыл меню — отказался — открыл снова).
-  if (level === 'unfair' && engine?.canFork && DEEP.includes(req.type) && !req.text.startsWith('Какую карту сыграть')) return deepPick(engine, req, level)
   if (req.type === 'карта' && open.every((o) => o.effect) && !simpleFirst(g, req)) return byLookahead(g, req, level)
   if (!L.aims) return simple(g, req)
   const w = wantsOf(g, p)
@@ -74,7 +69,7 @@ function byLookahead(g: G, req: Request, level: Level): string {
     let sum = 0
     // Все варианты одной пробы играют одни и те же кубики и колоды: сравнение честнее (общие случайные числа).
     for (let k = 0; k < L.samples; k++) {
-      const g2 = fork(g, aiRng(g, req, 7000 + k), L.honest)
+      const g2 = fork(g, aiRng(g, req, 7000 + k))
       sum += outlook(g2, play(g2, req.player, o.effect ?? [], req.card), taste(g, req.player))
     }
     const v = sum / L.samples + (L.noise ? (aiRng(g, req, 9000 + i)() - 0.5) * 2 * L.noise : 0)
@@ -98,6 +93,7 @@ function aimed(g: G, p: Player, req: Request, ids: string[], w: Wants, rand: () 
       return statGaps(p, w).map(([s]) => s).find((s) => ids.includes(s))
     }
     case 'класс': {
+      if (!ids.includes('да')) return ids.find((id) => w.cls.has(id as never))
       const to = req.options.find((o) => o.id === 'да')?.label ?? ''
       const target = [...w.cls].find((c) => to.includes(c))
       if (target) return 'да'
@@ -167,30 +163,4 @@ function market(g: G, p: Player, ids: string[], w: Wants, rand: () => number): s
   if (lean.help && p.vozm >= 8 && rand() < 0.1 * lean.help) { const id = first('благотворительность'); if (id) return id }
   if (lean.care > 0 && p.vozm < 12 && p.seg < 5 && rand() < 0.2 * lean.care) { const id = first('работа', 'дело', 'подработка'); if (id) return id }
   return undefined
-}
-
-// ── «Нечестно»: копия партии целиком ────────────────────────────────────
-
-/**
- * Где «Нечестно» подглядывает: исход решает ближайший бросок или чужой выбор — какой характеристикой бросать, платить ли
- * взятку, чью сторону взять в кризисе, играть ли козырь. Карты и рынок — как «Сложно»: там копия до конца хода
- * с простым ИИ за всех оценивает хуже, чем шесть честных проб (сверка 23.11).
- */
-const DEEP: Request['type'][] = ['характеристика', 'проверка', 'кризис', 'козырь']
-
-/** Каждый вариант — на копии партии до конца шага; вложенные вопросы решает простой ИИ (быстро). */
-function deepPick(engine: Engine, req: Request, _level: Level): string {
-  const g = engine.g
-  const open = req.options.filter((o) => !o.off)
-  if (open.length < 2) return open[0]?.id ?? req.options[0].id
-  let best = open[0].id
-  let top = -Infinity
-  for (const o of open) {
-    const e2 = engine.fork()
-    e2.answer(o.id)
-    for (let i = 0; i < 60 && e2.pending && !(e2.pending.player === req.player && e2.pending.type === 'ход'); i++) e2.answer(simple(e2.g, e2.pending))
-    const v = outlook(e2.g, e2.state.players[req.player], taste(g, req.player))
-    if (v > top) { top = v; best = o.id }
-  }
-  return best
 }

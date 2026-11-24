@@ -167,6 +167,8 @@ export function answer(g: G, req: Request): string {
       return 'нет'
     }
     case 'класс': {
+      // Выбор между классами без «да»/«нет» (госсоциализм: Полиция или Мафия) — первый.
+      if (!ids.includes('да')) return ids[0]
       const to = req.options.find((o) => o.id === 'да')?.label ?? ''
       const ladder = g.c.tables.work.ladder
       const target = (Object.keys(ladder) as (keyof typeof ladder)[]).find((c) => to.includes(c))

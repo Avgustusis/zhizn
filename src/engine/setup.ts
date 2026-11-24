@@ -138,7 +138,9 @@ export function* birth(g: G, seat: number, gen = 1): Flow<Player> {
   const pos = scale(g, t.narrow)
   const coh = scale(g, t.wide)
   const phys = t.genetics[roll3(g).sum]
-  const cls: Cls = t.familyClass[String(fin)][die(g, 6) - 1]
+  // Госсоциализм — без Олигархов: строка Финансов +2/+3 даёт Полицию («номенклатура», 24.11).
+  const rolled: Cls = t.familyClass[String(fin)][die(g, 6) - 1]
+  const cls: Cls = rolled === 'Олигархи' && country.ideology === 'Госсоциализм' ? 'Полиция' : rolled
   const stats = Object.fromEntries(STATS.map((s) => [s, die(g, t.statDie)])) as Record<Stat, number>
   stats['Смекалка'] = Math.floor((stats['Харизма'] + stats['Мудрость'] + stats['Интеллект']) / 3)
   const character = Array<number>(7).fill(0)

@@ -188,7 +188,7 @@ export function* runCheck(g: G, p: Player, check: Check, ctx: Ctx, askStat = fal
   }
   const stat = best.stat
   const value = effStat(g, p, stat)
-  const mod = add + best.s.add + (ctx.penalty ?? 0) + aiBonus(g, p)
+  const mod = add + best.s.add + (ctx.penalty ?? 0)
   ctx.shared.used = stat
 
   // Козырь — до броска и сверх потолка ±3.
@@ -271,9 +271,6 @@ export function spend(g: G, p: Player, h: Held): void {
 }
 
 /** Что игрок видит о проверке до броска: характеристика, сложность, его поправки, шанс (козыри не считаются). */
-/** Поблажка ИИ по уровню (решено 23.11: «Нечестно» +1 к проверкам) — сверх потолка поправок. */
-const aiBonus = (g: G, p: Player): number => g.c.tables.ai.checkBonus[g.s.config.seats[p.seat]?.ai ?? ''] ?? 0
-
 export interface CheckPreview { stat: Stat; dc: number; value: number; mod: number; parts: string[]; adv: number; chance: number; auto: boolean; tags: Tag[] }
 
 /** Расчёт проверки без броска и без вопросов — для подсказки у варианта выбора. Козыри «по желанию» не учитываются. */
@@ -301,7 +298,7 @@ export function previewCheck(g: G, p: Player, check: Check, ctx: Ctx): CheckPrev
   })
   const best = rated.reduce((x, y) => (y.chance > x.chance ? y : x))
   return {
-    stat: best.stat, dc: best.dc, value: effStat(g, p, best.stat), mod: add + best.s.add + (ctx.penalty ?? 0) + aiBonus(g, p), parts: [...parts, ...best.s.parts],
+    stat: best.stat, dc: best.dc, value: effStat(g, p, best.stat), mod: add + best.s.add + (ctx.penalty ?? 0), parts: [...parts, ...best.s.parts],
     adv: best.a, chance: best.chance, auto, tags: ctx.tags,
   }
 }

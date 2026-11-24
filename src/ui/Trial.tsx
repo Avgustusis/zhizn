@@ -15,7 +15,7 @@ import { describe } from './log.ts'
 
 const content = loadContent()
 
-const AI_LEVELS: [NonNullable<SeatConfig['ai']>, string][] = [['easy', 'Легко'], ['normal', 'Нормально'], ['hard', 'Сложно'], ['unfair', 'Нечестно']]
+const AI_LEVELS: [NonNullable<SeatConfig['ai']>, string][] = [['easy', 'Легко'], ['normal', 'Нормально'], ['hard', 'Сложно']]
 const randomArchetype = () => ARCHETYPES[Math.floor(Math.random() * ARCHETYPES.length)].id
 const newSeat = (ai?: SeatConfig['ai']): SeatConfig => ({ name: bureauName(), ...(ai ? { ai, archetype: randomArchetype() } : {}) })
 const KEY = 'zhizn.trial.v1'
@@ -163,7 +163,7 @@ export default function Trial() {
     setBox({ e: next })
   }
   /** «Ход за ИИ» у человека — ИИ «Нормально» (играет на смысл). */
-  const randomId = (x: Engine) => aiAnswer(x.g, x.pending!, x.state.config.seats[x.pending!.player]?.ai ?? 'normal', x)
+  const randomId = (x: Engine) => aiAnswer(x.g, x.pending!, x.state.config.seats[x.pending!.player]?.ai ?? 'normal')
   /** Места ИИ ходят сами, пока вопрос не дойдёт до человека; их карты считаются просмотренными. */
   const autoAI = (x: Engine | null) => {
     if (!x) return x
@@ -227,7 +227,7 @@ export default function Trial() {
             </div>
           ))}
         </div>
-        <p className="legend">Псевдоним — не имя и не фамилия; «Случайно» даёт номер, как в Бюро. ИИ до «Сложно» знает только то, что видит игрок; «Нечестно» подглядывает в колоды и кубики. Архетип — характер ИИ: его решения следуют чертам.</p>
+        <p className="legend">Псевдоним — не имя и не фамилия; «Случайно» даёт номер, как в Бюро. ИИ на всех уровнях знает только то, что видит игрок. Архетип — характер ИИ: его решения следуют чертам.</p>
         <p className="legend">Одно и то же зерно с теми же ответами даёт ту же партию: если что-то пошло не так, назови зерно.</p>
         {error && <p className="req">Ошибка движка: {error}</p>}
       </section>

@@ -61,9 +61,6 @@ export class Engine {
     this.advance(id)
   }
 
-  /** Можно ли снять копию партии на месте вопроса (ИИ «Нечестно»). */
-  get canFork(): boolean { return this.checkpoints }
-
   save(): SaveFile {
     if (!this.checkpoints) throw new Error('сохранение выключено (checkpoints: false)')
     const st = JSON.parse(this.base) as GameState
@@ -71,15 +68,6 @@ export class Engine {
     return { version: 1, base: JSON.stringify(st), answers: [...this.answers] }
   }
 
-  /** Копия партии на месте текущего вопроса, без журнала и без снимков (ИИ «Нечестно»). */
-  fork(): Engine {
-    if (!this.checkpoints) throw new Error('копия партии без снимков невозможна')
-    const st = JSON.parse(this.base) as GameState
-    st.config.keepLog = false
-    const e = new Engine(this.g.c, st, { checkpoints: false })
-    for (const a of this.answers) e.answer(a)
-    return e
-  }
 
   static load(content: Content, save: SaveFile, options: EngineOptions = {}): Engine {
     const e = new Engine(content, JSON.parse(save.base) as GameState, options)

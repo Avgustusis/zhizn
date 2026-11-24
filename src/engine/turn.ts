@@ -6,7 +6,7 @@ import { charLean, cond, has, newCtx, type Ctx } from './cond.ts'
 import { addParam, count, death, enterInst, fire, gainItem, itemsPerSeg, leaveInst, rollDie, runDue, visit, removeHeld } from './change.ts'
 import { spend, strongIn } from './checks.ts'
 import { run } from './exec.ts'
-import { markEntry, meaningAtEntry, settle } from './meaning.ts'
+import { happinessOf, markEntry, meaningAtEntry, meaningOf, settle } from './meaning.ts'
 import { rollFashion } from './setup.ts'
 import { businessAtEntry, money } from './market.ts'
 import { whyNot } from './explain.ts'
@@ -144,9 +144,14 @@ export function* enterSegment(g: G, p: Player): Flow {
   emit(g, { t: 'отрезок', p: p.seat, seg })
   expire(p)
   const ctx = newCtx('правило')
-  // Гедоническая адаптация (24.11): к хорошему привыкают — психика выше порога на входе в отрезок снижается.
-  const hed = g.c.tables.hedonic
-  if (hed.when === 'отрезок' && p.psy > hed.above) { say(g, p, `к хорошему привыкают: психика выше +${hed.above} — −${hed.step}`); addParam(g, p, 'псих', -hed.step, ctx) }
+  // «Итог жизни» (24.11): на входе в Старость и Древность — смысл выполнен меньше чем наполовину: −2 психики;
+  // смысла нет или Серость: −1.
+  if (seg === 'Старость' || seg === 'Древность') {
+    const m = meaningOf(g, p)
+    const lr = t.lifeReview
+    if (!m || p.meaning?.id === 'серость') { say(g, p, 'итог жизни: смысла так и не нашлось'); addParam(g, p, 'псих', lr.none, ctx) }
+    else if (happinessOf(g, p) * 2 < m.conds.reduce((a, k) => a + k.points, 0)) { say(g, p, 'итог жизни: смысл выполнен меньше чем наполовину'); addParam(g, p, 'псих', lr.half, ctx) }
+  }
   // Жетоны ◆: три на входе в Молодость, неиспользованные сгорают на выходе.
   p.youthTokens = seg === 'Молодость' ? g.c.tables.youthTokens : 0
   // «Присяга» — выбор (23.11): согласие — статус; отказ ничего не стоит, класс остаётся, статуса нет (позже — только событием).

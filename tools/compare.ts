@@ -22,7 +22,7 @@ let mixWins = 0, mixHap = 0, mixGames = 0
 const content = loadContent()
 const childNames = new Set(content.items.filter((i) => i.group === 'Ребёнок').map((i) => i.name))
 
-type Life = { kidMoved?: string; born: { ideo: string; pos: string; stab: number }; fall?: string; armyLeft?: string; p: Player; pos: string; win: boolean; teenAsylum: boolean; diploma: boolean; oath: boolean; officer: boolean; married: boolean; child: boolean; emig: boolean; deck: string; diff: string }
+type Life = { psyOld?: number; kidMoved?: string; born: { ideo: string; pos: string; stab: number }; fall?: string; armyLeft?: string; p: Player; pos: string; win: boolean; teenAsylum: boolean; diploma: boolean; oath: boolean; officer: boolean; married: boolean; child: boolean; emig: boolean; deck: string; diff: string }
 const lives: Life[] = []
 const checks: Record<string, number> = {}
 let errors = 0
@@ -32,11 +32,11 @@ for (let seed = SEED; seed < SEED + N; seed++) {
   let e: Engine
   let bornAt: Life['born'][] | undefined
   try {
-    e = new Engine(content, { span: 'one', seed, seats: [0, 1, 2, 3].map((i) => ({ name: `И${i + 1}`, ai: MIX && i === 0 ? MIX : AI, ...(process.env.ARCH === '0' ? {} : { archetype: ARCHETYPES[(seed * 4 + i) % ARCHETYPES.length].id }) })), keepLog: true }, { checkpoints: AI === 'unfair' || MIX === 'unfair' })
+    e = new Engine(content, { span: 'one', seed, seats: [0, 1, 2, 3].map((i) => ({ name: `И${i + 1}`, ai: MIX && i === 0 ? MIX : AI, ...(process.env.ARCH === '0' ? {} : { archetype: ARCHETYPES[(seed * 4 + i) % ARCHETYPES.length].id }) })), keepLog: true }, { checkpoints: false })
     while (e.pending) {
       // Страна рождения — какой она была на первом ходу (потом строй меняется).
       if (!bornAt && e.pending.type === 'ход') bornAt = e.state.players.map((p) => { const c = e.state.world.countries[p.birthCountry]; return { ideo: c.ideology, pos: c.pos, stab: c.stability } })
-      e.answer(aiAnswer(e.g, e.pending, undefined, e))
+      e.answer(aiAnswer(e.g, e.pending))
     }
   } catch (err) { errors++; if (errors <= 3) console.error(`партия ${seed}:`, String(err).slice(0, 300)); continue }
   const s = e.state
@@ -47,10 +47,13 @@ for (let seed = SEED; seed < SEED + N; seed++) {
   const lastSay: Record<number, string> = {}
   let lastWorld = ''
   const kidMoved: Record<number, string> = {}
+  const psyNow: Record<number, number> = {}
+  const psyOld: Record<number, number> = {}
   const fall: Record<number, string> = {}
   const armyLeft: Record<number, string> = {}
   for (const ev of s.log) {
-    if (ev.t === 'отрезок') seg[ev.p] = ev.seg
+    if (ev.t === 'отрезок') { seg[ev.p] = ev.seg; if (ev.seg === 'Старость') psyOld[ev.p] = psyNow[ev.p] ?? 0 }
+    if (ev.t === 'число' && ev.param === 'псих') psyNow[ev.p] = ev.to
     if (ev.t === 'карта') lastCard[ev.p] = `${ev.deck}: ${ev.title}`
     if (ev.t === 'мир') lastWorld = ev.text
     if (ev.t === 'ход') { delete lastCard[ev.p]; delete lastSay[ev.p] }
@@ -80,7 +83,7 @@ for (let seed = SEED; seed < SEED + N; seed++) {
     const m = p.meaning ? content.meanings.find((x) => x.id === p.meaning!.id) : undefined
     lives.push({
       p, pos: s.world.countries[p.birthCountry].pos, win: p === best, ...flags[p.seat],
-      born: bornAt?.[p.seat] ?? { ideo: '?', pos: '?', stab: 0 }, ...(fall[p.seat] ? { fall: fall[p.seat] } : {}), ...(armyLeft[p.seat] ? { armyLeft: armyLeft[p.seat] } : {}), ...(kidMoved[p.seat] ? { kidMoved: kidMoved[p.seat] } : {}),
+      born: bornAt?.[p.seat] ?? { ideo: '?', pos: '?', stab: 0 }, ...(fall[p.seat] ? { fall: fall[p.seat] } : {}), ...(armyLeft[p.seat] ? { armyLeft: armyLeft[p.seat] } : {}), ...(kidMoved[p.seat] ? { kidMoved: kidMoved[p.seat] } : {}), ...(psyOld[p.seat] !== undefined ? { psyOld: psyOld[p.seat] } : {}),
       emig: (p.counters['эмиграция'] ?? 0) + (p.counters['бегство'] ?? 0) > 0,
       deck: m?.deck ?? 'нет', diff: m?.difficulty ?? 'нет',
     })
@@ -123,6 +126,7 @@ const rows: [string, string, string][] = [
   ['Интеллигенция: при рождении / к концу', `${share(born('Интеллигенция'))} / ${share((l) => l.p.cls === 'Интеллигенция')}`, '15% / 20%'],
   ['У рождённых в Армии: Присяга / звание', `${share((l) => l.oath, born('Армия'))} / ${share((l) => l.officer, born('Армия'))}`, '70% / 38%'],
   ['Эмигрировали', share((l) => l.emig), '10%'],
+  ['Психика на входе в Старость', f1(avg(lives.filter((l) => l.psyOld !== undefined).map((l) => l.psyOld!))), '—'],
   ['Психика к концу / доля +3 и выше', `${f1(avg(lives.map((l) => l.p.psy)))} / ${share((l) => l.p.psy >= 3)}`, '+4,5 / 69%'],
   ['За жизнь: курсы / салон / спортзал', `${per('курсы')} / ${per('салон')} / ${per('спортзал')}`, '1,6 / 0,8 / 0,6'],
   ['За жизнь: больница / психолог', `${perAll('больница', 'больница-льгота', 'больница-старость', 'больница-старцы', 'больница-большой', 'больница-большой-вещь', 'больница-большой-старцы')} / ${perAll('психолог', 'психолог-льгота', 'психолог-большой', 'психолог-привычка')}`, '11,9 / 2,6'],
