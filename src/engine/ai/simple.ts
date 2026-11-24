@@ -226,6 +226,8 @@ export function answer(g: G, req: Request): string {
       if (ids.includes('взятка')) { const now = Number(req.text.match(/шанс (\d+)%/)?.[1] ?? 100); return now < 60 && p.vozm >= 5 ? 'взятка' : 'бросок' }
       return ids[0]
     }
+    // «Сказка»: сборка мира и героя за человека («Ход за ИИ») — случайно, если можно.
+    case 'сборка': return ids.includes('случайно') ? 'случайно' : ids[0]
     case 'предмет':
       // «Присяга» — ИИ принимает в 70% случаев (концепция, 23.11). Случайность — из номера места и зерна, не из генератора движка.
       if (req.text.startsWith('Присяга')) return (g.s.config.seed * 7 + p.seat * 31 + p.turns) % 10 < 7 ? 'да' : 'нет'

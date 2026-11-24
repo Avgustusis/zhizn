@@ -3,6 +3,7 @@
  *
  *   npx tsx tools/compare.ts [партий=600] [зерно=1]          — таблица в консоль (markdown)
  *   AI=simple npx tsx tools/compare.ts 600                     — каким ИИ играть (по умолчанию — ИИ этапа 4)
+ *   START=tale npx tsx tools/compare.ts 600                    — «Легенда»: мир и герои ИИ собраны («Сказка»)
  *
  * Режим — «Биография» (одна жизнь, 4 игрока), как «Поколение» в отчёте. Значения симуляции — из финальной проверки
  * 11.11 и последних прогонов автора (счастье 6,46 — сверка 19.11 из концепции, «Сказка: социальный эксперимент»).
@@ -32,7 +33,7 @@ for (let seed = SEED; seed < SEED + N; seed++) {
   let e: Engine
   let bornAt: Life['born'][] | undefined
   try {
-    e = new Engine(content, { span: 'one', seed, seats: [0, 1, 2, 3].map((i) => ({ name: `И${i + 1}`, ai: MIX && i === 0 ? MIX : AI, ...(process.env.ARCH === '0' ? {} : { archetype: ARCHETYPES[(seed * 4 + i) % ARCHETYPES.length].id }) })), keepLog: true }, { checkpoints: false })
+    e = new Engine(content, { span: 'one', start: process.env.START === 'tale' ? 'tale' : 'dice', seed, seats: [0, 1, 2, 3].map((i) => ({ name: `И${i + 1}`, ai: MIX && i === 0 ? MIX : AI, ...(process.env.ARCH === '0' ? {} : { archetype: ARCHETYPES[(seed * 4 + i) % ARCHETYPES.length].id }) })), keepLog: true }, { checkpoints: false })
     while (e.pending) {
       // Страна рождения — какой она была на первом ходу (потом строй меняется).
       if (!bornAt && e.pending.type === 'ход') bornAt = e.state.players.map((p) => { const c = e.state.world.countries[p.birthCountry]; return { ideo: c.ideology, pos: c.pos, stab: c.stability } })

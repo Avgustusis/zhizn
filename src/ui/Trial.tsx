@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { loadContent } from '../data/content.ts'
-import { CHAR_AXES, SEGMENTS, STATS } from '../data/schema.ts'
+import { CHAR_AXES, CULTURE_AXES, SEGMENTS, STATS } from '../data/schema.ts'
 import { Engine, modeName } from '../engine/engine.ts'
 import { aiAnswer } from '../engine/ai/index.ts'
 import { ARCHETYPES, bureauName } from '../engine/ai/persona.ts'
@@ -50,6 +50,21 @@ function WorldBar({ e }: { e: Engine }) {
         return <span key={c.id}>{c.name}: {c.ideology}, стаб. {c.stability}{[...tokens, ...pol].length ? ` · ${[...tokens, ...pol].join(' · ')}` : ''}<br /></span>
       })}
     </p>
+  )
+}
+
+/** «Сказка»: что уже собрано в мире. */
+function DraftBar({ e }: { e: Engine }) {
+  const w = e.state.world
+  const list = (xs: string[]) => (xs.length ? xs.join(', ') : '—')
+  const prof = Object.entries(w.cultures).map(([k, p]) => `${k}: ${CULTURE_AXES.flatMap(([a, b], i) => (p[i] ? [`${p[i] < 0 ? a : b}${Math.abs(p[i]) === 2 ? '!' : ''}`] : [])).join(', ')}`)
+  return (
+    <div className="legend">
+      <p><b>Мир в сборке</b> (! — сильно)</p>
+      {w.draft!.map((c) => <p key={c.id}>{c.name} — {c.pos}{c.mainRaces.length ? `, ${c.multicultural ? 'мультикультурная' : 'гомогенная'}` : ''}: расы {list(c.mainRaces)}{c.minorityRaces.length ? ` (меньшинства: ${list(c.minorityRaces)})` : ''}; культуры {list(c.mainCultures)}{c.minorityCultures.length ? ` (меньшинства: ${list(c.minorityCultures)})` : ''}{c.ideology ? `; ${c.ideology}, правит ${c.dominant ?? '?'}, отчуждён ${c.alienated ?? '?'}` : ''}</p>)}
+      {prof.length > 0 && <p>Культуры: {prof.join(' · ')}</p>}
+      {Object.keys(w.relations).length > 0 && <p>Отношения: {Object.entries(w.relations).map(([k, r]) => `${k.split('-').map((i) => w.draft![Number(i)].name).join(' и ')} — ${r}`).join(' · ')}</p>}
+    </div>
   )
 }
 
@@ -146,6 +161,7 @@ export default function Trial() {
   // Движок меняется на месте, поэтому лежит в обёртке: новая обёртка — новый кадр.
   const [box, setBox] = useState<{ e: Engine | null }>({ e: null })
   const [table, setTable] = useState<SeatConfig[]>(() => [newSeat(), newSeat('normal')])
+  const [startMode, setStartMode] = useState<'dice' | 'tale'>('dice')
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 100000))
   const [saved, setSaved] = useState<SaveFile | null>(loadSaved)
   const [error, setError] = useState('')
@@ -172,7 +188,7 @@ export default function Trial() {
     if (moved) { const n = x.state.log.length; queueMicrotask(() => setSeen(n)) }
     return x
   }
-  const start = () => act(() => { setSeen(0); return autoAI(new Engine(content, { span: 'one', seed, seats: table.map((t) => ({ ...t })) })) })
+  const start = () => act(() => { setSeen(0); return autoAI(new Engine(content, { span: 'one', start: startMode, seed, seats: table.map((t) => ({ ...t })) })) })
   const resume = () => act((x) => { const y = saved ? Engine.load(content, saved) : x; if (y) setSeen(y.state.log.length); return autoAI(y) })
   const answer = (id: string) => act((x) => { x?.answer(id); return autoAI(x) })
   const setSeat = (i: number, patch: Partial<SeatConfig>) => setTable((t) => t.map((x, j) => (j === i ? { ...x, ...patch } : x)))
@@ -205,6 +221,7 @@ export default function Trial() {
         <h2>Пробная партия</h2>
         <p className="legend">Отладочный экран движка: рождение, поле, карты событий, проверки, здоровье, смысл и счастье; рынок, работа, траты, пенсия, город и знакомства (этап 3а); мировые ходы, кризисы, Смута и эмиграция (3б); война на «Фронте» — призыв, тактика, 140 событий, комиссия, плен, итоги войны (3в). Смысл жизни виден всем: это проверка правил, а не игра.</p>
         <div className="controls">
+          <label>Старт <select value={startMode} onChange={(ev) => setStartMode(ev.target.value as 'dice' | 'tale')}><option value="dice">«Быль» — по кубикам («Биография»)</option><option value="tale">«Сказка» — мир и героев собирают («Легенда»)</option></select></label>
           <label>Мест <select value={table.length} onChange={(ev) => { const n = Number(ev.target.value); setTable((t) => (n > t.length ? [...t, ...Array.from({ length: n - t.length }, () => newSeat('normal'))] : t.slice(0, n))) }}>{[1, 2, 3, 4, 5, 6].map((n) => <option key={n}>{n}</option>)}</select></label>
           <label>Зерно <input type="number" value={seed} onChange={(ev) => setSeed(Number(ev.target.value) || 0)} style={{ width: '7em' }} /></label>
           <button onClick={start}>Начать</button>
@@ -219,6 +236,9 @@ export default function Trial() {
                 <option value="">человек</option>
                 {AI_LEVELS.map(([id, label]) => <option key={id} value={id}>ИИ: {label}</option>)}
               </select>
+              {!t.ai && startMode === 'tale' && (
+                <label className="num">год рождения <input type="number" value={t.born ?? ''} placeholder="—" onChange={(ev) => setSeat(i, { born: ev.target.value ? Number(ev.target.value) : undefined })} style={{ width: '5em' }} /></label>
+              )}
               {t.ai && (
                 <select value={t.archetype ?? ''} onChange={(ev) => setSeat(i, { archetype: ev.target.value })} title={ARCHETYPES.find((a) => a.id === t.archetype)?.meaning}>
                   {ARCHETYPES.map((a) => <option key={a.id} value={a.id} title={`${a.lang} — ${a.meaning}`}>{a.name} — {a.meaning}</option>)}
@@ -227,6 +247,7 @@ export default function Trial() {
             </div>
           ))}
         </div>
+        {startMode === 'tale' && <p className="legend">«Сказка»: мир собирают люди за столом по очереди, начиная с младшего (год рождения); на каждом вопросе можно ответить «случайно». Героя каждый собирает сам в пределах «Доли»; герои ИИ собираются по архетипу.</p>}
         <p className="legend">Псевдоним — не имя и не фамилия; «Случайно» даёт номер, как в Бюро. ИИ на всех уровнях знает только то, что видит игрок. Архетип — характер ИИ: его решения следуют чертам.</p>
         <p className="legend">Одно и то же зерно с теми же ответами даёт ту же партию: если что-то пошло не так, назови зерно.</p>
         {error && <p className="req">Ошибка движка: {error}</p>}
@@ -249,6 +270,7 @@ export default function Trial() {
     <section className="trial">
       <h2>Пробная партия <span className="num">{modeName(s.config)} · зерно {s.config.seed} · круг {s.round + 1} · мировых ходов {s.worldTurns}</span></h2>
       {s.war && <WarBar e={e} />}
+      {s.world.draft && <DraftBar e={e} />}
       <details><summary>страны и «Общественный след»</summary><WorldBar e={e} /></details>
       {error && <p className="req">Ошибка движка: {error} (зерно {s.config.seed})</p>}
       <div className="sheets">{s.players.map((p) => <Sheet key={p.seat} e={e} p={p} current={req?.player === p.seat} nurse={req?.player === p.seat && req.options.some((o) => o.id === 'сиделка') ? () => answer('сиделка') : undefined} />)}</div>
@@ -263,7 +285,7 @@ export default function Trial() {
       ) : null}
       {(!shownCard || (nextCard < 0 && req?.card === shownCard.id)) && (req ? (
         <div className="ask">
-          <p className="who">{s.players[req.player].name}</p>
+          <p className="who">{s.players[req.player]?.name ?? s.config.seats[req.player]?.name}</p>
           <p className="q">{req.text}</p>
           <div className="options">
             {req.options.filter((o) => !o.off).map((o) => <OptionButton key={o.id} o={o} market={req.type === 'действие'} onPick={() => answer(o.id)} />)}

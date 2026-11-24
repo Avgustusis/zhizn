@@ -107,6 +107,27 @@ function setMeaning(g: G, p: Player, id: string, from: NonNullable<Player['meani
   settle(g, p)
 }
 
+/**
+ * «Сказка»: смысл выбран открыто при подготовке — без броска поиска. Династию (с Положением +2 и выше) выбрали сами:
+ * от предназначения не отказываются. Карта уходит из своей стопки.
+ */
+export function chooseMeaning(g: G, p: Player, id: string): void {
+  const m = g.meanings.get(id)
+  if (!m) return
+  const pile = g.s.piles[m.deck === 'Династии' ? 'династии' : 'смыслы']
+  const i = pile.indexOf(id)
+  if (i >= 0) pile.splice(i, 1)
+  setMeaning(g, p, id, m.deck === 'Династии' ? 'династия' : 'рождение', m.deck === 'Династии')
+}
+
+/** Смыслы, которые можно выбрать при сборке героя: Случайные по условию карты; с Положением +2 и выше — ещё Династии; без уже взятых. */
+export function choosableMeanings(g: G, p: Player): string[] {
+  // Колода одна: карту, которую уже взял другой игрок, не выбрать.
+  const taken = new Set(g.s.players.filter((q) => q && q.seat !== p.seat).map((q) => q.meaning?.id))
+  const ok = (deck: string) => g.c.meanings.filter((m) => m.deck === deck && !taken.has(m.id) && cond(g, p, m.requires)).map((m) => m.id)
+  return [...ok('Случайные'), ...(p.pos >= g.c.tables.meaning.dynastyFrom ? ok('Династии') : [])]
+}
+
 /** Верхняя подходящая карта стопки; неподходящие уходят под низ. */
 function drawMeaning(g: G, p: Player, pile: 'смыслы' | 'династии'): string | undefined {
   const stack = g.s.piles[pile]

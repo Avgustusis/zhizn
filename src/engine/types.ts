@@ -152,6 +152,8 @@ export interface World {
   relations: Record<string, Relation>
   /** Профили культур: 11 осей, −2…+2; минус — первый полюс оси. */
   cultures: Record<Culture, number[]>
+  /** «Сказка»: мир в сборке — что уже выбрано (для экрана); после сборки удаляется. */
+  draft?: (Pick<Country, 'id' | 'name' | 'pos' | 'multicultural' | 'mainRaces' | 'mainCultures' | 'minorityRaces' | 'minorityCultures'> & { ideology?: Ideo; dominant?: Cls; alienated?: Cls })[]
 }
 
 // ── Игрок ───────────────────────────────────────────────────────────────
@@ -369,7 +371,7 @@ export interface Request {
   /** Что за решение: по нему ИИ и интерфейс понимают смысл вопроса. */
   type:
     | 'ход' | 'карта' | 'характеристика' | 'козырь' | 'отмена' | 'класс' | 'сброс' | 'предмет'
-    | 'смысл' | 'действие' | 'проверка' | 'кризис' | 'эмиграция' | 'фронт'
+    | 'смысл' | 'действие' | 'проверка' | 'кризис' | 'эмиграция' | 'фронт' | 'сборка'
   text: string
   card?: string
   options: Option[]

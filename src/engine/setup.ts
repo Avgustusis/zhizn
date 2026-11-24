@@ -6,6 +6,7 @@ import { gainItem } from './change.ts'
 import { run } from './exec.ts'
 import { markEntry, meaningAtBirth, meaningPiles, settle } from './meaning.ts'
 import { cityPiles } from './market.ts'
+import { taleHero, taleWorld } from './tale.ts'
 import type { Cls, Country, Culture, GameConfig, GameState, Player, Race, Relation, Stat } from './types.ts'
 
 export function newState(config: GameConfig): GameState {
@@ -19,7 +20,7 @@ export function newState(config: GameConfig): GameState {
 // ── Мир ─────────────────────────────────────────────────────────────────
 
 /** Профиль культуры: 3 оси «сильно», 3 «умеренно», остальные нейтральны; полюс — монеткой. */
-function cultureProfile(g: G): number[] {
+export function cultureProfile(g: G): number[] {
   const t = g.c.tables.culture
   const prof = Array<number>(CULTURE_AXES.length).fill(0)
   shuffle(g, CULTURE_AXES.map((_, i) => i)).slice(0, t.strong + t.moderate).forEach((axis, k) => {
@@ -32,9 +33,10 @@ function take<T>(g: G, from: readonly T[], n: number, except: readonly T[] = [])
   return shuffle(g, from.filter((x) => !except.includes(x))).slice(0, n)
 }
 
-function makeCountry(g: G, id: number, pos: Country['pos']): Country {
+/** Население по кубикам: тип по позиции, основные расы и культуры, 0–3 меньшинства («Типы стран»). */
+export function randomPopulation(g: G, c: Pick<Country, 'pos'>): Pick<Country, 'multicultural' | 'mainRaces' | 'mainCultures' | 'minorityRaces' | 'minorityCultures'> {
   const t = g.c.tables.world
-  const multicultural = die(g, 6) > t.homogeneousUpTo[pos]
+  const multicultural = die(g, 6) > t.homogeneousUpTo[c.pos]
   const n = () => (multicultural ? t.multiMain[0] + rnd(g, t.multiMain[1] - t.multiMain[0] + 1) : 1)
   const mainRaces = take<Race>(g, RACES, n())
   const mainCultures = take<Culture>(g, CULTURES, n())
@@ -45,15 +47,26 @@ function makeCountry(g: G, id: number, pos: Country['pos']): Country {
     if (!multicultural && die(g, 6) <= t.minorityRaceUpTo) minorityRaces.push(...take<Race>(g, RACES, 1, [...mainRaces, ...minorityRaces]))
     else minorityCultures.push(...take<Culture>(g, CULTURES, 1, [...mainCultures, ...minorityCultures]))
   }
+  return { multicultural, mainRaces, mainCultures, minorityRaces, minorityCultures }
+}
+
+/** Стабильность на старте: позиция, идеология против культуры большинства, отчуждённый Народ. Профили культур должны быть готовы. */
+export function startStability(g: G, c: Pick<Country, 'pos' | 'ideology' | 'alienated' | 'mainCultures'>): number {
+  const t = g.c.tables.world
+  const against = againstCulture(g, c.ideology, c.mainCultures[0])
+  const stability = t.stability.start + (c.pos === 'ядро' ? t.stability['ядро'] : c.pos === 'периферия' ? t.stability['периферия'] : 0)
+    + (against ? t.stability.ideologyVsCulture : 0) + (c.alienated === 'Народ' ? t.stability.alienatedPeople : 0)
+  return Math.min(t.stabilityCap[c.ideology] ?? t.stability.max, Math.max(t.stability.min, stability))
+}
+
+function makeCountry(g: G, id: number, pos: Country['pos']): Country {
+  const t = g.c.tables.world
+  const pop = randomPopulation(g, { pos })
   const ideology = pick(g, IDEOLOGIES)
   const { dominant, alienated } = classesFor(g, ideology)
-  // Идеология тянет против культуры большинства: её полюс противоположен положению основной культуры.
-  const against = againstCulture(g, ideology, mainCultures[0])
-  const stability = t.stability.start + (pos === 'ядро' ? t.stability['ядро'] : pos === 'периферия' ? t.stability['периферия'] : 0)
-    + (against ? t.stability.ideologyVsCulture : 0) + (alienated === 'Народ' ? t.stability.alienatedPeople : 0)
   const country: Country = {
-    id, name: t.countries[id].name, pos, multicultural, mainRaces, mainCultures, minorityRaces, minorityCultures,
-    ideology, dominant, alienated, stability: Math.min(t.stabilityCap[ideology] ?? t.stability.max, Math.max(t.stability.min, stability)), fashionIn: mainRaces[0], fashionOut: mainRaces[0], war: false, powerChanges: 0,
+    id, name: t.countries[id].name, pos, ...pop,
+    ideology, dominant, alienated, stability: startStability(g, { pos, ideology, alienated, mainCultures: pop.mainCultures }), fashionIn: pop.mainRaces[0], fashionOut: pop.mainRaces[0], war: false, powerChanges: 0,
   }
   rollFashion(g, country)
   return country
@@ -129,7 +142,18 @@ function origin(g: G, c: Country): { race: Race; culture: Culture } {
   return { race, culture }
 }
 
-export function* birth(g: G, seat: number, gen = 1): Flow<Player> {
+/** Всё, что решается при рождении: по кубикам («Быль») или сборкой («Сказка»). */
+export interface BirthData {
+  sex: Player['sex']; country: Country; race: Race; culture: Culture
+  fin: number; pos: number; coh: number; cls: Cls; phys: number
+  stats: Record<Stat, number>; predisp: Stat; character: number[]
+}
+
+/** Госсоциализм — без Олигархов: строка Финансов +2/+3 даёт Полицию («номенклатура», 24.11). */
+export const birthClass = (cls: Cls, c: Country): Cls => (cls === 'Олигархи' && c.ideology === 'Госсоциализм' ? 'Полиция' : cls)
+
+/** «Быль»: всё по кубикам. */
+function rolledBirth(g: G): BirthData {
   const t = g.c.tables.birth
   const sex = rnd(g, 2) ? 'м' : 'ж'
   const country = g.s.world.countries[rnd(g, g.s.world.countries.length)]
@@ -138,19 +162,31 @@ export function* birth(g: G, seat: number, gen = 1): Flow<Player> {
   const pos = scale(g, t.narrow)
   const coh = scale(g, t.wide)
   const phys = t.genetics[roll3(g).sum]
-  // Госсоциализм — без Олигархов: строка Финансов +2/+3 даёт Полицию («номенклатура», 24.11).
-  const rolled: Cls = t.familyClass[String(fin)][die(g, 6) - 1]
-  const cls: Cls = rolled === 'Олигархи' && country.ideology === 'Госсоциализм' ? 'Полиция' : rolled
+  const cls = birthClass(t.familyClass[String(fin)][die(g, 6) - 1], country)
   const stats = Object.fromEntries(STATS.map((s) => [s, die(g, t.statDie)])) as Record<Stat, number>
   stats['Смекалка'] = Math.floor((stats['Харизма'] + stats['Мудрость'] + stats['Интеллект']) / 3)
   const character = Array<number>(7).fill(0)
   character[rnd(g, 7)] = rnd(g, 2) ? 1 : -1
+  return { sex, country, race, culture, fin, pos, coh, cls, phys, stats, predisp: t.predisp[die(g, 6) - 1], character }
+}
+
+export function* birth(g: G, seat: number, gen = 1): Flow<Player> {
+  return yield* born(g, seat, gen, rolledBirth(g))
+}
+
+/**
+ * Родиться с этими данными: игрок, предметы семьи, смысл. meaning — смысл выбран при сборке («Сказка»);
+ * нет — Династия или бросок поиска, как обычно.
+ */
+export function* born(g: G, seat: number, gen: number, d: BirthData, meaning?: (p: Player) => Flow | void): Flow<Player> {
+  const t = g.c.tables.birth
+  const { sex, country, race, culture, fin, pos, coh, cls, phys, stats, predisp, character } = d
   const p: Player = {
     seat, name: g.s.config.seats[seat].name, gen, alive: true, finished: false,
     sex, race, culture, birthCountry: country.id, country: country.id, citizenship: [country.id],
     fin, pos, coh, familyCls: cls, cls, start: { fin, pos, coh, cls },
     phys, psy: t.scale5[String(coh)], vozm: t.scale5[String(fin)] + t.scale5[String(pos)],
-    stats, predisp: t.predisp[die(g, 6) - 1], unsealed: [], character,
+    stats, predisp, unsealed: [], character,
     seg: 0, cell: 0, turns: 0, skip: 0, stazh: 0, stazhHire: 0, donations: 0,
     items: [], achieved: {}, approved: [], happiness: 0,
     flags: {}, counters: {}, visits: {}, entry: {},
@@ -167,15 +203,23 @@ export function* birth(g: G, seat: number, gen = 1): Flow<Player> {
     yield* gainItem(g, p, name)
   }
   markEntry(g, p)
-  yield* meaningAtBirth(g, p)
+  if (meaning) { const flow = meaning(p); if (flow) yield* flow }
+  else yield* meaningAtBirth(g, p)
   settle(g, p)
   return p
 }
 
 export function* setup(g: G): Flow {
-  setupWorld(g)
-  setupPiles(g)
-  for (let seat = 0; seat < g.s.config.seats.length; seat++) yield* birth(g, seat)
+  if (g.s.config.start === 'tale') {
+    // «Сказка» («Легенда», «Сага»): мир и героев собирают игроки (концепция, «Сказка»).
+    yield* taleWorld(g)
+    setupPiles(g)
+    for (let seat = 0; seat < g.s.config.seats.length; seat++) yield* taleHero(g, seat)
+  } else {
+    setupWorld(g)
+    setupPiles(g)
+    for (let seat = 0; seat < g.s.config.seats.length; seat++) yield* birth(g, seat)
+  }
   g.s.phase = 'игра'
 }
 
