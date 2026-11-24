@@ -7,7 +7,7 @@
  * случайно, но по правилам «Сказки» (все культуры и расы представлены). Героя человек собирает сам, в пределах «Доли»;
  * герой ИИ собирается по его архетипу.
  */
-import { CULTURE_AXES, CULTURES, IDEOLOGIES, RACES, STATS } from '../data/schema.ts'
+import { CHAR_AXES, CULTURE_AXES, CULTURES, IDEOLOGIES, RACES, STATS } from '../data/schema.ts'
 import { ask, emit, pick, rnd, roll3, shuffle, type Flow, type G } from './core.ts'
 import { birthClass, born, classesFor, cultureProfile, randomPopulation, rollFashion, startStability, type BirthData } from './setup.ts'
 import { choosableMeanings, chooseMeaning, happinessOf } from './meaning.ts'
@@ -228,7 +228,28 @@ const POS_SHARE: Record<Pos, number> = { 'ядро': 1, 'полуперифер�
 const posBonus = (pos: Pos) => POS_SHARE[pos]
 
 /** Бюджет «Доля» (концепция): характеристики в сумме ≤ 18; Финансы + Положение + Сплочённость + позиция страны ≤ 0. */
-export const SHARE = { stats: 18, family: 0, statMin: 1, statMax: 4 }
+/** «Доля характера» (24.11): сумма модулей семи личных осей не больше character. */
+export const SHARE = { stats: 18, family: 0, statMin: 1, statMax: 4, character: 4 }
+
+/**
+ * Характер в пределах «Доли характера». base — с чего начать (архетип ИИ): лишние очки снимаются со случайных осей.
+ * Без base — случайная сборка: очко за очком на случайную ось в случайную сторону, пока доля не кончится
+ * или кубик не скажет «хватит».
+ */
+export function shareCharacter(g: G, base?: number[]): number[] {
+  const c = base ? [...base] : Array<number>(CHAR_AXES.length).fill(0)
+  const sum = () => c.reduce((a, v) => a + Math.abs(v), 0)
+  if (base) {
+    while (sum() > SHARE.character) { const i = pick(g, c.map((v, k) => (v ? k : -1)).filter((k) => k >= 0)); c[i] -= Math.sign(c[i]) }
+    return c
+  }
+  while (sum() < SHARE.character && rnd(g, 6) > 0) {
+    const i = rnd(g, c.length)
+    const dir = c[i] ? Math.sign(c[i]) : rnd(g, 2) ? 1 : -1
+    if (Math.abs(c[i]) < 2) c[i] += dir
+  }
+  return c
+}
 
 /** Классы, доступные при этих Финансах: строка таблицы «Класс семьи при рождении»; при госсоциализме вместо Олигархов — Полиция. */
 const rowClasses = (g: G, fin: number, c: Country): Cls[] => [...new Set(g.c.tables.birth.familyClass[String(fin)].map((x) => birthClass(x, c)))]
@@ -270,9 +291,19 @@ export function* taleHero(g: G, seat: number): Flow<Player> {
   const pos = yield* scaleQ('Положение семьи', fin, 1)
   const coh = yield* scaleQ('Сплочённость семьи', fin + pos, 0)
   const cls = (yield* q(`Класс семьи — из строки Финансов ${fin > 0 ? '+' : ''}${fin}`, rowClasses(g, fin, country).map((c) => ({ id: c, label: c })))) as Cls
+  // Характер собирается целиком: каждая ось −2…+2, сумма модулей не больше «Доли характера» (24.11).
+  const character = Array<number>(CHAR_AXES.length).fill(0)
+  let share = SHARE.character
+  for (const [i, [a, b]] of CHAR_AXES.entries()) {
+    const opts = [-2, -1, 0, 1, 2].map((v) => ({
+      id: String(v), label: v === 0 ? 'нейтрально' : `${v < 0 ? a : b}${Math.abs(v) === 2 ? ' (сильно)' : ''}`,
+      ...(Math.abs(v) > share ? { off: '«Доля характера» кончилась' } : {}),
+    }))
+    const v = Number(yield* q(`Характер: ${a} ↔ ${b} (в «Доле характера» осталось ${share})`, opts))
+    character[i] = v
+    share -= Math.abs(v)
+  }
   const t = g.c.tables.birth
-  const character = Array<number>(7).fill(0)
-  character[rnd(g, 7)] = rnd(g, 2) ? 1 : -1
   // Здоровье при рождении бросают как обычно: тело не выбирают даже в сказке.
   const data: BirthData = { sex, country, race, culture, fin, pos, coh, cls, phys: t.genetics[roll3(g).sum], stats, predisp, character }
   return yield* born(g, seat, 1, data, function* (p) {
@@ -305,7 +336,7 @@ function pilotOf(id: string): number {
 
 /**
  * Герой ИИ: сборка соавтора по архетипу со случайным разбросом (одно очко между шкалами семьи и одно между
- * характеристиками), характер — как у архетипа. Смысл — как card_value в sim3.py: пилотный итог карты плюс половина
+ * характеристиками), характер — архетипа, ужатый до «Доли характера». Смысл — как card_value в sim3.py: пилотный итог карты плюс половина
  * того, что уже выполнено при рождении.
  */
 export function* aiHero(g: G, seat: number, a: Archetype = ARCHETYPES[0], ownCharacter = true): Flow<Player> {
@@ -332,7 +363,7 @@ export function* aiHero(g: G, seat: number, a: Archetype = ARCHETYPES[0], ownCha
   const t = g.c.tables.birth
   const predisps = [...new Set(t.predisp)]
   const predisp = predisps.includes(focus[0]) ? focus[0] : pick(g, predisps)
-  const character = ownCharacter ? [...a.character] : (() => { const c = Array<number>(7).fill(0); c[rnd(g, 7)] = rnd(g, 2) ? 1 : -1; return c })()
+  const character = shareCharacter(g, ownCharacter ? a.character : undefined)
   const data: BirthData = {
     sex: rnd(g, 2) ? 'м' : 'ж', country, race: pick(g, country.mainRaces), culture: pick(g, country.mainCultures),
     fin, pos, coh, cls, phys: t.genetics[roll3(g).sum], stats, predisp, character,

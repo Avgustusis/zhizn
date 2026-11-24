@@ -56,7 +56,10 @@ describe('«Сказка» (Легенда, Сага)', () => {
         expect(sum).toBeLessThanOrEqual(SHARE.stats)
         for (const s of OWN) { expect(p.stats[s]).toBeGreaterThanOrEqual(1); expect(p.stats[s]).toBeLessThanOrEqual(4) }
         expect(p.fin + p.pos + p.coh + POS[e.state.world.countries[p.birthCountry].pos]).toBeLessThanOrEqual(SHARE.family)
-        expect(p.character).toEqual(ARCHETYPES.find((a) => a.id === seats[p.seat].archetype)!.character)
+        const arch = ARCHETYPES.find((a) => a.id === seats[p.seat].archetype)!.character
+        expect(p.character.reduce((s, v) => s + Math.abs(v), 0)).toBeLessThanOrEqual(SHARE.character)
+        // Ужат из архетипа: знак каждой черты — как у архетипа, сила не больше.
+        p.character.forEach((v, i) => { if (v) { expect(Math.sign(v)).toBe(Math.sign(arch[i])); expect(Math.abs(v)).toBeLessThanOrEqual(Math.abs(arch[i])) } })
         expect(p.meaning).toBeDefined()
         if (e.state.world.countries[p.birthCountry].ideology === 'Госсоциализм') expect(p.cls).not.toBe('Олигархи')
       }
@@ -72,6 +75,7 @@ describe('«Сказка» (Легенда, Сага)', () => {
       expect(OWN.reduce((a, s) => a + p.stats[s], 0)).toBeLessThanOrEqual(SHARE.stats)
       expect(p.fin + p.pos + p.coh + POS[e.state.world.countries[p.birthCountry].pos]).toBeLessThanOrEqual(SHARE.family)
       expect(p.meaning?.from).toBe('рождение')
+      expect(p.character.reduce((s, v) => s + Math.abs(v), 0)).toBeLessThanOrEqual(SHARE.character)
     }
   })
 
