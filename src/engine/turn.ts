@@ -10,7 +10,7 @@ import { happinessOf, markEntry, meaningAtEntry, meaningOf, settle } from './mea
 import { rollFashion } from './setup.ts'
 import { businessAtEntry, money } from './market.ts'
 import { whyNot } from './explain.ts'
-import { acculturate, decayStigmas, deportRisk, emigrate, naturalize, emigrationSummary } from './emigration.ts'
+import { acculturate, decayStigmas, deportRisk, emigrate, grewUpCitizen, naturalize, emigrationSummary } from './emigration.ts'
 import { backToFront, frontTurn, volunteerAsk, volunteerSides } from './war.ts'
 import { afterCard, atSegment } from './items.ts'
 import { pawn, sellable } from './life.ts'
@@ -161,15 +161,6 @@ export function* enterSegment(g: G, p: Player): Flow {
   }
   // Жетоны ◆: три на входе в Молодость, неиспользованные сгорают на выходе.
   p.youthTokens = seg === 'Молодость' ? g.c.tables.youthTokens : 0
-  // «Присяга» — выбор (23.11): согласие — статус; отказ ничего не стоит, класс остаётся, статуса нет (позже — только событием).
-  if (seg === 'Молодость' && p.cls === 'Армия' && p.citizenship.includes(p.country)) {
-    const a = yield* ask(g, p, 'предмет', 'Присяга: ты входишь в Молодость в армейской семье. Принимаешь «Присягу»?', [
-      { id: 'да', label: 'принять «Присягу»', note: 'ключ Армии: аттестация на «Офицерское звание» в Зрелости' },
-      { id: 'нет', label: 'отказаться', note: 'класс Армия остаётся; статус потом — только событием' },
-    ], { force: true })
-    if (a === 'да') yield* gainItem(g, p, 'Присяга')
-    else { say(g, p, 'отказался от «Присяги»'); count(p, 'отказ от Присяги') }
-  }
   // «Старый офицер» — ключ к «Офицерскому званию»: аттестация и без пяти лет Стажа.
   if (seg === 'Зрелость' && p.cls === 'Армия' && has(g, p, 'Присяга') && (p.stazh >= 5 || has(g, p, 'Старый офицер')) && !has(g, p, 'Офицерское звание')) {
     const stat = p.stats['Интеллект'] >= p.stats['Харизма'] ? 'Интеллект' as const : 'Харизма' as const
@@ -189,7 +180,21 @@ export function* enterSegment(g: G, p: Player): Flow {
   if (familismCohesion(g, p)) { say(g, p, 'Фамилизм: без семьи ты никто'); addParam(g, p, 'псих', familismCohesion(g, p), ctx) }
   yield* businessAtEntry(g, p)
   decayStigmas(g, p)
-  if (seg !== 'Детство') { yield* acculturate(g, p); naturalize(g, p) }
+  if (seg !== 'Детство') {
+    yield* acculturate(g, p)
+    // Выросшие в стране получают гражданство на входе в Молодость (25.11) — до «Присяги» и Рынка молодости.
+    if (seg === 'Молодость') grewUpCitizen(g, p)
+    naturalize(g, p)
+  }
+  // «Присяга» — выбор (23.11): согласие — статус; отказ ничего не стоит, класс остаётся, статуса нет (позже — только событием).
+  if (seg === 'Молодость' && p.cls === 'Армия' && p.citizenship.includes(p.country)) {
+    const a = yield* ask(g, p, 'предмет', 'Присяга: ты входишь в Молодость в армейской семье. Принимаешь «Присягу»?', [
+      { id: 'да', label: 'принять «Присягу»', note: 'ключ Армии: аттестация на «Офицерское звание» в Зрелости' },
+      { id: 'нет', label: 'отказаться', note: 'класс Армия остаётся; статус потом — только событием' },
+    ], { force: true })
+    if (a === 'да') yield* gainItem(g, p, 'Присяга')
+    else { say(g, p, 'отказался от «Присяги»'); count(p, 'отказ от Присяги') }
+  }
   for (const nodes of p.everySeg) yield* run(g, p, nodes, ctx)
   fire(g, p, 'вход в следующий отрезок')
   if (seg === 'Зрелость') fire(g, p, 'вход в Зрелость')

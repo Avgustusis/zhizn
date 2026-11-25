@@ -362,6 +362,29 @@ export function naturalize(g: G, p: Player): void {
   say(g, p, `гражданство: ${countryOf(g, p).name}`)
 }
 
+/**
+ * Выросшие в стране (соавтор, 25.11): кто приехал с семьёй до Молодости, на входе в Молодость получает гражданство
+ * без Стажа и без проверки; гражданство страны рождения остаётся. Сильный Этноцентризм страны: нужна аккультурация
+ * на шаге 2+ (или союз со страной рождения), иначе 🎲 Смекалка 10; не прошёл — дальше по взрослым правилам (naturalize).
+ * Запрет двойного гражданства (singleCitizenship) действует и здесь: это закон страны.
+ */
+export function grewUpCitizen(g: G, p: Player): void {
+  const t = g.c.tables.emigration
+  if (p.citizenship.includes(p.country) || has(g, p, 'Без документов')) return
+  const c = countryOf(g, p)
+  const ethno = g.s.world.cultures[c.mainCultures[0]][CULTURE_AXES.findIndex(([a]) => a === 'Этноцентризм')] === -2
+  let ok = !ethno || (p.counters['аккультурация'] ?? 0) >= t.grewUp.step || relation(g, p.birthCountry, p.country) === 'союз'
+  if (!ok) {
+    const roll = roll3(g)
+    ok = roll.sum + p.stats['Смекалка'] >= t.grewUp.dc
+    emit(g, { t: 'проверка', p: p.seat, stat: 'Смекалка', dice: roll.dice, kept: roll.sum, value: p.stats['Смекалка'], mod: 0, trump: 0, dc: t.grewUp.dc, ok, adv: 0, what: 'гражданство выросшего (сильный Этноцентризм)' })
+  }
+  if (!ok) { say(g, p, `сильный Этноцентризм: выросшему здесь гражданства не дали — натурализация по взрослым правилам`); return }
+  if (t.singleCitizenship.includes(c.ideology)) p.citizenship = []
+  p.citizenship.push(p.country)
+  say(g, p, `вырос в стране — гражданство: ${c.name}`)
+}
+
 /** «Без документов»: карта #закон — d6 1–2 высылка домой (из враждебной страны — тюрьма). */
 export function* deportRisk(g: G, p: Player): Flow {
   const t = g.c.tables.emigration

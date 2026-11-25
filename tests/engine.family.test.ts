@@ -7,6 +7,8 @@ import { gainItem } from '../src/engine/change.ts'
 import { run } from '../src/engine/exec.ts'
 import { classByRow, familyClass, familyRoll, gsClass, nationalize, suitcases } from '../src/engine/family.ts'
 import { enterSegment } from '../src/engine/turn.ts'
+import { grewUpCitizen } from '../src/engine/emigration.ts'
+import { CULTURE_AXES } from '../src/data/schema.ts'
 import type { Player, Request } from '../src/engine/types.ts'
 
 const real = loadContent()
@@ -202,5 +204,40 @@ describe('Олигархи при госсоциализме (24.11)', () => {
     e.state.world.countries[p.country].ideology = 'Госсоциализм'
     drive(run(e.g, p, c.effect, newCtx('карта', { card: c.id })))
     expect([p.vozm, p.cls]).toEqual([8, 'Народ'])
+  })
+
+  it('выросшие в стране (25.11): гражданство на входе в Молодость, своё остаётся; сильный Этноцентризм — шаг 2+ или Смекалка 10', () => {
+    const ax = CULTURE_AXES.findIndex(([a]) => a === 'Этноцентризм')
+    const setup = (seed: number, ethno: number) => {
+      const r = lab(seed, { seg: 2, cls: 'Народ', familyCls: 'Народ' })
+      const dest = r.e.state.world.countries.find((c) => c.id !== r.p.birthCountry && !['Национализм', 'Военная диктатура'].includes(c.ideology))!
+      r.p.country = dest.id
+      r.p.counters['аккультурация'] = 0
+      r.e.state.world.cultures[dest.mainCultures[0]][ax] = ethno
+      r.e.state.world.relations = {}
+      return { ...r, dest }
+    }
+    const a = setup(1, 0)
+    grewUpCitizen(a.e.g, a.p)
+    expect(a.p.citizenship).toEqual([a.p.birthCountry, a.dest.id])
+    // Сильный Этноцентризм, шаг 2 — без проверки.
+    const b = setup(2, -2); b.p.counters['аккультурация'] = 2
+    grewUpCitizen(b.e.g, b.p)
+    expect(b.p.citizenship).toContain(b.dest.id)
+    // Сильный Этноцентризм, шаг 0: проверка Смекалки 10 — с −20 не пройти, с +20 не провалить.
+    const c = setup(3, -2); c.p.stats['Смекалка'] = -20
+    grewUpCitizen(c.e.g, c.p)
+    expect(c.p.citizenship).toEqual([c.p.birthCountry])
+    const d = setup(4, -2); d.p.stats['Смекалка'] = 20
+    grewUpCitizen(d.e.g, d.p)
+    expect(d.p.citizenship).toContain(d.dest.id)
+    // Вход в Молодость: гражданство — до «Присяги» (армейская семья получает вопрос).
+    const e = setup(5, 0); Object.assign(e.p, { cls: 'Армия', familyCls: 'Армия' })
+    let asked = false
+    const flow = enterSegment(e.e.g, e.p)
+    let r = flow.next()
+    while (!r.done) { const q = r.value as Request; if (q.text.startsWith('Присяга')) asked = true; r = flow.next(q.options.find((o) => !o.off)!.id) }
+    expect(e.p.citizenship).toContain(e.dest.id)
+    expect(asked).toBe(true)
   })
 })
