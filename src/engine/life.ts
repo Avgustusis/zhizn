@@ -101,7 +101,7 @@ export function* giveItem(g: G, p: Player, ctx: Ctx): Flow {
 export function giveAll(g: G, p: Player, to: string): void {
   const n = Math.max(0, p.vozm)
   p.counters['отдано последним'] = n
-  if (n) { say(g, p, `отдано ${to}: ${n} возм.`); addParam(g, p, 'возм', -n, newCtx('правило')) }
+  if (n) { say(g, p, `отдано ${to}`); addParam(g, p, 'возм', -n, newCtx('правило')) }
 }
 
 // ── «Род»: Летопись и Итог воспитания ───────────────────────────────────

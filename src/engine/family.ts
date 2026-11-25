@@ -16,7 +16,8 @@ const kid = (p: Player) => p.seg <= 1
 export function familyClass(g: G, p: Player, cls: Cls): void {
   if (cls === 'Олигархи' && countryOf(g, p).ideology === 'Госсоциализм') { say(g, p, 'при госсоциализме Олигархов нет: он из органов — Полиция'); cls = 'Полиция' }
   if (cls === p.familyCls && (!kid(p) || cls === p.cls)) return
-  say(g, p, `класс семьи: ${p.familyCls} → ${cls}`)
+  // Ребёнку класс меняет setClass (своя строка в журнале) — не повторяем.
+  if (!kid(p)) say(g, p, `класс семьи: ${p.familyCls} → ${cls}`)
   p.familyCls = cls
   if (kid(p)) setClass(g, p, cls)
 }
@@ -52,7 +53,8 @@ export function* suitcases(g: G, p: Player): Flow {
   const fits = g.s.world.countries.filter((x) => x.id !== c.id && (core ? x.pos === 'полупериферия' : rank(x.pos) > rank(c.pos)))
   if (!fits.length) { say(g, p, 'подходящей страны нет — остаёмся'); return }
   const dest = fits.length === 1 ? fits[0] : fits[rollDie(g, p, fits.length, `куда едет семья: d${fits.length}`) - 1]
-  say(g, p, core ? `родителей послали специалистами: ${dest.name}` : `семья эмигрирует: ${dest.name}`)
+  // Куда — в строке «переезд» (arrive); здесь только что за переезд.
+  say(g, p, core ? 'родителей послали работать специалистами' : 'семья эмигрирует')
   const cls = p.cls
   yield* arrive(g, p, dest.id, true, 'по своей воле', true)
   const ctx = newCtx('правило')

@@ -93,7 +93,7 @@ export function destCard(g: G, p: Player, c: Country, kind: Kind, o: EmigrateOpt
   if (kind === 'бегство') lines.push('бегство: без цены и без границы; 🎲 Ловкость 15, провал — −3 физ. и половина Возможностей')
   else if (o.noCheck) lines.push('без проверки границы')
   else if (rel === 'вражда') lines.push('только нелегально (вражда)')
-  else if (closed) lines.push('нельзя легально: из твоей страны выпускают только бегством — только нелегально')
+  else if (closed) lines.push('из твоей страны законно не выпускают — только нелегально («Без документов»)')
   else lines.push('легально')
   // 2. Цена.
   const price = o.free || kind === 'бегство' ? 0 : Math.max(0, t.price[c.pos] - (o.invite ? 1 : 0))
@@ -189,7 +189,7 @@ export function* emigrate(g: G, p: Player, o: EmigrateOptions = {}): Flow<boolea
     if (price) addParam(g, p, 'возм', -price, ctx)
     if (!legalExit(g, p, dest) && !o.noCheck) {
       legal = false
-      say(g, p, 'легально не выехать: только нелегально')
+      say(g, p, 'из страны законно не выпускают: только нелегально')
     } else if (!o.noCheck && !citizen) {
       // «Земляк за границей», «Дальний родственник»: +2 к броску (сверх потолка поправок).
       const mod = borderMod(g, p, c, !!o.invite) + (yield* borderHelp(g, p))
@@ -266,7 +266,7 @@ export function* arrive(g: G, p: Player, dest: number, legal: boolean, kind: Kin
     if (item.kind === 'знакомый') { removeHeld(g, p, h); lossPsy(g, p, h); continue }
     if (item.group === 'Друг' || item.group === 'Наставник' || item.group === 'Покровитель') {
       const limit = h.name === 'Друг детства' ? t.childhoodFriendLoss : t.linkLoss
-      if (rollDie(g, p, 6, `связь «${h.name}» едет?`) <= limit) { say(g, p, `«${h.name}» остаётся`); removeHeld(g, p, h); lossPsy(g, p, h) }
+      if (rollDie(g, p, 6, `связь «${h.name}» едет?`) <= limit) { removeHeld(g, p, h); lossPsy(g, p, h) }
     }
     if (item.kind === 'вещь' && rollDie(g, p, 6, `вещь «${h.name}» в дороге`) <= t.thingLoss) { say(g, p, `«${h.name}» потеряна в дороге`); removeHeld(g, p, h) }
   }
@@ -384,6 +384,27 @@ export function legalize(g: G, p: Player): void {
   const ok = roll.sum + p.stats['Смекалка'] >= t.legalizeDc
   emit(g, { t: 'проверка', p: p.seat, stat: 'Смекалка', dice: roll.dice, kept: roll.sum, value: p.stats['Смекалка'], mod: 0, trump: 0, dc: t.legalizeDc, ok, adv: 0, what: 'легализация' })
   if (ok) for (const h of held(g, p, 'Без документов')) removeHeld(g, p, h)
+}
+
+/**
+ * Сводка у кнопки «эмигрировать» и у вариантов карт, ведущих к эмиграции (замечание Августа 25.11): цена и шанс границы
+ * по странам, куда можно уехать; что едет и что останется — в карточке страны при выборе.
+ */
+export function emigrationSummary(g: G, p: Player, arg = ''): string {
+  const t = g.c.tables.emigration
+  const home = countryOf(g, p)
+  if (arg.startsWith('домой')) return 'домой: без проверки границы'
+  if (arg.includes('сразу в страну ядра')) return 'в страну Ядра: даром, без проверки границы'
+  const invite = arg.includes('по приглашению')
+  const others = g.s.world.countries.filter((c) => c.id !== p.country)
+  const range = (xs: number[], f: (x: number) => string) => { const lo = Math.min(...xs), hi = Math.max(...xs); return lo === hi ? f(lo) : `${f(lo)}–${f(hi)}` }
+  const prices = others.map((c) => Math.max(0, t.price[c.pos] - (invite ? 1 : 0)))
+  const price = range(prices, (n) => String(n)) + ' возм.'
+  if (t.closed.includes(home.ideology)) return `из твоей страны законно не выпускают — только нелегально («Без документов»); цена ${price}`
+  const legal = others.filter((c) => relation(g, p.country, c.id) !== 'вражда')
+  if (!legal.length) return `только нелегально (вражда со всеми); цена ${price}`
+  const chances = legal.map((c) => (p.citizenship.includes(c.id) ? 1 : chance(t.border.dc - borderMod(g, p, c, invite))))
+  return `цена ${price}; граница ${range(chances, (x) => pct(x))} — смотря куда; что едет и что останется — при выборе страны`
 }
 
 /** Правило карты «эмиграция» с аргументом — в параметры переезда. */

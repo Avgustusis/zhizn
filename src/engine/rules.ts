@@ -12,7 +12,7 @@ import { addParam, charStep, gainItem, removeHeld, wed } from './change.ts'
 import { acquaintance, burn, kontora, lawTrap, matchmaking, matchNote, partnerClass, rite, work } from './market.ts'
 import { foundNow, searchNow } from './meaning.ts'
 import { crisisCheck, flight, turmoilRule } from './world.ts'
-import { emigrationRule } from './emigration.ts'
+import { emigrationRule, emigrationSummary } from './emigration.ts'
 import { draftCheck, frontNow, warRule } from './war.ts'
 import { traceRule } from './social.ts'
 import { buyWeapon, leaflets, nightSearch, search } from './search.ts'
@@ -148,7 +148,7 @@ const RULES: Record<string, Rule> = {
 const SEARCH: Check = { stat: 'Красота', dc: 12, mods: [{ if: { p: 'Харизма', gte: 6 }, add: 1 }] }
 
 /** Подписи у вариантов выбора, которые ведут к правилу (шанс и поправки, которых нет в обычной проверке). */
-export const RULE_NOTES: Record<string, (g: G, p: Player) => string> = { 'сватовство': matchNote }
+export const RULE_NOTES: Record<string, (g: G, p: Player, arg?: string) => string> = { 'сватовство': matchNote, 'эмиграция': emigrationSummary }
 
 export function* runRule(g: G, p: Player, rule: string, arg: string | undefined, ctx: Ctx): Flow {
   if (UNTIL_SEG.includes(rule)) { p.rules[rule] = { ...(arg ? { arg } : {}), seg: p.seg }; return }

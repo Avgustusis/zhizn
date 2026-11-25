@@ -74,7 +74,7 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
     const forced = bound.some(Boolean)
     const options = n.choose.map((o, i) => ({
       id: String(i), label: o.label, effect: o.then,
-      ...((): { note?: string } => { const r = o.then.find((x) => 'rule' in x && RULE_NOTES[x.rule]) as { rule: string } | undefined; return r ? { note: RULE_NOTES[r.rule](g, p) } : {} })(),
+      ...((): { note?: string } => { const r = o.then.find((x) => 'rule' in x && RULE_NOTES[x.rule]) as { rule: string; arg?: string } | undefined; return r ? { note: RULE_NOTES[r.rule](g, p, r.arg) } : {} })(),
       ...((): { check?: CheckPreview } => { const c = firstCheck(o.then); return c ? { check: previewCheck(g, p, c, ctx) } : {} })(),
       ...(!cond(g, p, o.if, ctx) ? { off: 'недоступно' } : forced && !bound[i] ? { off: 'не в твоём характере' } : {}),
     }))

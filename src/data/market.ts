@@ -455,6 +455,8 @@ const rise = (cls: Extract<Node, { cls: unknown }>['cls']): Node => ({ if: { cls
 const youthMarket: Action[] = [
   {
     id: 'молодость-армия', label: 'Уйти добровольцем в армию', slots: ['◆'], once: true, place: 'Рынок молодости',
+    // Без гражданства страны в Армию не берут (концепция, «Гражданство») — и «Присягу» не дают (случай Августа 25.11).
+    refuse: [{ unless: { citizen: true }, text: 'без гражданства страны в армию не берут' }],
     effect: [
       { gain: 'Присяга' }, statsUp({ 'Выносливость': 1 }),
       {

@@ -186,7 +186,7 @@ export function answer(g: G, req: Request): string {
       if (ids.includes('нет')) {
         const roll = (p.turns * 37 + p.seat * 11 + g.s.worldTurns * 5) % 100
         const home = g.s.world.countries[p.country]
-        const better = open.filter((o) => /^\d+$/.test(o.id) && rankOf(g.s.world.countries[Number(o.id)].pos) > rankOf(home.pos) && !/легально нельзя/.test(o.note ?? ''))
+        const better = open.filter((o) => /^\d+$/.test(o.id) && rankOf(g.s.world.countries[Number(o.id)].pos) > rankOf(home.pos) && !/только нелегально/.test(o.note ?? ''))
         if (req.text.startsWith('Бежать')) {
           const lost = (p.counters['поражение в Смуте'] ?? 0) > 0 && ['Военная диктатура', 'Госсоциализм', 'Теократия', 'Национализм'].includes(home.ideology)
           return roll < (lost ? 30 : 5) && better.length ? better[0].id : 'нет'

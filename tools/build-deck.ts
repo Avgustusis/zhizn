@@ -52,7 +52,9 @@ const effects: Effects = { ...existing, ...(effectsPath ? JSON.parse(readFileSyn
 /** Мир и Смута: эффект в нескольких колонках — собираем оригинал из них. */
 function composeSrc(r: Record<string, string>): string {
   const cols = r['Игроки'] !== undefined ? ['Страна', 'Игроки'] : ['Для всех', 'Победители', 'Проигравшие', 'Нейтралы']
-  return cols.map((c) => `${c}: ${r[c]}`).join(' · ')
+  // Пустая колонка («—») не печатается; если пусто всё — «Всё спокойно» (замечание Августа 25.11).
+  const parts = cols.filter((c) => r[c] && r[c].trim() !== '—' && r[c].trim() !== '-').map((c) => `${c}: ${r[c]}`)
+  return parts.length ? parts.join(' · ') : 'Всё спокойно'
 }
 
 /** Тип карты, если в документе его нет: развилка — решение; иначе по разбору (выбор → Р, проверка → П, иначе Б). */

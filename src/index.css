@@ -103,3 +103,8 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; }
 .option .chk { margin: 0 0 0 8px; font-size: 0.85rem; }
 .option .parsed { margin-left: 8px; }
 .option .what summary { cursor: pointer; color: var(--muted); font-size: 0.8rem; margin-left: 8px; }
+
+/* Лист персонажа: линии между частями; предупреждение (нет гражданства). Жетон «СЛЕД» канала. */
+.sheet-sep { border: 0; border-top: 1px solid rgba(30, 30, 36, 0.25); margin: 0.5em 0; }
+.warn { color: #8a2a1e; font-size: 0.9em; }
+.trace-token { display: inline-block; color: #fbf8f1; font: 600 0.72em/1.6 'IBM Plex Mono', monospace; letter-spacing: 0.04em; padding: 0 0.55em; border-radius: 1em; border: 1px solid #1e1e24; vertical-align: 0.1em; margin: 0 0.15em; }

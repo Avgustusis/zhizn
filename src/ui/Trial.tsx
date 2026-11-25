@@ -10,7 +10,9 @@ import { aiAnswer } from '../engine/ai/index.ts'
 import { ARCHETYPES, bureauName } from '../engine/ai/persona.ts'
 import { meaningOf, meaningStatus } from '../engine/meaning.ts'
 import type { LogEvent, Option, Player, SaveFile, SeatConfig } from '../engine/types.ts'
-import { glyphs, renderNodes } from '../data/render.ts'
+import { renderNodes } from '../data/render.ts'
+import { capital, glyphText, splitOptions, traceChannel } from './text.ts'
+import { Rich } from './Rich.tsx'
 import { describe } from './log.ts'
 
 const content = loadContent()
@@ -89,11 +91,24 @@ function Sheet({ e, p, current, nurse }: { e: Engine; p: Player; current: boolea
       </p>
       <details>
         <summary>лист персонажа</summary>
-        <p>{p.sex === 'м' ? 'Мужчина' : 'Женщина'}, {p.race}, культура — {p.culture}. Живёт: {country.name} ({country.pos}, {country.ideology}; правит {country.dominant}, отчуждён {country.alienated}).</p>
+        {/* Части листа разделены линиями (замечание Августа 25.11; итоговый вид — «Личное дело», этап 5). */}
+        <p>{p.sex === 'м' ? 'Мужчина' : 'Женщина'}, {p.race}, культура — {p.culture}.</p>
+        <hr className="sheet-sep" />
+        <p>Живёт: {country.name} ({glyphText(country.pos)}, {country.ideology}; правит {country.dominant}, отчуждён {country.alienated}).</p>
+        <p>Гражданство: {p.citizenship.map((id) => s.world.countries[id]?.name).join(', ') || 'нет'}{p.country !== p.birthCountry ? ` · аккультурация ${p.counters['аккультурация'] ?? 0} из 3 · Стаж здесь ${p.counters['Стаж здесь'] ?? 0}` : ''}.</p>
+        {!p.citizenship.includes(p.country) && (
+          <p className="warn">Нет гражданства страны, где живёшь: закрыты классы Армия и Полиция, нет пенсии и льгот, в «Смуте» — помеха. Натурализация: аккультурация 2+ и Стаж 5 в этой стране, потом 🎲 Смекалка 12 (союзная страна — без проверки, в браке +2).</p>
+        )}
+        <hr className="sheet-sep" />
         <p>Семья: финансы {signed(p.fin)}, положение {signed(p.pos)}, сплочённость {signed(p.coh)}; класс семьи — {p.familyCls}.</p>
+        <hr className="sheet-sep" />
         <p>{STATS.map((st) => `${st} ${p.stats[st]}${p.predisp === st ? '*' : ''}`).join(' · ')} <span className="num">(* предрасположенность)</span></p>
-        <p>Характер: {poles.join(', ') || 'ровный'}. Стаж {p.stazh}.</p>
+        <p>Характер: {poles.join(', ') || 'ровный'}.</p>
+        <hr className="sheet-sep" />
+        <p>Стаж {p.stazh}.</p>
+        <hr className="sheet-sep" />
         <p>Предметы: {p.items.map((h) => `${h.name}${h.spouse ? ' (Супруг(а))' : ''}`).join(', ') || 'нет'}.</p>
+        <hr className="sheet-sep" />
         {m && (
           <>
             <p>Смысл: <b>{m.title}</b>{p.meaning?.verdict ? ` — культура ${p.meaning.verdict > 0 ? 'одобряет' : 'осуждает'}` : ''}</p>
@@ -115,18 +130,21 @@ function frontCard(id: string): (typeof content.decks)[string][number] | undefin
 }
 
 /** Карта целиком, как в настольной версии: название, текст, оригинальный эффект, теги — и что из неё вышло. */
-function CardPanel({ id, deck, who, result, pending, onClose }: { id: string; deck: string; who: string; result: string[]; pending: boolean; onClose: () => void }) {
+function CardPanel({ id, deck, who, cls, result, pending, onClose }: { id: string; deck: string; who: string; cls?: string; result: string[]; pending: boolean; onClose: () => void }) {
   const card = Object.values(content.decks).flat().find((c) => c.id === id) ?? frontCard(id)
   if (!card) return null
+  const channel = traceChannel(card.trace, cls, content.tables.social.channels)
+  // Пока выбираешь, правило карты — в вариантах ниже (без повтора, замечание Августа 25.11).
+  const inOptions = pending && card.src && /(^|\s)А\)\s/.test(card.src)
   return (
     <article className="cardpanel">
       <p className="who">{who} · {deck}{card.cls ? ` · ${card.cls}` : ''} · {{ 'Б': 'бывает', 'П': 'проверка', 'Р': 'решение' }[card.kind]}</p>
       <h3>{card.title}{card.miracle ? ' ✨' : ''}</h3>
       {card.text && <p className="text">{card.text}</p>}
-      <p className="src">{glyphs(card.src)}</p>
+      {!inOptions && <p className="src"><Rich text={card.src} channel={channel} /></p>}
       <p className="tags">{card.tags.join(' ')}</p>
-      {card.trace && <p className="tags">{card.trace}</p>}
-      {result.length > 0 && <div className="result"><h4>Что вышло</h4>{result.map((r, i) => <p key={i}>{r}</p>)}</div>}
+      {card.trace && <p className="tags"><Rich text={card.trace} channel={channel} /></p>}
+      {result.length > 0 && <div className="result"><h4>Что вышло</h4>{result.map((r, i) => <p key={i}><Rich text={r} /></p>)}</div>}
       {!pending && <button onClick={onClose}>Закрыть карту</button>}
       {pending && <p className="num">выбери вариант ниже</p>}
     </article>
@@ -134,15 +152,16 @@ function CardPanel({ id, deck, who, result, pending, onClose }: { id: string; de
 }
 
 /** Причины закрытия, которые игроку важно видеть сразу. */
-const SHOWN_OFF = /убеждений|Банк не верит|кредитор не даст|нет денег|не в твоём характере/
+const SHOWN_OFF = /убеждений|Банк не верит|кредитор не даст|нет денег|не в твоём характере|без гражданства/
 
 /** Вариант ответа: проверка (тег, характеристика, сложность, поправки, шанс) и что будет — без выбора вслепую. */
-function OptionButton({ o, market, onPick }: { o: Option; market: boolean; onPick: () => void }) {
+function OptionButton({ o, market, words, onPick }: { o: Option; market: boolean; words?: string; onPick: () => void }) {
   const c = o.check
-  const lines = o.effect ? renderNodes(o.effect) : []
+  // Есть слова карты («А) затянуться: …») — показываем их вместо разбора эффекта.
+  const lines = o.effect && !words ? renderNodes(o.effect) : []
   return (
     <div className="option">
-      <button onClick={onPick}>{o.label}{o.note ? <span className="num"> {o.note.split(' ‖ ').map((x, i) => <span key={i}>{i ? <br /> : null}{x}</span>)}</span> : null}</button>
+      <button onClick={onPick}>{words ? <Rich text={words} /> : capital(glyphText(o.label))}{o.note ? <span className="num"> {o.note.split(' ‖ ').map((x, i) => <span key={i}>{i ? <br /> : null}<Rich text={x} /></span>)}</span> : null}</button>
       {c && (
         <p className="chk">
           🎲 {c.stat} {c.dc}{c.tags.length ? ` · ${c.tags.join(' ')}` : ''} · у тебя {c.stat} {c.value}
@@ -151,8 +170,8 @@ function OptionButton({ o, market, onPick }: { o: Option; market: boolean; onPic
         </p>
       )}
       {lines.length > 0 && (market
-        ? <details className="what"><summary>что будет</summary><pre className="parsed">{lines.join('\n')}</pre></details>
-        : <pre className="parsed">{lines.join('\n')}</pre>)}
+        ? <details className="what"><summary>что будет</summary><pre className="parsed">{glyphText(lines.join('\n'))}</pre></details>
+        : <pre className="parsed">{glyphText(lines.join('\n'))}</pre>)}
     </div>
   )
 }
@@ -267,6 +286,10 @@ export default function Trial() {
   const nextCard = cardAt >= 0 ? s.log.findIndex((ev, i) => i > cardAt && (ev.t === 'карта' || ev.t === 'ход')) : -1
   const cardResult = cardAt >= 0 ? s.log.slice(cardAt + 1, nextCard < 0 ? s.log.length : nextCard).map((ev) => describe(ev, s)).filter((d) => d.kind !== 'quiet') : []
   const closeCard = () => setSeen(nextCard < 0 ? s.log.length : nextCard)
+  // Варианты карты словами карты: «А) Затянуться: …» (замечание Августа 25.11); не вышло разбить — разбор эффекта.
+  const askCard = req?.card ? Object.values(content.decks).flat().find((c) => c.id === req.card) : undefined
+  const parts = askCard && req && req.type === 'карта' ? splitOptions(askCard.src, req.options.length) : undefined
+  const cardWords: Record<number, string> = Object.fromEntries((parts ?? []).map((w, i) => [i, `${'АБВГДЕ'[i]}) ${capital(w)}`]))
   const ranking = [...s.players].sort((a, b) => b.happiness - a.happiness || (b.death?.round ?? 999) - (a.death?.round ?? 999))
   return (
     <section className="trial">
@@ -278,22 +301,23 @@ export default function Trial() {
       <div className="sheets">{s.players.map((p) => <Sheet key={p.seat} e={e} p={p} current={req?.player === p.seat} nurse={req?.player === p.seat && req.options.some((o) => o.id === 'сиделка') ? () => answer('сиделка') : undefined} />)}</div>
 
       <div className="log">
-        {log.map((ev, i) => { const d = describe(ev, s); return <p key={s.log.length - log.length + i} className={d.kind}>{d.text}</p> })}
+        {log.map((ev, i) => { const d = describe(ev, s); return <p key={s.log.length - log.length + i} className={d.kind}><Rich text={d.text} /></p> })}
         <div ref={logEnd} />
       </div>
 
       {shownCard ? (
-        <CardPanel id={shownCard.id} deck={shownCard.deck} who={s.players[shownCard.p]?.name ?? ''} result={cardResult.map((d) => d.text)} pending={nextCard < 0 && !!req && req.card === shownCard.id} onClose={closeCard} />
+        <CardPanel id={shownCard.id} deck={shownCard.deck} who={s.players[shownCard.p]?.name ?? ''} cls={s.players[shownCard.p]?.cls} result={cardResult.map((d) => d.text)} pending={nextCard < 0 && !!req && req.card === shownCard.id} onClose={closeCard} />
       ) : null}
       {(!shownCard || (nextCard < 0 && req?.card === shownCard.id)) && (req ? (
         <div className="ask">
           <p className="who">{s.players[req.player]?.name ?? s.config.seats[req.player]?.name}</p>
-          <p className="q">{req.text}</p>
+          {/* Вопрос карты, показанной выше, не повторяем (название и текст — на карте). */}
+          {!(shownCard && req.card === shownCard.id && req.type === 'карта') && <p className="q"><Rich text={req.text} /></p>}
           <div className="options">
-            {req.options.filter((o) => !o.off).map((o) => <OptionButton key={o.id} o={o} market={req.type === 'действие'} onPick={() => answer(o.id)} />)}
+            {req.options.filter((o) => !o.off).map((o) => <OptionButton key={o.id} o={o} market={req.type === 'действие'} words={cardWords[Number(o.id)]} onPick={() => answer(o.id)} />)}
             {/* Закрытое характером, банком или деньгами — неактивной кнопкой с причиной; прочее — в свёрнутом списке. */}
             {req.options.filter((o) => o.off && SHOWN_OFF.test(o.off)).map((o) => (
-              <div className="option" key={o.id}><button disabled>{o.label} <span className="num">— {o.off}{o.note ? o.note.split(' ‖ ').map((x, i) => <span key={i}><br />{x}</span>) : null}</span></button></div>
+              <div className="option" key={o.id}><button disabled>{capital(glyphText(o.label))} <span className="num">— {o.off}{o.note ? o.note.split(' ‖ ').map((x, i) => <span key={i}><br />{x}</span>) : null}</span></button></div>
             ))}
             {req.options.some((o) => o.off && !SHOWN_OFF.test(o.off)) && (
               <details className="closed">

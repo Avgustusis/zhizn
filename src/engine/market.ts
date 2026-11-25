@@ -124,7 +124,7 @@ export function* work(g: G, p: Player, kind: string): Flow {
   if (kind === 'работа') {
     addParam(g, p, 'возм', D + 1, ctx)
     addStazh(p, true)
-    if (p.rules['работа на пенсии']) { say(g, p, 'работа на пенсии: ещё −1 физ.'); addParam(g, p, 'физ', -1, ctx) }
+    if (p.rules['работа на пенсии']) { say(g, p, 'работа на пенсии'); addParam(g, p, 'физ', -1, ctx) }
     const r = rollDie(g, p, 6, 'износ')
     if (own === 'риск') { if (r <= t.work.mafiaRisk['работа']) yield* gainItem(g, p, 'Дурная слава'); return }
     if (r <= 2) { hit(g, p, 'физ', 1, ctx); hit(g, p, 'псих', 1, ctx) } else if (r <= 4) hit(g, p, rollDie(g, p, 6, 'износ: какое здоровье') >= 5 ? other : own, 1, ctx)
@@ -135,7 +135,7 @@ export function* work(g: G, p: Player, kind: string): Flow {
   addStazh(p, true)
   // Усердие: риск выгорания.
   if (burnout(g, p)) { say(g, p, 'Усердие: выгорание'); addParam(g, p, 'псих', burnout(g, p), ctx) }
-  if (p.rules['работа на пенсии']) { say(g, p, 'работа на пенсии: ещё −1 физ.'); addParam(g, p, 'физ', -1, ctx) }
+  if (p.rules['работа на пенсии']) { say(g, p, 'работа на пенсии'); addParam(g, p, 'физ', -1, ctx) }
   const r = rollDie(g, p, 6, 'износ')
   if (own === 'риск') {
     hit(g, p, 'физ', 1, ctx); hit(g, p, 'псих', 1, ctx)

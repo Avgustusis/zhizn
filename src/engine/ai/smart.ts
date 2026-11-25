@@ -104,9 +104,9 @@ function aimed(g: G, p: Player, req: Request, ids: string[], w: Wants, rand: () 
       if (!ids.includes('нет')) return undefined
       if (w.stay) return 'нет'
       if (!w.emigrate) return undefined
-      // Куда: позиция повыше, без пометки «легально нельзя», если есть выбор.
+      // Куда: позиция повыше, без пометки «только нелегально», если есть выбор.
       const rank = (id: string) => ({ 'ядро': 2, 'полупериферия': 1, 'периферия': 0 } as Record<string, number>)[g.s.world.countries[Number(id)]?.pos ?? ''] ?? -1
-      const legal = req.options.filter((o) => !o.off && /^\d+$/.test(o.id) && !/легально нельзя/.test(o.note ?? ''))
+      const legal = req.options.filter((o) => !o.off && /^\d+$/.test(o.id) && !/только нелегально/.test(o.note ?? ''))
       const any = req.options.filter((o) => !o.off && /^\d+$/.test(o.id))
       const list = legal.length ? legal : any
       return list.sort((a, b) => rank(b.id) - rank(a.id))[0]?.id

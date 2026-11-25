@@ -10,7 +10,7 @@ import { happinessOf, markEntry, meaningAtEntry, meaningOf, settle } from './mea
 import { rollFashion } from './setup.ts'
 import { businessAtEntry, money } from './market.ts'
 import { whyNot } from './explain.ts'
-import { acculturate, decayStigmas, deportRisk, emigrate, naturalize } from './emigration.ts'
+import { acculturate, decayStigmas, deportRisk, emigrate, naturalize, emigrationSummary } from './emigration.ts'
 import { backToFront, frontTurn, volunteerAsk, volunteerSides } from './war.ts'
 import { afterCard, atSegment } from './items.ts'
 import { pawn, sellable } from './life.ts'
@@ -433,8 +433,8 @@ export function* playerTurn(g: G, p: Player): Flow {
       { id: 'бросок', label: 'бросить кубик' },
       // Из закрытой страны (госсоциализм, военная диктатура, полицейское государство) «по своей воле» не выпускают — только нелегально.
       ...(canLeave ? [t.emigration.closed.includes(countryOf(g, p).ideology)
-        ? { id: 'эмиграция', label: 'уехать нелегально вместо хода', note: 'легально из твоей страны выпускают только бегством' }
-        : { id: 'эмиграция', label: 'эмигрировать вместо хода' }] : []),
+        ? { id: 'эмиграция', label: 'уехать нелегально вместо хода', note: emigrationSummary(g, p) }
+        : { id: 'эмиграция', label: 'эмигрировать вместо хода', note: emigrationSummary(g, p) }] : []),
       ...(volunteer.length ? [{ id: 'доброволец', label: 'уйти добровольцем на «Фронт» вместо хода' }] : []),
       ...(sellable(g, p).length ? [{ id: 'скупка', label: 'продать вещь в скупку', note: 'бесплатно, ход не тратится' }] : []),
       ...(anytimePlays(g, p).length ? [{ id: 'сыграть', label: 'сыграть карту (козырь, вещь, знакомый)', note: 'ход не тратится' }] : []),

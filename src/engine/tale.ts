@@ -122,8 +122,9 @@ function* population(g: G, t: Table, c: Draft, all: Draft[], first: boolean): Fl
   ], first)
   if (kind === 'по кубикам' || t.auto.has('население') || t.auto.has('всё') || !t.seats.length) { Object.assign(c, randomPopulation(g, c)); return }
   c.multicultural = kind === 'мультикультурная'
-  const inWorld = (x: string) => all.some((d) => [...d.mainRaces, ...d.mainCultures, ...d.minorityRaces, ...d.minorityCultures].includes(x as never))
-  const note = (x: string) => (inWorld(x) ? {} : { note: 'в мире ещё нет' })
+  // Сколько стран уже держат эту расу или культуру (основной или меньшинством) — подсказка при сборке (25.11).
+  const where = (x: string) => all.filter((d) => [...d.mainRaces, ...d.mainCultures, ...d.minorityRaces, ...d.minorityCultures].includes(x as never)).length
+  const note = (x: string) => { const n = where(x); return { note: n ? `уже в ${n} ${n === 1 ? 'стране' : 'странах'}` : 'в мире ещё нет' } }
   const mains = function* <T extends string>(list: readonly T[], into: T[], what: string): Flow {
     for (let k = 0; k < (c.multicultural ? 3 : 1); k++) {
       const opts: Option[] = list.filter((x) => !into.includes(x)).map((x) => ({ id: x, label: x, ...note(x) }))

@@ -163,7 +163,7 @@ export function setClass(g: G, p: Player, cls: Cls): boolean {
   p.cls = cls
   emit(g, { t: 'класс', p: p.seat, from, to: cls })
   // Понижение класса — −1 психики (24.11): переход в Народ из любого класса или выход из Олигархов — по любой причине.
-  if (cls === 'Народ' || from === 'Олигархи') { say(g, p, 'понижение класса: −1 псих.'); addParam(g, p, 'псих', g.c.tables.demotionPsy, newCtx('правило')) }
+  if (cls === 'Народ' || from === 'Олигархи') { say(g, p, 'понижение класса'); addParam(g, p, 'псих', g.c.tables.demotionPsy, newCtx('правило')) }
   count(p, 'смена класса')
   if (from === 'Армия') count(p, 'уход из Армии')
   if (from === 'Мафия') count(p, 'уход из Мафии')
@@ -424,7 +424,8 @@ export function lossPsy(g: G, p: Player, h: Held, death = false): void {
   const v = p.character[charAxisOf('Верность')[0]]
   const pole = v > 0 ? 'Верность' : v < 0 ? 'Влюбчивость' : 'нет'
   const n = col === 'split' && death ? Math.min(t[pole].split, t.deathSplit) : t[pole][col]
-  say(g, p, `потеря: «${h.name}» — ${n} псих.${pole !== 'нет' ? ` (${pole})` : ''}`)
+  // Кого потерял — уже в строке «… — потерян», число — в строке психики; здесь только черта, если она меняет цену.
+  if (n !== t['нет'][col]) say(g, p, `${pole}: потеря бьёт ${n < t['нет'][col] ? 'сильнее' : 'слабее'}`)
   addParam(g, p, 'псих', n, newCtx('правило'))
 }
 

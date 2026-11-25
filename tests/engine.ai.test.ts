@@ -3,7 +3,7 @@ import { loadContent } from '../src/data/content.ts'
 import { Engine } from '../src/engine/engine.ts'
 import { aiAnswer } from '../src/engine/ai/index.ts'
 import { near, outlook } from '../src/engine/ai/goal.ts'
-import { ARCHETYPES, bureauName, tasteOf } from '../src/engine/ai/persona.ts'
+import { ARCHETYPES, bureauName, CALLSIGN_OF, CALLSIGN_TITLES, tasteOf } from '../src/engine/ai/persona.ts'
 import { wantsOf } from '../src/engine/ai/wants.ts'
 import type { SeatConfig } from '../src/engine/types.ts'
 
@@ -82,7 +82,11 @@ describe('ИИ этапа 4', () => {
   })
 
   it('псевдоним «Случайно» — номер Бюро и архетип', () => {
-    expect(bureauName()).toMatch(/^№ [1-9]\d{5} «[А-ЯЁ][а-яё]+»$/)
+    expect(bureauName()).toMatch(/^№ [1-9]\d{5} «[А-ЯЁ][а-яё]+( [А-ЯЁ][а-яё]+)+»$/)
+    expect(new Set(CALLSIGN_TITLES).size).toBe(100)
+    expect(new Set(CALLSIGN_OF).size).toBe(100)
+    // Позывные не совпадают с именами архетипов ИИ.
+    for (let i = 0; i < 200; i++) expect(ARCHETYPES.some((a) => bureauName().includes(`«${a.name}»`))).toBe(false)
   })
 })
 
