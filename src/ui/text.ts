@@ -50,39 +50,59 @@ export function splitOptions(src: string, count: number): string[] | undefined {
  * Группы — через « · »; в группе новая строка после «.», если дальше заглавная, и после «;», если дальше новое условие
  * (D6, успех, провал, иначе, «Что-то:»). Подпись группы (Страна, Игроки, проверка) висит слева, строки — под ней.
  */
-const GROUP_LABEL = /^((?:Страна|Игроки|Для всех|Победители|Проигравшие|Нейтралы|Класс|Культура|Раса|Все)\s*:|🎲[^:;]{1,40}?\d+(?:\s*\([^)]*\))?\s*:|[АБВГДЕ]\)\s[^:;—]{1,40}?:)\s*/
+const CATEGORY = /^((?:Страна|Игроки|Для всех|Победители|Проигравшие|Нейтралы|Класс|Культура|Раса|Все)\s*:)\s*/
+const CHECK_LABEL = /^(🎲[^:;]{1,40}?\d+(?:\s*\([^)]*\))?\s*:)\s*/
+/** Вариант: «А) дать:» или «А) свадьба —». */
+const OPTION_LABEL = /^([АБВГДЕ]\)\s[^:;—(]{1,40}?(?::|\s—))\s*/
+/** Условие, внутри которого свои варианты: «Есть Партнёр: А) …». */
+const PARENT_LABEL = /^([А-ЯЁ][^:;—()]{1,30}:)\s*(?=[АБВГДЕ]\)\s)/
 /** Имена, с которых начинается своё условие: полюса культуры и характера, идеологии, классы, культуры, расы, позиции. */
 const NAMES = [...CULTURE_AXES.flat(), ...CHAR_AXES.flat(), ...IDEOLOGIES, ...CLASSES, ...CULTURES, ...RACES, 'Ядро', 'Полупериферия', 'Периферия', 'Большинство', 'Чужак', 'Мужчины', 'Женщины', 'Диктатуры', 'Демократии']
 // Основы слов без окончаний и без регистра: «демократии», «клептократия», «диктатуры» ловятся так же, как «Технократия».
 const STEMS = [...new Set(NAMES.flatMap((n) => n.toLowerCase().split(/[\s-]+/)).filter((w) => w.length >= 4).map((w) => (w.length >= 6 ? w.slice(0, -2) : w)))]
 const NAMED_HEAD = new RegExp(`^(${STEMS.join('|')})[а-яё]*(?:\\s(?:и|или)\\s[^:—;]{1,30}?)?(:|\\s—\\s)`, 'i')
-const HEAD_AFTER_SEMI = /^(\d*[dD]\d|успех|провал|[Ии]наче|в культуре\s|при\s[А-ЯЁ]|[А-ЯЁA-Z][^:—.;()]{0,40}:\s)/
-/** Под проверкой висят только её исходы; прочее — новая строка во всю ширину. */
-const CHECK_TAIL = /^(успех|провал|[Ии]наче|\d*[dD]\d)/
-export function layoutSrc(src: string): { label?: string; lines: string[] }[] {
+const HEAD_AFTER_SEMI = /^(\d*[dD]\d|успех|провал|[Ии]наче|если\s|в культуре\s|при\s[А-ЯЁ]|[АБВГДЕ]\)\s|[А-ЯЁA-Z][^:—.;()]{0,40}:\s)/
+/** Под проверкой висят только её исходы. */
+const CHECK_TAIL = /^(успех|провал|[Ии]наче|\d*[dD]\d)/i
+/** Новое условие со своей подписью («Уже в браке: …») — не продолжение варианта. */
+const NEW_COND = /^(?!(успех|провал|иначе)(?![а-яё]))[А-ЯЁ][^:—;()]{0,40}:\s/i
+const depth = (x: string) => (x.match(/\(/g)?.length ?? 0) - (x.match(/\)/g)?.length ?? 0)
+
+export type SrcGroup = { label?: string; lines: string[] }
+export function layoutSrc(src: string): SrcGroup[] {
   const lines: string[] = []
   for (const group of src.split(/\s+·\s+/)) {
     let first = true
     for (const piece of group.split(/(?<=[.;])\s+/)) {
       const prev = lines[lines.length - 1]
-      const brk = first || (prev.endsWith(';') ? HEAD_AFTER_SEMI.test(piece) || NAMED_HEAD.test(piece) : /^([А-ЯЁA-Z]|🎲|\d*D\d)/.test(piece))
+      // Внутри скобок строку не рвём: «Сплочённость 9 (Традиция +1/+2; Фамилизм …)».
+      const brk = first || (depth(prev) <= 0 && (prev.endsWith(';') ? HEAD_AFTER_SEMI.test(piece) || NAMED_HEAD.test(piece) : /^([А-ЯЁA-Z]|🎲|\d*D\d)/.test(piece)))
       if (brk) lines.push(piece)
       else lines[lines.length - 1] = `${prev} ${piece}`
       first = false
     }
   }
-  const out: { label?: string; lines: string[] }[] = []
-  let open: { label?: string; lines: string[] } | undefined
+  const out: SrcGroup[] = []
+  let open: (SrcGroup & { kind: 'cat' | 'check' | 'opt' | 'parent' }) | undefined
+  const start = (kind: 'cat' | 'check' | 'opt' | 'parent', label: string, rest: string) => { open = { kind, label, lines: [rest] }; out.push(open) }
   for (const line of lines) {
-    const m = line.match(GROUP_LABEL)
-    if (m && line.length > m[0].length) { open = { label: m[1], lines: [line.slice(m[0].length)] }; out.push(open); continue }
-    if (open?.label && !(open.label.startsWith('🎲') && !CHECK_TAIL.test(line))) { open.lines.push(line); continue }
+    const cat = line.match(CATEGORY), chk = line.match(CHECK_LABEL), opt = line.match(OPTION_LABEL), par = line.match(PARENT_LABEL)
+    const keep = open && (
+      open.kind === 'cat' ? !cat :
+      open.kind === 'check' ? CHECK_TAIL.test(line) :
+      open.kind === 'parent' ? !cat && !par && !chk && (!!opt || CHECK_TAIL.test(line) || !NEW_COND.test(line)) :
+      !cat && !opt && !par && !NEW_COND.test(line))
+    if (keep) { open!.lines.push(line); continue }
+    if (cat && line.length > cat[0].length) { start('cat', cat[1], line.slice(cat[0].length)); continue }
+    if (par) { start('parent', par[1], line.slice(par[0].length)); continue }
+    if (opt && line.length > opt[0].length) { start('opt', opt[1], line.slice(opt[0].length)); continue }
+    if (chk && line.length > chk[0].length) { start('check', chk[1], line.slice(chk[0].length)); continue }
     open = undefined
     const last = out[out.length - 1]
     if (last && !last.label) last.lines.push(line)
     else out.push({ lines: [line] })
   }
-  return out
+  return out.map(({ label, lines: l }) => (label ? { label, lines: l } : { lines: l }))
 }
 
 /**
@@ -112,4 +132,27 @@ export function noteBeyondLabel(label: string, text: string): string {
   if (a === b) return ''
   if (b.startsWith(a)) return text.trim().slice(label.trim().length).trim()
   return text
+}
+
+/**
+ * Разбор эффекта (renderNodes: строки с отступами) — в одну фразу для раскладки layoutSrc (замечание Августа 26.11:
+ * моноширинные столбики «если …: / +1 возм.» читать трудно). «если X:» + дети → «если X — …»; «🎲 Ловкость 12» → «🎲 Ловкость 12: успех — …; провал — …».
+ */
+export function compactLines(lines: string[]): string {
+  type T = { text: string; kids: T[] }
+  const root: T = { text: '', kids: [] }
+  const stack: { d: number; n: T }[] = [{ d: -1, n: root }]
+  for (const raw of lines) {
+    const d = (raw.match(/^ */)?.[0].length ?? 0) / 2
+    const n: T = { text: raw.trim().replace(/если культура за полюс «([^»]+)»/g, '$1').replace(/^если идеология: /, ''), kids: [] }
+    while (stack[stack.length - 1].d >= d) stack.pop()
+    stack[stack.length - 1].n.kids.push(n)
+    stack.push({ d, n })
+  }
+  const say = (n: T): string => {
+    if (!n.kids.length) return n.text
+    const inner = n.kids.map(say).join(n.kids.some((k) => k.kids.length) ? '; ' : ', ')
+    return n.text.endsWith(':') ? `${n.text.slice(0, -1)} — ${inner}` : `${n.text}: ${inner}`
+  }
+  return capital(root.kids.map(say).join('; '))
 }

@@ -11,6 +11,7 @@ import { mentorStart, onArrive } from './items.ts'
 import { borderHelp, smugglerChannel } from './tricks.ts'
 import { addParam, count, dropHeld, enterInst, gainItem, lossPsy, removeHeld, rollDie, setClass } from './change.ts'
 import type { Country, Culture, Player } from './types.ts'
+import { draftOutlook } from './war.ts'
 
 export type Kind = 'по своей воле' | 'бегство' | 'нелегально' | 'домой'
 export interface EmigrateOptions {
@@ -67,7 +68,10 @@ export function borderMod(g: G, p: Player, dest: Country, invite = false): numbe
   return clamp(borderParts(g, p, dest, invite).reduce((s, [, n]) => s + n, 0), -t.cap, t.cap)
 }
 
-/** Можно ли выехать легально: не госсоциализм и не военная диктатура, не во враждебную страну (если нет гражданства там). */
+/**
+ * Можно ли выехать легально: не из страны с закрытой границей (гражданину страны назначения — можно) и не во враждебную
+ * страну — при вражде легально нельзя даже с её гражданством (концепция, «Отношения стран»).
+ */
 export function legalExit(g: G, p: Player, dest: number): boolean {
   if (p.citizenship.includes(dest) && relation(g, p.country, dest) !== 'вражда') return true
   return !g.c.tables.emigration.closed.includes(countryOf(g, p).ideology) && relation(g, p.country, dest) !== 'вражда'
@@ -164,7 +168,7 @@ export function* emigrate(g: G, p: Player, o: EmigrateOptions = {}): Flow<boolea
   const options = (o.dest !== undefined ? [o.dest] : others).map(describeDest)
   // Ни на одну страну не хватает денег — переезд не состоится.
   if (!options.some((x) => !x.off)) { say(g, p, 'уехать не на что'); return false }
-  const choice = yield* ask(g, p, 'эмиграция', kind === 'бегство' ? 'Бежать: куда?' : 'Куда уехать?', [...options, ...(o.optional || o.dest === undefined ? [{ id: 'нет', label: 'остаться' }] : [])], { force: true })
+  const choice = yield* ask(g, p, 'эмиграция', kind === 'бегство' ? 'Бежать: куда?' : 'Куда уехать?', [...options, ...(o.optional || o.dest === undefined ? [{ id: 'нет', label: 'остаться', ...(draftOutlook(g, p) ? { note: draftOutlook(g, p) } : {}) }] : [])], { force: true })
   if (choice === 'нет') return false
   const dest = Number(choice)
   const c = g.s.world.countries[dest]

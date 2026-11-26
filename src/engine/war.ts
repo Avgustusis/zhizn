@@ -229,6 +229,34 @@ export function* draftCheck(g: G, p: Player): Flow {
   enlist(g, p, w, side)
 }
 
+/**
+ * Призывной ли ты сейчас — подпись у «остаться» в окнах войны (замечание Августа 26.11). Без бросков: те же условия,
+ * что в draftCheck. Пусто — страна не воюет.
+ */
+export function draftOutlook(g: G, p: Player): string {
+  const w = g.s.war
+  if (!w || w.over !== undefined) return ''
+  const side = sideOf(w, p.country)
+  if (side === undefined) return ''
+  const t = T(g).draft
+  const rank = has(g, p, 'Офицерское звание') ? 'офицером («Офицерское звание»)' : `рядовым${has(g, p, 'Присяга') ? ' («Присяга» без звания)' : ''}`
+  if (served(p, w)) return 'призыв: на этой войне ты уже был'
+  if (!t.segs.includes(segNameOf(p))) return 'призыв: не призывной возраст'
+  if (p.inst) return ''
+  if (!p.citizenship.includes(p.country)) return 'призыв: без гражданства не призывают'
+  if (!cond(g, p, { draftable: true })) return 'призыв: тебя не призывают'
+  if (t.never.includes(p.cls)) return `призыв: класс ${p.cls} не призывают`
+  const ideo = g.s.world.countries[p.country].ideology
+  if (t.contract.includes(ideo) && !t.always.includes(p.cls) && cellFor(w, side) > t.contractUntil) return 'призыв: армия контрактная — пока не призывают'
+  if (t.exemptBusiness.some((n) => has(g, p, n))) return 'призыв: ЧВК — воюешь чужими руками'
+  const wide = t.wide.includes(ideo)
+  const own = t.ownOnly[ideo]
+  const upTo = t.always.includes(p.cls) ? 6 : own?.cls === p.cls ? own.upTo : p.cls === 'Народ' ? (wide ? t.peopleWide : t.people) : wide ? t.othersWide : t.others
+  const out = t.exempt.filter((n) => has(g, p, n)).map((n) => `«${n}»`)
+  if (p.cls === 'Мафия') out.push(`откуп −${ideo === 'Клептократия' ? t.buyoutKlepto : t.buyout} возм.`)
+  return `призыв: ${upTo >= 6 ? 'неизбежен' : `D6 1–${upTo} каждый мировой ход`}, ${rank}${out.length ? `; освободиться: ${out.join(', ')}` : ''}`
+}
+
 /** Правило «фронт»: карта отправляет сразу на «Фронт» (страна игрока воюет). */
 export function frontNow(g: G, p: Player): void {
   const w = g.s.war
@@ -258,7 +286,7 @@ export function* volunteerAsk(g: G, p: Player): Flow {
   if (!w || !list.length) return
   const a = yield* ask(g, p, 'фронт', `Война: ${names(g, w.sides[0])} против ${names(g, w.sides[1])}. Уйти добровольцем?`, [
     ...list.map((x) => ({ id: `сторона ${x.side}`, label: `добровольцем за ${names(g, w.sides[x.side])}`, ...(x.foreign ? { note: 'чужая война: Стаж без пенсии' } : {}) })),
-    { id: 'нет', label: 'остаться дома' },
+    { id: 'нет', label: 'остаться дома', ...(draftOutlook(g, p) ? { note: draftOutlook(g, p) } : {}) },
   ], { force: true })
   if (a === 'нет') return
   const x = list.find((v) => `сторона ${v.side}` === a)!

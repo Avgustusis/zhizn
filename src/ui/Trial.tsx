@@ -5,13 +5,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { loadContent } from '../data/content.ts'
 import { CHAR_AXES, CULTURE_AXES, SEGMENTS, STATS } from '../data/schema.ts'
+import { profileOf } from '../engine/cond.ts'
 import { Engine, modeName } from '../engine/engine.ts'
 import { aiAnswer } from '../engine/ai/index.ts'
 import { ARCHETYPES, bureauName } from '../engine/ai/persona.ts'
 import { meaningOf, meaningStatus } from '../engine/meaning.ts'
 import type { LogEvent, Option, Player, SaveFile, SeatConfig } from '../engine/types.ts'
 import { renderNodes } from '../data/render.ts'
-import { capital, glyphText, layoutSrc, noteBeyondLabel, splitOptions, traceChannel, wordsFromSrc } from './text.ts'
+import { capital, compactLines, glyphText, layoutSrc, noteBeyondLabel, splitOptions, traceChannel, wordsFromSrc } from './text.ts'
 import { Rich } from './Rich.tsx'
 import { describe } from './log.ts'
 
@@ -75,6 +76,9 @@ function Sheet({ e, p, current, nurse }: { e: Engine; p: Player; current: boolea
   const country = s.world.countries[p.country]
   const cell = content.board.segments[p.seg].cells[p.cell]
   const status = !p.alive ? `умер: ${p.death?.cause}, ${p.death?.seg}` : p.finished ? 'дошёл до «Финала»' : p.inst ? (p.inst.kind === 'фронт' ? `на «Фронте»${p.inst.foreign ? ' (доброволец, чужая война)' : ''}` : `${p.inst.kind}`) : ''
+  // Положения культуры (как в игре — с поправкой идеологии страны): сильные первыми, затем умеренные (замечание Августа 26.11).
+  const prof = profileOf(e.g, p)
+  const cult = [2, 1].flatMap((lvl) => CULTURE_AXES.flatMap(([a, b], i) => (Math.abs(prof[i]) === lvl ? [`${prof[i] < 0 ? a : b}${lvl === 2 ? ' (сильно)' : ''}`] : [])))
   const poles = CHAR_AXES.flatMap(([a, b], i) => (p.character[i] ? [`${p.character[i] < 0 ? a : b}${Math.abs(p.character[i]) === 2 ? ' (сильно)' : ''}`] : []))
   const m = meaningOf(e.g, p)
   return (
@@ -93,6 +97,7 @@ function Sheet({ e, p, current, nurse }: { e: Engine; p: Player; current: boolea
         <summary>лист персонажа</summary>
         {/* Части листа разделены линиями (замечание Августа 25.11; итоговый вид — «Личное дело», этап 5). */}
         <p>{p.sex === 'м' ? 'Мужчина' : 'Женщина'}, {p.race}, культура — {p.culture}.</p>
+        <p>Культура{p.culture2 ? ` (бикультурность: ${p.culture} и ${p.culture2})` : ''}: {cult.join(', ') || 'ровная'}.</p>
         <hr className="sheet-sep" />
         <p>Живёт: {country.name} ({glyphText(country.pos)}, {country.ideology}; правит {country.dominant}, отчуждён {country.alienated}).</p>
         <p>Гражданство: {p.citizenship.map((id) => s.world.countries[id]?.name).join(', ') || 'нет'}{p.country !== p.birthCountry ? ` · аккультурация ${p.counters['аккультурация'] ?? 0} из 3 · Стаж здесь ${p.counters['Стаж здесь'] ?? 0}` : ''}.</p>
@@ -177,7 +182,7 @@ function OptionButton({ o, market, words, onPick }: { o: Option; market: boolean
   const lines = one && extra !== one ? [] : parsed
   return (
     <div className="option">
-      <button onClick={onPick}>{words ? <SrcLayout src={words} /> : capital(glyphText(o.label))}{extra && !lines.length ? <span className="num"> {extra}</span> : null}{o.note ? <span className="num"> {o.note.split(' ‖ ').map((x, i) => <span key={i}>{i ? <br /> : null}<Rich text={x} /></span>)}</span> : null}</button>
+      <button onClick={onPick}>{words ? <SrcLayout src={words} /> : capital(glyphText(o.label))}{extra && !lines.length ? <span className="num"> {extra}</span> : null}{o.note ? <span className="opt-note"> {o.note.split(' ‖ ').map((x, i) => <span key={i}>{i ? <br /> : null}<Rich text={capital(x)} /></span>)}</span> : null}</button>
       {c && (
         <p className="chk">
           🎲 {c.stat} {c.dc}{c.tags.length ? ` · ${c.tags.join(' ')}` : ''} · у тебя {c.stat} {c.value}
@@ -186,11 +191,13 @@ function OptionButton({ o, market, words, onPick }: { o: Option; market: boolean
         </p>
       )}
       {lines.length > 0 && (market
-        ? <details className="what"><summary>что будет</summary><pre className="parsed">{glyphText(lines.join('\n'))}</pre></details>
-        : <pre className="parsed">{glyphText(lines.join('\n'))}</pre>)}
+        ? <details className="what"><summary>что будет</summary><div className="parsed prose"><SrcLayout src={glyphText(compactLines(lines))} /></div></details>
+        : <div className="parsed prose"><SrcLayout src={glyphText(compactLines(lines))} /></div>)}
     </div>
   )
 }
+
+type Notice = { at: number; end: number; who: number; title: string; lines: string[] }
 
 export default function Trial() {
   // Движок меняется на месте, поэтому лежит в обёртке: новая обёртка — новый кадр.
@@ -202,6 +209,8 @@ export default function Trial() {
   const [error, setError] = useState('')
   /** До какого места журнала игрок уже видел карты: новые карты показываются целиком и закрываются игроком. */
   const [seen, setSeen] = useState(0)
+  /** Ответы человека на рынке (место в журнале и что выбрал): итог со случайностью всплывает окном (замечание Августа 26.11). */
+  const [acts, setActs] = useState<{ at: number; label: string; p: number; youth: boolean }[]>([])
   const logEnd = useRef<HTMLDivElement | null>(null)
   const e = box.e
   useEffect(() => { logEnd.current?.scrollIntoView({ block: 'nearest' }) })
@@ -226,7 +235,15 @@ export default function Trial() {
   }
   const start = () => act(() => { setSeen(0); return autoAI(new Engine(content, { span: 'one', start: startMode, seed, seats: table.map((t) => ({ ...t })) })) })
   const resume = () => act((x) => { const y = saved ? Engine.load(content, saved) : x; if (y) setSeen(y.state.log.length); return autoAI(y) })
-  const answer = (id: string) => act((x) => { x?.answer(id); return autoAI(x) })
+  const answer = (id: string) => act((x) => {
+    const r = x?.pending
+    if (x && r && r.type === 'действие' && !x.state.config.seats[r.player]?.ai) {
+      const mark = { at: x.state.log.length, label: r.options.find((o) => o.id === id)?.label ?? id, p: r.player, youth: id.startsWith('молодость') }
+      queueMicrotask(() => setActs((a) => [...a.slice(-20), mark]))
+    }
+    x?.answer(id)
+    return autoAI(x)
+  })
   const setSeat = (i: number, patch: Partial<SeatConfig>) => setTable((t) => t.map((x, j) => (j === i ? { ...x, ...patch } : x)))
   /** Отвечать наугад, пока не дойдём до следующего вопроса «твой ход» (или до конца партии). */
   // Карты, сыгранные за ИИ, считаются просмотренными; следующие (ход человека) снова показываются целиком.
@@ -302,6 +319,29 @@ export default function Trial() {
   const nextCard = cardAt >= 0 ? s.log.findIndex((ev, i) => i > cardAt && (ev.t === 'карта' || ev.t === 'ход')) : -1
   const cardResult = cardAt >= 0 ? s.log.slice(cardAt + 1, nextCard < 0 ? s.log.length : nextCard).map((ev) => describe(ev, s)).filter((d) => d.kind !== 'quiet') : []
   const closeCard = () => setSeen(nextCard < 0 ? s.log.length : nextCard)
+  // Окна «что вышло» вне карт: итог рынка со случайностью, новый знакомый, уход с фронта (замечание Августа 26.11).
+  const human = (pi?: number) => pi !== undefined && !s.config.seats[pi]?.ai
+  const blockEnd = (i: number) => { const k = s.log.findIndex((ev, j) => j > i && (ev.t === 'карта' || ev.t === 'ход')); return k < 0 ? s.log.length : k }
+  const notices: Notice[] = []
+  for (const m of acts) {
+    if (m.at < from) continue
+    const end = blockEnd(m.at - 1)
+    const evs = s.log.slice(m.at, end).filter((ev) => !('p' in ev) || ev.p === m.p)
+    if (m.youth || evs.some((ev) => ev.t === 'проверка' || (ev.t === 'предмет' && ev.how === 'получен'))) notices.push({ at: m.at, end, who: m.p, title: `${m.youth ? 'Рынок молодости' : 'Рынок'}: ${capital(glyphText(m.label))}`, lines: evs.map((ev) => describe(ev, s)).filter((d) => d.kind !== 'quiet').map((d) => d.text) })
+  }
+  s.log.forEach((ev, i) => {
+    if (i < from) return
+    if (ev.t === 'предмет' && ev.how === 'получен' && human(ev.p) && content.items.find((it) => it.name === ev.name)?.kind === 'знакомый') {
+      const it = content.items.find((x) => x.name === ev.name)!
+      notices.push({ at: i, end: i + 1, who: ev.p, title: `Новое знакомство: «${ev.name}»`, lines: Object.entries(it.src).map(([k, v]) => `${k}: ${v}`) })
+    }
+    if (ev.t === 'институт' && ev.kind === 'фронт' && ev.how === 'выход' && human(ev.p)) {
+      const next = s.log.slice(i + 1, i + 3).filter((x) => 'p' in x && x.p === ev.p)
+      notices.push({ at: i, end: i + 1 + next.length, who: ev.p, title: 'Война для тебя кончилась', lines: [describe(ev, s), ...next.map((x) => describe(x, s))].map((d) => d.text) })
+    }
+  })
+  // Первое по журналу: окно раньше карты — сначала окно; внутри показанной карты окна не нужны (итог уже в «что вышло»).
+  const notice = notices.filter((n) => cardAt < 0 || n.at < cardAt).sort((a, b) => a.at - b.at)[0]
   // Варианты карты словами карты: «А) Затянуться: …» (замечание Августа 25.11); не вышло разбить — разбор эффекта.
   const askCard = req?.card ? Object.values(content.decks).flat().find((c) => c.id === req.card) : undefined
   const parts = askCard && req && req.type === 'карта' ? splitOptions(askCard.src, req.options.length) : undefined
@@ -325,10 +365,17 @@ export default function Trial() {
         <div ref={logEnd} />
       </div>
 
-      {shownCard ? (
+      {notice ? (
+        <article className="cardpanel">
+          <p className="who">{s.players[notice.who]?.name}</p>
+          <h3>{notice.title}</h3>
+          <div className="result">{notice.lines.map((r, i) => <p key={i}><Rich text={r} /></p>)}</div>
+          <button onClick={() => setSeen(notice.end)}>Закрыть</button>
+        </article>
+      ) : shownCard ? (
         <CardPanel id={shownCard.id} deck={shownCard.deck} who={s.players[shownCard.p]?.name ?? ''} cls={s.players[shownCard.p]?.cls} result={cardResult.map((d) => d.text)} pending={nextCard < 0 && !!req && req.card === shownCard.id} head={req?.card === shownCard.id ? fromSrc?.head : undefined} onClose={closeCard} />
       ) : null}
-      {(!shownCard || (nextCard < 0 && req?.card === shownCard.id)) && (req ? (
+      {!notice && (!shownCard || (nextCard < 0 && req?.card === shownCard.id)) && (req ? (
         <div className="ask">
           {/* Имя — один раз: если вопрос к карте выше, оно уже в шапке карты (замечание Августа 26.11). */}
           {!(shownCard && req.card === shownCard.id) && <p className="who">{s.players[req.player]?.name ?? s.config.seats[req.player]?.name}</p>}

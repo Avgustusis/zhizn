@@ -115,3 +115,8 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; }
 .src-grid .src-label { white-space: nowrap; }
 .src-grid .src-wide { grid-column: 1 / -1; }
 .src-grid .src-line { display: block; }
+
+/* Разбор эффекта варианта — обычным шрифтом, по строкам (замечание Августа 26.11). */
+.parsed.prose { font-family: inherit; font-size: 0.92rem; white-space: normal; }
+/* Пояснения к вариантам (страна эмиграции, призыв) — обычным шрифтом, мельче и бледнее (замечание Августа 26.11). */
+.opt-note { font-size: 0.85rem; color: var(--muted); }

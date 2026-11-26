@@ -4,7 +4,7 @@ import { gainItem } from '../src/engine/change.ts'
 import type { Flow } from '../src/engine/core.ts'
 import { Engine } from '../src/engine/engine.ts'
 import { answer } from '../src/engine/ai/simple.ts'
-import { cellFor, coupPeace, declareWar, draftCheck, endWar, frontLoss, frontRound, frontTurn, moveMark, soldiers, volunteerSides, warRule } from '../src/engine/war.ts'
+import { cellFor, coupPeace, declareWar, draftCheck, draftOutlook, endWar, frontLoss, frontRound, frontTurn, moveMark, soldiers, volunteerSides, warRule } from '../src/engine/war.ts'
 import { worldTurn } from '../src/engine/world.ts'
 import type { Content, Player, Request } from '../src/engine/types.ts'
 
@@ -96,6 +96,20 @@ describe('призыв', () => {
     warFor(o.e, o.p)
     drive(draftCheck(o.e.g, o.p))
     expect(o.p.inst).toBeUndefined()
+  })
+
+  it('подпись у «остаться»: призывной ли ты и кем пойдёшь (26.11)', () => {
+    const { e, p } = lab(4, { cls: 'Армия' })
+    expect(draftOutlook(e.g, p)).toBe('')
+    const { own } = warFor(e, p)
+    own.ideology = 'Социал-демократия'
+    expect(draftOutlook(e.g, p)).toBe('призыв: неизбежен, рядовым')
+    p.items.push({ uid: 9101, name: 'Офицерское звание' })
+    expect(draftOutlook(e.g, p)).toContain('офицером')
+    p.cls = 'Народ'
+    expect(draftOutlook(e.g, p)).toMatch(/^призыв: D6 1–4/)
+    p.citizenship = []
+    expect(draftOutlook(e.g, p)).toBe('призыв: без гражданства не призывают')
   })
 
   it('не гражданин и не Молодость–Зрелость — не призывают', () => {
