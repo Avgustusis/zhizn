@@ -384,7 +384,7 @@ export type LogEvent =
   | { t: 'карта'; p: number; id: string; title: string; deck: string }
   | { t: 'пропуск'; p: number; id: string; why: string }
   | { t: 'проверка'; p: number; stat: Stat; dice: number[]; kept: number; value: number; mod: number; trump: number; dc: number; ok: boolean; auto?: true; adv: number; what?: string }
-  | { t: 'число'; p: number; param: string; from: number; to: number; delta: number }
+  | { t: 'число'; p: number; param: string; from: number; to: number; delta: number; base?: number; parts?: [string, number][] }
   | { t: 'предмет'; p: number; name: string; how: 'получен' | 'потерян' | 'сыгран' | 'свадьба' }
   | { t: 'выбор'; p: number; label: string }
   | { t: 'текст'; p: number; text: string }

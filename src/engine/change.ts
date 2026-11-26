@@ -32,11 +32,14 @@ export function addParam(g: G, p: Player, param: string, delta: number, ctx: Ctx
   if (!p.alive || delta === 0) return
   const t = g.c.tables
   const health = param === 'физ' || param === 'псих'
-  if (ctx.strong && (health || param === 'возм')) delta = grow(delta, 1)
+  // Почему число не как на карте: поправки до addParam (ctx.parts), «сильно», возраст — для журнала.
+  const parts: [string, number][] = [...(ctx.parts ?? [])]
+  const base = ctx.base ?? delta
+  if (ctx.strong && (health || param === 'возм')) { const d = grow(delta, 1); parts.push([ctx.strongPole ? `сильное положение «${ctx.strongPole}»` : 'сильное положение', d - delta]); delta = d }
   if (health && ctx.source === 'карта') {
     const sh = t.ageShift[segName(p)]
     const n = param === 'физ' ? (delta > 0 ? sh.physPos : sh.physNeg) : delta > 0 ? sh.psyPos : sh.psyNeg
-    if (n) delta = grow(delta, n)
+    if (n) { const d = grow(delta, n); if (d !== delta) parts.push([`возраст: ${segName(p)}`, d - delta]); delta = d }
     if (delta === 0) return
   }
   const from = read(p, param)
@@ -51,7 +54,7 @@ export function addParam(g: G, p: Player, param: string, delta: number, ctx: Ctx
   } else to = Math.max(0, to)
   if (to === from) return
   write(p, param, to)
-  emit(g, { t: 'число', p: p.seat, param, from, to, delta: to - from })
+  emit(g, { t: 'число', p: p.seat, param, from, to, delta: to - from, ...(parts.length ? { base, parts } : {}) })
   if (param === 'Пожертвования') p.counters[`пожертвования:${p.seg}`] = (p.counters[`пожертвования:${p.seg}`] ?? 0) + (to - from)
   if (param === 'Стаж') {
     p.stazhHire += to - from

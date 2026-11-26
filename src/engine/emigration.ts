@@ -366,7 +366,8 @@ export function naturalize(g: G, p: Player): void {
  * Выросшие в стране (соавтор, 25.11): кто приехал с семьёй до Молодости, на входе в Молодость получает гражданство
  * без Стажа и без проверки; гражданство страны рождения остаётся. Сильный Этноцентризм страны: нужна аккультурация
  * на шаге 2+ (или союз со страной рождения), иначе 🎲 Смекалка 10; не прошёл — дальше по взрослым правилам (naturalize).
- * Запрет двойного гражданства (singleCitizenship) действует и здесь: это закон страны.
+ * Двойное — только если его допускают обе страны (соавтор, 26.11): запрет новой страны (отказаться) или страны рождения
+ * (лишает сама) — гражданство рождения теряется.
  */
 export function grewUpCitizen(g: G, p: Player): void {
   const t = g.c.tables.emigration
@@ -380,7 +381,11 @@ export function grewUpCitizen(g: G, p: Player): void {
     emit(g, { t: 'проверка', p: p.seat, stat: 'Смекалка', dice: roll.dice, kept: roll.sum, value: p.stats['Смекалка'], mod: 0, trump: 0, dc: t.grewUp.dc, ok, adv: 0, what: 'гражданство выросшего (сильный Этноцентризм)' })
   }
   if (!ok) { say(g, p, `сильный Этноцентризм: выросшему здесь гражданства не дали — натурализация по взрослым правилам`); return }
-  if (t.singleCitizenship.includes(c.ideology)) p.citizenship = []
+  const birth = g.s.world.countries[p.birthCountry]
+  if (t.singleCitizenship.includes(c.ideology) || t.singleCitizenship.includes(birth.ideology)) {
+    if (p.citizenship.length) say(g, p, `двойное гражданство запрещено (${t.singleCitizenship.includes(c.ideology) ? c.name : birth.name}): гражданство ${birth.name} потеряно`)
+    p.citizenship = []
+  }
   p.citizenship.push(p.country)
   say(g, p, `вырос в стране — гражданство: ${c.name}`)
 }

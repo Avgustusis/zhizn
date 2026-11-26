@@ -240,4 +240,29 @@ describe('Олигархи при госсоциализме (24.11)', () => {
     expect(e.p.citizenship).toContain(e.dest.id)
     expect(asked).toBe(true)
   })
+
+  it('журнал объясняет число не как на карте: сильное положение культуры, возраст', async () => {
+    const { run } = await import('../src/engine/exec.ts')
+    const { describe: describeEv } = await import('../src/ui/log.ts')
+    const ax = CULTURE_AXES.findIndex(([a]) => a === 'Теизм')
+    const { e, p } = lab(9, { seg: 0, psy: 0 })
+    e.state.world.cultures[p.culture][ax] = 2 // сильный Секуляризм
+    delete p.ownProfile
+    const before = e.state.log.length
+    drive(run(e.g, p, card('культура.22').effect, newCtx('карта', { card: 'культура.22', polar: true })))
+    const ev = e.state.log.slice(before).find((x) => x.t === 'число')!
+    expect(ev).toMatchObject({ delta: -3, base: -1 })
+    expect(describeEv(ev, e.state).text).toContain('по карте −1, сильное положение «Секуляризм» −1, возраст: Детство −1')
+  })
+
+  it('двойное гражданство выросшему — только если его допускают обе страны (26.11)', () => {
+    const r = lab(12, { seg: 2, cls: 'Народ', familyCls: 'Народ' })
+    const dest = r.e.state.world.countries.find((c) => c.id !== r.p.birthCountry)!
+    dest.ideology = 'Либеральная демократия'
+    r.e.state.world.countries[r.p.birthCountry].ideology = 'Национализм'
+    r.p.country = dest.id
+    r.e.state.world.cultures[dest.mainCultures[0]][CULTURE_AXES.findIndex(([a]) => a === 'Этноцентризм')] = 0
+    grewUpCitizen(r.e.g, r.p)
+    expect(r.p.citizenship).toEqual([dest.id])
+  })
 })

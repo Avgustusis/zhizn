@@ -1,9 +1,9 @@
 /** Исполнитель карт: обходит шаги эффекта (`Node`) и меняет состояние. Там, где нужен игрок, задаёт вопрос. */
 import { STATS, type Node } from '../data/schema.ts'
 import { ask, countryOf, clamp, emit, say, type Flow, type G } from './core.ts'
-import { cond, has, type Ctx } from './cond.ts'
+import { cond, cultureLean, has, type Ctx } from './cond.ts'
 import { addParam, charStep, enterInst, gainItem, leaveInst, loseItem, rollDie, setClass, setParam, statCap } from './change.ts'
-import { firstCheck, previewCheck, runCheck, spend, strongIn, type CheckPreview } from './checks.ts'
+import { firstCheck, polesIn, previewCheck, runCheck, spend, strongIn, type CheckPreview } from './checks.ts'
 import { RULE_NOTES, runRule } from './rules.ts'
 import { frontLoss } from './war.ts'
 import { epidemicSoft } from './items.ts'
@@ -25,7 +25,8 @@ const usesStat = (nodes: Node[]): boolean => JSON.stringify(nodes).includes('"ad
 /** Ветка полюса в колоде «по полюсам»: при «сильно» числа на 1 крупнее. Явное `strong` в условии — числа уже точные. */
 function branchCtx(g: G, p: Player, ctx: Ctx, c: Parameters<typeof cond>[2]): Ctx {
   if (!ctx.polar || ctx.strong) return ctx
-  return strongIn(g, p, c) ? { ...ctx, strong: true } : ctx
+  if (!strongIn(g, p, c)) return ctx
+  return { ...ctx, strong: true, strongPole: polesIn(c).find((pole) => cultureLean(g, p, pole) === 2) }
 }
 
 /** Выполнить шаги по порядку. Смерть игрока обрывает карту. */
@@ -41,14 +42,16 @@ function* runNode(g: G, p: Player, n: Node, ctx: Ctx): Flow {
     const c = n.cap !== undefined ? { ...ctx, cap: n.cap } : ctx
     for (const [param, delta] of Object.entries(n.add)) {
       // Фронт: потеря физ. в событии меньше у офицера и при «Беречь себя»; «Боевые друзья» могут её отменить.
-      let d = param === 'физ' && delta < 0 && ctx.deck === 'фронт' && p.inst?.kind === 'фронт' ? yield* frontLoss(g, p, delta) : delta
+      const parts: [string, number][] = []
+      const note = (why: string, was: number, now: number) => { if (now !== was) parts.push([why, now - was]); return now }
+      let d = param === 'физ' && delta < 0 && ctx.deck === 'фронт' && p.inst?.kind === 'фронт' ? note('фронт', delta, yield* frontLoss(g, p, delta)) : delta
       // Полюса культуры: Порядок — катастрофы мягче, Риск — Возможности крупнее, Цинизм — обман слабее.
-      d = poleDelta(g, p, param, d, ctx)
+      d = note('положение культуры', d, poleDelta(g, p, param, d, ctx))
       // «Фильтр-бочка Олан»: эпидемии бьют на 1 мягче.
-      if (param === 'физ' && d < 0) d = Math.min(0, d + epidemicSoft(g, p, ctx.card))
+      if (param === 'физ' && d < 0) d = note('«Фильтр-бочка»', d, Math.min(0, d + epidemicSoft(g, p, ctx.card)))
       // «Офшор», «Сосед-электрик»: потеря Возможностей на картах.
-      if (param === 'возм' && d < 0 && ctx.source === 'карта') d = yield* saveVozm(g, p, d, ctx)
-      addParam(g, p, param, d, c)
+      if (param === 'возм' && d < 0 && ctx.source === 'карта') d = note('предмет', d, yield* saveVozm(g, p, d, ctx))
+      addParam(g, p, param, d, { ...c, base: delta, parts })
     }
   } else if ('say' in n) say(g, p, n.say)
   else if ('if' in n) {

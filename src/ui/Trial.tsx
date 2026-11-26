@@ -11,7 +11,7 @@ import { ARCHETYPES, bureauName } from '../engine/ai/persona.ts'
 import { meaningOf, meaningStatus } from '../engine/meaning.ts'
 import type { LogEvent, Option, Player, SaveFile, SeatConfig } from '../engine/types.ts'
 import { renderNodes } from '../data/render.ts'
-import { capital, glyphText, splitOptions, traceChannel } from './text.ts'
+import { capital, glyphText, layoutSrc, noteBeyondLabel, splitOptions, traceChannel, wordsFromSrc } from './text.ts'
 import { Rich } from './Rich.tsx'
 import { describe } from './log.ts'
 
@@ -129,8 +129,20 @@ function frontCard(id: string): (typeof content.decks)[string][number] | undefin
   return { id: e.id, n: e.n, title: `${e.title} (клетка ${e.cell > 0 ? '+' : ''}${e.cell} «${cell}», d10 = ${e.n})`, text: e.text, src: e.src, kind: 'Б', tags: e.tags, effect: e.effect }
 }
 
+/** Правило карты по строкам: подпись группы слева, строки под ней (замечание Августа 26.11). */
+function SrcLayout({ src, channel }: { src: string; channel?: string }) {
+  if (!src) return null
+  return (
+    <span className="src src-grid">
+      {layoutSrc(src).map((g, i) => g.label
+        ? [<span key={`l${i}`} className="src-label"><Rich text={g.label} channel={channel} /></span>, <span key={`v${i}`}>{g.lines.map((l, k) => <span key={k} className="src-line"><Rich text={l} channel={channel} /></span>)}</span>]
+        : <span key={`v${i}`} className="src-wide">{g.lines.map((l, k) => <span key={k} className="src-line"><Rich text={l} channel={channel} /></span>)}</span>)}
+    </span>
+  )
+}
+
 /** Карта целиком, как в настольной версии: название, текст, оригинальный эффект, теги — и что из неё вышло. */
-function CardPanel({ id, deck, who, cls, result, pending, onClose }: { id: string; deck: string; who: string; cls?: string; result: string[]; pending: boolean; onClose: () => void }) {
+function CardPanel({ id, deck, who, cls, result, pending, head, onClose }: { id: string; deck: string; who: string; cls?: string; result: string[]; pending: boolean; head?: string; onClose: () => void }) {
   const card = Object.values(content.decks).flat().find((c) => c.id === id) ?? frontCard(id)
   if (!card) return null
   const channel = traceChannel(card.trace, cls, content.tables.social.channels)
@@ -141,7 +153,7 @@ function CardPanel({ id, deck, who, cls, result, pending, onClose }: { id: strin
       <p className="who">{who} · {deck}{card.cls ? ` · ${card.cls}` : ''} · {{ 'Б': 'бывает', 'П': 'проверка', 'Р': 'решение' }[card.kind]}</p>
       <h3>{card.title}{card.miracle ? ' ✨' : ''}</h3>
       {card.text && <p className="text">{card.text}</p>}
-      {!inOptions && <p className="src"><Rich text={card.src} channel={channel} /></p>}
+      {!inOptions && <SrcLayout src={pending && head !== undefined ? head : card.src} channel={channel} />}
       <p className="tags">{card.tags.join(' ')}</p>
       {card.trace && <p className="tags"><Rich text={card.trace} channel={channel} /></p>}
       {result.length > 0 && <div className="result"><h4>Что вышло</h4>{result.map((r, i) => <p key={i}><Rich text={r} /></p>)}</div>}
@@ -158,10 +170,14 @@ const SHOWN_OFF = /убеждений|Банк не верит|кредитор 
 function OptionButton({ o, market, words, onPick }: { o: Option; market: boolean; words?: string; onPick: () => void }) {
   const c = o.check
   // Есть слова карты («А) затянуться: …») — показываем их вместо разбора эффекта.
-  const lines = o.effect && !words ? renderNodes(o.effect) : []
+  const parsed = o.effect && !words ? renderNodes(o.effect) : []
+  // Разбор, повторяющий название варианта, не печатаем; остаток — мелко рядом («+1 Мудрость (до 7)», замечание 26.11).
+  const one = parsed.length === 1 ? glyphText(parsed[0]) : ''
+  const extra = one ? noteBeyondLabel(glyphText(o.label), one) : ''
+  const lines = one && extra !== one ? [] : parsed
   return (
     <div className="option">
-      <button onClick={onPick}>{words ? <Rich text={words} /> : capital(glyphText(o.label))}{o.note ? <span className="num"> {o.note.split(' ‖ ').map((x, i) => <span key={i}>{i ? <br /> : null}<Rich text={x} /></span>)}</span> : null}</button>
+      <button onClick={onPick}>{words ? <SrcLayout src={words} /> : capital(glyphText(o.label))}{extra && !lines.length ? <span className="num"> {extra}</span> : null}{o.note ? <span className="num"> {o.note.split(' ‖ ').map((x, i) => <span key={i}>{i ? <br /> : null}<Rich text={x} /></span>)}</span> : null}</button>
       {c && (
         <p className="chk">
           🎲 {c.stat} {c.dc}{c.tags.length ? ` · ${c.tags.join(' ')}` : ''} · у тебя {c.stat} {c.value}
@@ -257,7 +273,7 @@ export default function Trial() {
                 {AI_LEVELS.map(([id, label]) => <option key={id} value={id}>ИИ: {label}</option>)}
               </select>
               {!t.ai && startMode === 'tale' && (
-                <label className="num">год рождения <input type="number" value={t.born ?? ''} placeholder="—" onChange={(ev) => setSeat(i, { born: ev.target.value ? Number(ev.target.value) : undefined })} style={{ width: '5em' }} /></label>
+                <label className="num" title="Настоящий год рождения человека за столом: мир в «Сказке» собирают по очереди, начиная с младшего. На порядок ходов в партии не влияет.">год рождения игрока (младший собирает мир первым) <input type="number" value={t.born ?? ''} placeholder="—" onChange={(ev) => setSeat(i, { born: ev.target.value ? Number(ev.target.value) : undefined })} style={{ width: '5em' }} /></label>
               )}
               {t.ai && (
                 <select value={t.archetype ?? ''} onChange={(ev) => setSeat(i, { archetype: ev.target.value })} title={ARCHETYPES.find((a) => a.id === t.archetype)?.meaning}>
@@ -267,7 +283,7 @@ export default function Trial() {
             </div>
           ))}
         </div>
-        {startMode === 'tale' && <p className="legend">«Сказка»: мир собирают люди за столом по очереди, начиная с младшего (год рождения); на каждом вопросе можно ответить «случайно». Героя каждый собирает сам в пределах «Доли»; герои ИИ собираются по архетипу.</p>}
+        {startMode === 'tale' && <p className="legend">«Сказка»: мир собирают люди за столом по очереди, начиная с младшего (настоящий год рождения игрока; на порядок ходов в партии не влияет — ходят по порядку мест); на каждом вопросе можно ответить «случайно». Героя каждый собирает сам в пределах «Доли»; герои ИИ собираются по архетипу.</p>}
         <p className="legend">Псевдоним — не имя и не фамилия; «Случайно» даёт номер, как в Бюро. ИИ на всех уровнях знает только то, что видит игрок. Архетип — характер ИИ: его решения следуют чертам.</p>
         <p className="legend">Одно и то же зерно с теми же ответами даёт ту же партию: если что-то пошло не так, назови зерно.</p>
         {error && <p className="req">Ошибка движка: {error}</p>}
@@ -289,7 +305,11 @@ export default function Trial() {
   // Варианты карты словами карты: «А) Затянуться: …» (замечание Августа 25.11); не вышло разбить — разбор эффекта.
   const askCard = req?.card ? Object.values(content.decks).flat().find((c) => c.id === req.card) : undefined
   const parts = askCard && req && req.type === 'карта' ? splitOptions(askCard.src, req.options.length) : undefined
-  const cardWords: Record<number, string> = Object.fromEntries((parts ?? []).map((w, i) => [i, `${'АБВГДЕ'[i]}) ${capital(w)}`]))
+  // Без «А) Б)»: «одно на выбор: спорт (+1 Сила…), шахматы (+1 Интеллект)» — вариант словами карты, правило до «на выбор:».
+  const fromSrc = askCard && req && req.type === 'карта' && !parts ? wordsFromSrc(askCard.src, req.options.map((o) => o.label)) : undefined
+  const cardWords: Record<number, string> = parts
+    ? Object.fromEntries(parts.map((w, i) => [Number(req!.options[i].id), `${'АБВГДЕ'[i]}) ${capital(w)}`]))
+    : Object.fromEntries((fromSrc?.words ?? []).map((w, i) => [Number(req!.options[i].id), w]))
   const ranking = [...s.players].sort((a, b) => b.happiness - a.happiness || (b.death?.round ?? 999) - (a.death?.round ?? 999))
   return (
     <section className="trial">
@@ -306,11 +326,12 @@ export default function Trial() {
       </div>
 
       {shownCard ? (
-        <CardPanel id={shownCard.id} deck={shownCard.deck} who={s.players[shownCard.p]?.name ?? ''} cls={s.players[shownCard.p]?.cls} result={cardResult.map((d) => d.text)} pending={nextCard < 0 && !!req && req.card === shownCard.id} onClose={closeCard} />
+        <CardPanel id={shownCard.id} deck={shownCard.deck} who={s.players[shownCard.p]?.name ?? ''} cls={s.players[shownCard.p]?.cls} result={cardResult.map((d) => d.text)} pending={nextCard < 0 && !!req && req.card === shownCard.id} head={req?.card === shownCard.id ? fromSrc?.head : undefined} onClose={closeCard} />
       ) : null}
       {(!shownCard || (nextCard < 0 && req?.card === shownCard.id)) && (req ? (
         <div className="ask">
-          <p className="who">{s.players[req.player]?.name ?? s.config.seats[req.player]?.name}</p>
+          {/* Имя — один раз: если вопрос к карте выше, оно уже в шапке карты (замечание Августа 26.11). */}
+          {!(shownCard && req.card === shownCard.id) && <p className="who">{s.players[req.player]?.name ?? s.config.seats[req.player]?.name}</p>}
           {/* Вопрос карты, показанной выше, не повторяем (название и текст — на карте). */}
           {!(shownCard && req.card === shownCard.id && req.type === 'карта') && <p className="q"><Rich text={req.text} /></p>}
           <div className="options">

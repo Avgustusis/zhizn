@@ -16,21 +16,20 @@ export function describe(ev: LogEvent, s: GameState): { text: string; kind: 'hea
     case 'пропуск': return { text: `карта ${ev.id} не подошла — под низ колоды`, kind: 'quiet' }
     case 'проверка': {
       if (ev.auto) return { text: `🎲 ${ev.what ? `${ev.what}: ` : ''}${ev.stat} — автоуспех`, kind: 'plain' }
-      // Броски без характеристики: поиск смысла (3d6 + поправка Мудрости) и вход в Древность (3d6 + физ.).
-      if (ev.what === 'поиск смысла' || ev.what?.startsWith('вход в Древность')) {
-        const base = ev.what === 'поиск смысла' ? '' : ` + физ. ${signed(ev.value)}`
-        return { text: `🎲 ${ev.what === 'поиск смысла' ? 'поиск смысла' : 'вход в Древность'}: кубики [${ev.dice.join(', ')}] = ${ev.kept}${base}${ev.mod ? `, поправки ${signed(ev.mod)}` : ''}; нужно ${ev.dc} — ${ev.ok ? 'успех' : 'провал'}`, kind: 'loud' }
-      }
-      if (ev.what?.startsWith('сватовство')) {
-        return { text: `🎲 сватовство: кубики [${ev.dice.join(', ')}] = ${ev.kept} + Сплочённость ${signed(ev.value)}${ev.mod ? ` + поправки ${signed(ev.mod)}` : ''}; нужно ${ev.dc} — ${ev.ok ? 'успех' : 'провал'}`, kind: 'plain' }
-      }
-      const parts = [`${ev.value}`, `кубики [${ev.dice.join(', ')}] = ${ev.kept}`]
+      // Порядок чтения (замечание Августа 26.11): что бросаем и сколько нужно → кубики → прибавки → итог.
+      // Броски без характеристики: поиск смысла (3d6 + поправка Мудрости), вход в Древность (3d6 + физ.), сватовство (+ Сплочённость).
+      const ancient = ev.what?.startsWith('вход в Древность')
+      const label = ev.what === 'поиск смысла' ? 'поиск смысла' : ancient ? 'вход в Древность' : ev.what?.startsWith('сватовство') ? 'сватовство' : `${ev.what ? `${ev.what}: ` : ''}${ev.stat}`
+      const statName = ev.what === 'поиск смысла' ? '' : ancient ? 'физ.' : ev.what?.startsWith('сватовство') ? 'Сплочённость' : ev.stat
+      const adv = ev.adv > 0 ? ' (с преимуществом)' : ev.adv < 0 ? ' (с помехой)' : ''
+      const parts = [`кубики [${ev.dice.join(', ')}]${adv} = ${ev.kept}`]
+      if (statName && ev.value) parts.push(`${statName} ${signed(ev.value)}`)
       if (ev.mod) parts.push(`поправки ${signed(ev.mod)}`)
       if (ev.trump) parts.push(`козырь ${signed(ev.trump)}`)
-      const adv = ev.adv > 0 ? ', с преимуществом' : ev.adv < 0 ? ', с помехой' : ''
-      return { text: `🎲 ${ev.what ? `${ev.what}: ` : ''}${ev.stat} ${parts.join(' + ')} против ${ev.dc}${adv} — ${ev.ok ? 'успех' : 'провал'}`, kind: 'plain' }
+      const total = ev.kept + ev.value + ev.mod + ev.trump
+      return { text: `🎲 ${label}, нужно ${ev.dc}: ${parts.join(', ')} → ${total} — ${ev.ok ? 'успех' : 'провал'}`, kind: ev.what === 'поиск смысла' || ancient ? 'loud' : 'plain' }
     }
-    case 'число': return { text: `${NAMES[ev.param] ?? ev.param} ${signed(ev.delta)} (стало ${signed(ev.to).replace('+', '')})`, kind: 'plain' }
+    case 'число': return { text: `${NAMES[ev.param] ?? ev.param} ${signed(ev.delta)} (стало ${signed(ev.to).replace('+', '')})${ev.parts ? `: по карте ${signed(ev.base ?? 0)}, ${ev.parts.map(([w, n]) => `${w} ${signed(n)}`).join(', ')}` : ''}`, kind: 'plain' }
     case 'предмет': return { text: ev.how === 'свадьба' ? `свадьба: «${ev.name}» теперь Супруг(а)` : `«${ev.name}» — ${ev.how}`, kind: 'plain' }
     case 'выбор': return { text: `выбор: ${ev.label}`, kind: 'plain' }
     case 'текст': return { text: ev.text, kind: 'plain' }

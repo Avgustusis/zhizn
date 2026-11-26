@@ -108,3 +108,10 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; }
 .sheet-sep { border: 0; border-top: 1px solid rgba(30, 30, 36, 0.25); margin: 0.5em 0; }
 .warn { color: #8a2a1e; font-size: 0.9em; }
 .trace-token { display: inline-block; color: #fbf8f1; font: 600 0.72em/1.6 'IBM Plex Mono', monospace; letter-spacing: 0.04em; padding: 0 0.55em; border-radius: 1em; border: 1px solid #1e1e24; vertical-align: 0.1em; margin: 0 0.15em; }
+
+/* Правило карты по строкам: подпись группы слева, строки под ней (замечание Августа 26.11). */
+.option button .src-grid { text-align: left; }
+.src-grid { display: grid; grid-template-columns: max-content 1fr; column-gap: .35em; row-gap: 2px; }
+.src-grid .src-label { white-space: nowrap; }
+.src-grid .src-wide { grid-column: 1 / -1; }
+.src-grid .src-line { display: block; }
